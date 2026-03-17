@@ -28,8 +28,15 @@ out/
 # Storage (local PDF files)
 storage/
 
+# TypeScript build artifacts
+*.tsbuildinfo
+next-env.d.ts
+
 # Vercel
 .vercel
 
 # Docker volumes
 pgdata/
+
+# Claude
+.claude/
