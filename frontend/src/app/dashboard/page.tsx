@@ -9,20 +9,20 @@ import { Button } from "@/components/ui/button";
 import { Users, BookOpen, TrendingUp, Zap, Printer } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+import dynamic from "next/dynamic";
 
-const COLORS = ["#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899", "#f43f5e", "#f97316", "#eab308"];
+const BarChart = dynamic(() => import("recharts").then((m) => m.BarChart), { ssr: false });
+const Bar = dynamic(() => import("recharts").then((m) => m.Bar), { ssr: false });
+const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), { ssr: false });
+const YAxis = dynamic(() => import("recharts").then((m) => m.YAxis), { ssr: false });
+const CartesianGrid = dynamic(() => import("recharts").then((m) => m.CartesianGrid), { ssr: false });
+const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
+const PieChart = dynamic(() => import("recharts").then((m) => m.PieChart), { ssr: false });
+const Pie = dynamic(() => import("recharts").then((m) => m.Pie), { ssr: false });
+const Cell = dynamic(() => import("recharts").then((m) => m.Cell), { ssr: false });
+
+const COLORS = ["#dc2626", "#991b1b", "#ef4444", "#b91c1c", "#7f1d1d", "#f87171", "#450a0a", "#fca5a5"];
 
 const ACTION_LABELS: Record<string, string> = {
   assign: "教材割当",
@@ -42,8 +42,8 @@ function ProgressRing({ value, size = 56, strokeWidth = 5 }: { value: number; si
       <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="url(#ring-gradient)" strokeWidth={strokeWidth} strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="transition-all duration-1000 ease-out" style={{ animation: "progress-fill 1s ease-out" }} />
       <defs>
         <linearGradient id="ring-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#6366f1" />
-          <stop offset="100%" stopColor="#a855f7" />
+          <stop offset="0%" stopColor="#dc2626" />
+          <stop offset="100%" stopColor="#991b1b" />
         </linearGradient>
       </defs>
     </svg>
@@ -147,9 +147,9 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="生徒数" value={stats?.total_students || 0} subtitle="登録済み生徒" icon={Users} gradient="bg-gradient-to-br from-indigo-500 to-purple-600" />
-        <StatCard title="教材数" value={stats?.total_materials || 0} subtitle="登録済み教材" icon={BookOpen} gradient="bg-gradient-to-br from-emerald-500 to-teal-600" />
-        <StatCard title="アクティブ割当" value={stats?.active_assignments || 0} subtitle="進行中の割当" icon={TrendingUp} gradient="bg-gradient-to-br from-amber-500 to-orange-600" />
+        <StatCard title="生徒数" value={stats?.total_students || 0} subtitle="登録済み生徒" icon={Users} gradient="bg-gradient-to-br from-red-600 to-red-800" />
+        <StatCard title="教材数" value={stats?.total_materials || 0} subtitle="登録済み教材" icon={BookOpen} gradient="bg-gradient-to-br from-gray-800 to-black" />
+        <StatCard title="アクティブ割当" value={stats?.active_assignments || 0} subtitle="進行中の割当" icon={TrendingUp} gradient="bg-gradient-to-br from-red-500 to-red-700" />
         <Card className="card-hover stat-card border-0 shadow-premium overflow-hidden h-full">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
@@ -180,8 +180,8 @@ export default function DashboardPage() {
                 <Bar dataKey="percent" fill="url(#bar-gradient)" radius={[6, 6, 0, 0]} />
                 <defs>
                   <linearGradient id="bar-gradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#6366f1" />
-                    <stop offset="100%" stopColor="#a855f7" />
+                    <stop offset="0%" stopColor="#dc2626" />
+                    <stop offset="100%" stopColor="#991b1b" />
                   </linearGradient>
                 </defs>
               </BarChart>

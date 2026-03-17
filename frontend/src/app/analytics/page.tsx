@@ -11,17 +11,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  LineChart,
-  Line,
-} from "recharts";
+import dynamic from "next/dynamic";
+
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
+const BarChart = dynamic(() => import("recharts").then((m) => m.BarChart), { ssr: false });
+const Bar = dynamic(() => import("recharts").then((m) => m.Bar), { ssr: false });
+const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), { ssr: false });
+const YAxis = dynamic(() => import("recharts").then((m) => m.YAxis), { ssr: false });
+const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
+const CartesianGrid = dynamic(() => import("recharts").then((m) => m.CartesianGrid), { ssr: false });
+const LineChart = dynamic(() => import("recharts").then((m) => m.LineChart), { ssr: false });
+const Line = dynamic(() => import("recharts").then((m) => m.Line), { ssr: false });
 import { Trophy, BookOpen, Activity } from "lucide-react";
 import Link from "next/link";
 
@@ -224,7 +224,7 @@ export default function AnalyticsPage() {
                   <Tooltip />
                   <Bar
                     dataKey="avg_pace"
-                    fill="oklch(0.55 0.20 270)"
+                    fill="oklch(0.5 0.2 25)"
                     name="平均ペース"
                     radius={[4, 4, 0, 0]}
                   />
@@ -256,7 +256,7 @@ export default function AnalyticsPage() {
                   <Line
                     type="monotone"
                     dataKey="prints_count"
-                    stroke="oklch(0.55 0.20 270)"
+                    stroke="oklch(0.5 0.2 25)"
                     strokeWidth={2}
                     name="印刷"
                     dot={{ r: 3 }}
@@ -264,7 +264,7 @@ export default function AnalyticsPage() {
                   <Line
                     type="monotone"
                     dataKey="records_count"
-                    stroke="oklch(0.60 0.15 150)"
+                    stroke="oklch(0.35 0.05 25)"
                     strokeWidth={2}
                     name="記録"
                     dot={{ r: 3 }}

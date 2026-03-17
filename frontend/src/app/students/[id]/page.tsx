@@ -52,17 +52,44 @@ import {
   Minus as MinusIcon,
 } from "lucide-react";
 import Link from "next/link";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  BarChart,
-  Bar,
-  CartesianGrid,
-} from "recharts";
+import dynamic from "next/dynamic";
+
+const ResponsiveContainer = dynamic(
+  () => import("recharts").then((m) => m.ResponsiveContainer),
+  { ssr: false }
+);
+const LineChart = dynamic(
+  () => import("recharts").then((m) => m.LineChart),
+  { ssr: false }
+);
+const Line = dynamic(
+  () => import("recharts").then((m) => m.Line),
+  { ssr: false }
+);
+const BarChart = dynamic(
+  () => import("recharts").then((m) => m.BarChart),
+  { ssr: false }
+);
+const Bar = dynamic(
+  () => import("recharts").then((m) => m.Bar),
+  { ssr: false }
+);
+const XAxis = dynamic(
+  () => import("recharts").then((m) => m.XAxis),
+  { ssr: false }
+);
+const YAxis = dynamic(
+  () => import("recharts").then((m) => m.YAxis),
+  { ssr: false }
+);
+const Tooltip = dynamic(
+  () => import("recharts").then((m) => m.Tooltip),
+  { ssr: false }
+);
+const CartesianGrid = dynamic(
+  () => import("recharts").then((m) => m.CartesianGrid),
+  { ssr: false }
+);
 import type { LessonRecordUpsert } from "@/lib/types";
 
 const ACTION_LABELS: Record<string, string> = {
@@ -725,7 +752,7 @@ export default function StudentDetailPage({
                         />
                         <Bar
                           dataKey="percent"
-                          fill="oklch(0.55 0.20 270)"
+                          fill="oklch(0.5 0.2 25)"
                           radius={[4, 4, 0, 0]}
                         />
                       </BarChart>
@@ -774,7 +801,7 @@ export default function StudentDetailPage({
                         <Line
                           type="monotone"
                           dataKey="new_pointer"
-                          stroke="oklch(0.55 0.20 270)"
+                          stroke="oklch(0.5 0.2 25)"
                           strokeWidth={2}
                           dot={{ r: 3 }}
                         />

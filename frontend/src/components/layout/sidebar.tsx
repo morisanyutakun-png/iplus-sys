@@ -8,12 +8,14 @@ import {
   BookOpen,
   Printer,
   BarChart3,
+  Table2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard, description: "概要とクイックアクション" },
   { href: "/students", label: "生徒", icon: Users, description: "生徒の進捗・印刷・分析" },
+  { href: "/scoring", label: "定着度入力", icon: Table2, description: "Excel風の採点・合否入力" },
   { href: "/materials", label: "教材管理", icon: BookOpen, description: "教材とノード" },
   { href: "/print", label: "印刷", icon: Printer, description: "キュー・ジョブ・ログ" },
   { href: "/analytics", label: "分析", icon: BarChart3, description: "全体分析・比較" },
@@ -24,8 +26,8 @@ function IPlusLogo() {
     <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="logo-gradient" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
-          <stop stopColor="oklch(0.55 0.20 270)" />
-          <stop offset="1" stopColor="oklch(0.50 0.18 240)" />
+          <stop stopColor="oklch(0.55 0.22 25)" />
+          <stop offset="1" stopColor="oklch(0.3 0.08 20)" />
         </linearGradient>
       </defs>
       <rect width="36" height="36" rx="10" fill="url(#logo-gradient)" />
@@ -46,7 +48,7 @@ export function Sidebar() {
         <IPlusLogo />
         <div>
           <h1 className="text-lg font-bold tracking-tight">
-            <span className="bg-gradient-to-r from-[oklch(0.55_0.20_270)] to-[oklch(0.50_0.18_240)] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[oklch(0.55_0.22_25)] to-[oklch(0.3_0.08_20)] bg-clip-text text-transparent">
               iPlus
             </span>
             <span className="ml-1 text-foreground/80">Sys</span>
