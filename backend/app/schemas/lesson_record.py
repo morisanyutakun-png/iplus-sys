@@ -34,3 +34,36 @@ class LessonRecordBatchRequest(BaseModel):
 
 class LessonRecordBatchResponse(BaseModel):
     upserted: int
+
+
+class MasteryInput(BaseModel):
+    student_id: str
+    material_key: str
+    node_key: str
+    lesson_date: date
+    status: str  # "completed" or "retry"
+    score: int | None = None
+    notes: str | None = None
+
+
+class MasteryBatchRequest(BaseModel):
+    records: list[MasteryInput]
+
+
+class MasteryResultItem(BaseModel):
+    student_id: str
+    material_key: str
+    node_key: str
+    status: str
+    advanced: bool
+    new_pointer: int
+    queued_node_key: str | None = None
+    queued_node_title: str | None = None
+
+
+class MasteryBatchResponse(BaseModel):
+    processed: int
+    advanced: int
+    retried: int
+    queued: int
+    results: list[MasteryResultItem]

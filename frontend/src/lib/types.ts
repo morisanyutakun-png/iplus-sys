@@ -144,6 +144,36 @@ export interface LessonRecordUpsert {
   notes?: string;
 }
 
+// Mastery Input
+export interface MasteryInput {
+  student_id: string;
+  material_key: string;
+  node_key: string;
+  lesson_date: string;
+  status: "completed" | "retry";
+  score?: number;
+  notes?: string;
+}
+
+export interface MasteryResultItem {
+  student_id: string;
+  material_key: string;
+  node_key: string;
+  status: string;
+  advanced: boolean;
+  new_pointer: number;
+  queued_node_key?: string;
+  queued_node_title?: string;
+}
+
+export interface MasteryBatchResponse {
+  processed: number;
+  advanced: number;
+  retried: number;
+  queued: number;
+  results: MasteryResultItem[];
+}
+
 // Auto Print
 export interface NextPrintItem {
   student_id: string;

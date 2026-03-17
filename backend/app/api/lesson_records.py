@@ -1,16 +1,23 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import select, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.lesson_record import LessonRecord
+from app.models.student_material import StudentMaterial, ProgressHistory
+from app.models.material import Material, MaterialNode
+from app.models.print_queue import PrintQueue
 from app.schemas.lesson_record import (
     LessonRecordOut,
     LessonRecordBatchRequest,
     LessonRecordBatchResponse,
+    MasteryBatchRequest,
+    MasteryBatchResponse,
+    MasteryResultItem,
 )
 
 router = APIRouter()
@@ -74,3 +81,133 @@ async def batch_upsert_lesson_records(
 
     await db.commit()
     return LessonRecordBatchResponse(upserted=len(body.records))
+
+
+@router.post("/batch-with-progress", response_model=MasteryBatchResponse)
+async def batch_mastery_input(
+    body: MasteryBatchRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """定着度入力: 結果保存 + ポインタ進行 + 印刷キュー自動追加"""
+    if not body.records:
+        return MasteryBatchResponse(processed=0, advanced=0, retried=0, queued=0, results=[])
+
+    # Get current max sort_order in print queue
+    max_order_result = await db.execute(
+        select(sa_func.coalesce(sa_func.max(PrintQueue.sort_order), 0))
+    )
+    sort_order = max_order_result.scalar() + 1
+
+    results: list[MasteryResultItem] = []
+    advanced_count = 0
+    retried_count = 0
+    queued_count = 0
+
+    for rec in body.records:
+        # 1. Save lesson record (upsert)
+        stmt = pg_insert(LessonRecord).values(
+            student_id=rec.student_id,
+            material_key=rec.material_key,
+            node_key=rec.node_key,
+            lesson_date=rec.lesson_date,
+            status=rec.status,
+            score=rec.score,
+            notes=rec.notes,
+        )
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_lesson_record",
+            set_={
+                "status": stmt.excluded.status,
+                "score": stmt.excluded.score,
+                "notes": stmt.excluded.notes,
+                "updated_at": LessonRecord.updated_at.default,
+            },
+        )
+        await db.execute(stmt)
+
+        # 2. Load StudentMaterial and Material with nodes
+        sm_result = await db.execute(
+            select(StudentMaterial)
+            .where(
+                StudentMaterial.student_id == rec.student_id,
+                StudentMaterial.material_key == rec.material_key,
+            )
+            .options(
+                selectinload(StudentMaterial.material)
+                .selectinload(Material.nodes)
+            )
+        )
+        sm = sm_result.scalars().first()
+        if not sm or not sm.material:
+            continue
+
+        old_pointer = sm.pointer
+        nodes_sorted = sorted(sm.material.nodes, key=lambda n: n.sort_order)
+        total_nodes = len(nodes_sorted)
+        did_advance = False
+
+        # 3. Advance pointer if completed
+        if rec.status == "completed" and old_pointer <= total_nodes:
+            sm.pointer = old_pointer + 1
+            did_advance = True
+            advanced_count += 1
+
+            # Log progress history
+            db.add(ProgressHistory(
+                student_id=rec.student_id,
+                material_key=rec.material_key,
+                node_key=rec.node_key,
+                action="advance",
+                old_pointer=old_pointer,
+                new_pointer=sm.pointer,
+                metadata_={"source": "mastery_input", "score": rec.score},
+            ))
+        else:
+            retried_count += 1
+
+        # 4. Queue next node for printing
+        new_pointer = sm.pointer
+        queued_node_key = None
+        queued_node_title = None
+
+        if new_pointer <= total_nodes:
+            # Find the node at current pointer
+            next_node = next(
+                (n for n in nodes_sorted if n.sort_order == new_pointer), None
+            )
+            if next_node:
+                queue_entry = PrintQueue(
+                    student_id=rec.student_id,
+                    student_name=None,  # will be filled by display
+                    material_key=rec.material_key,
+                    material_name=sm.material.name,
+                    node_key=next_node.key,
+                    node_name=next_node.title,
+                    sort_order=sort_order,
+                    status="pending",
+                )
+                db.add(queue_entry)
+                sort_order += 1
+                queued_count += 1
+                queued_node_key = next_node.key
+                queued_node_title = next_node.title
+
+        results.append(MasteryResultItem(
+            student_id=rec.student_id,
+            material_key=rec.material_key,
+            node_key=rec.node_key,
+            status=rec.status,
+            advanced=did_advance,
+            new_pointer=new_pointer,
+            queued_node_key=queued_node_key,
+            queued_node_title=queued_node_title,
+        ))
+
+    await db.commit()
+    return MasteryBatchResponse(
+        processed=len(results),
+        advanced=advanced_count,
+        retried=retried_count,
+        queued=queued_count,
+        results=results,
+    )

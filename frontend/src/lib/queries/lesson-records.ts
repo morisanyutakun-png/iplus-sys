@@ -1,6 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
-import type { LessonRecord, LessonRecordUpsert } from "@/lib/types";
+import type {
+  LessonRecord,
+  LessonRecordUpsert,
+  MasteryInput,
+  MasteryBatchResponse,
+} from "@/lib/types";
 
 export function useLessonRecords(
   studentId?: string,
@@ -35,6 +40,26 @@ export function useBatchUpsertRecords() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lesson-records"] });
+    },
+  });
+}
+
+export function useMasteryBatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (records: MasteryInput[]) =>
+      apiFetch<MasteryBatchResponse>(
+        "/api/lesson-records/batch-with-progress",
+        {
+          method: "POST",
+          body: JSON.stringify({ records }),
+        }
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["lesson-records"] });
+      qc.invalidateQueries({ queryKey: ["students"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      qc.invalidateQueries({ queryKey: ["progress"] });
     },
   });
 }

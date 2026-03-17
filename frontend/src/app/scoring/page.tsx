@@ -1,12 +1,9 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useMaterials } from "@/lib/queries/materials";
 import { useStudents } from "@/lib/queries/students";
-import {
-  useLessonRecords,
-  useBatchUpsertRecords,
-} from "@/lib/queries/lesson-records";
+import { useMasteryBatch } from "@/lib/queries/lesson-records";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -17,37 +14,36 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Save, Table2, RotateCcw } from "lucide-react";
-import type { LessonRecordUpsert, Student, MaterialNode } from "@/lib/types";
+import {
+  Save,
+  ClipboardCheck,
+  RotateCcw,
+  CheckCircle2,
+  XCircle,
+  Printer,
+  ArrowRight,
+} from "lucide-react";
+import type { MasteryInput, MasteryBatchResponse, Student } from "@/lib/types";
 
-type CellValue = {
+type InputState = "completed" | "retry" | null;
+
+type StudentInput = {
+  status: InputState;
   score: number | null;
-  status: "completed" | "partial" | "skipped" | "retry" | "";
 };
-
-type PendingMap = Record<string, CellValue>;
-
-function cellKey(studentId: string, nodeKey: string) {
-  return `${studentId}__${nodeKey}`;
-}
 
 export default function ScoringPage() {
   const { data: materials, isLoading: matsLoading } = useMaterials();
   const { data: students, isLoading: studsLoading } = useStudents();
-  const batchUpsertMutation = useBatchUpsertRecords();
+  const masteryMutation = useMasteryBatch();
 
   const [selectedMaterialKey, setSelectedMaterialKey] = useState("");
-  const [pending, setPending] = useState<PendingMap>({});
-  const [activeCell, setActiveCell] = useState<string | null>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
+  const [inputs, setInputs] = useState<Record<string, StudentInput>>({});
+  const [lastResult, setLastResult] = useState<MasteryBatchResponse | null>(
+    null
+  );
 
   const todayStr = new Date().toISOString().split("T")[0];
-
-  // Fetch existing records for the selected material
-  const { data: existingRecords } = useLessonRecords(
-    undefined,
-    selectedMaterialKey || undefined
-  );
 
   const selectedMaterial = materials?.find(
     (m) => m.key === selectedMaterialKey
@@ -58,170 +54,97 @@ export default function ScoringPage() {
     s.materials.some((m) => m.material_key === selectedMaterialKey)
   );
 
-  const nodes = selectedMaterial?.nodes || [];
+  const nodes = selectedMaterial?.nodes
+    ? [...selectedMaterial.nodes].sort((a, b) => a.sort_order - b.sort_order)
+    : [];
 
-  // Lookup existing record value
-  const getExisting = useCallback(
-    (studentId: string, nodeKey: string): CellValue => {
-      const rec = existingRecords?.find(
-        (r) =>
-          r.student_id === studentId &&
-          r.node_key === nodeKey &&
-          r.lesson_date === todayStr
+  // Get the current node for a student based on their pointer
+  const getCurrentNode = useCallback(
+    (student: Student) => {
+      const sm = student.materials.find(
+        (m) => m.material_key === selectedMaterialKey
       );
-      if (rec) {
-        return {
-          score: rec.score ?? null,
-          status: (rec.status as CellValue["status"]) || "",
-        };
-      }
-      return { score: null, status: "" };
+      if (!sm) return null;
+      const pointer = sm.pointer;
+      return nodes.find((n) => n.sort_order === pointer) || null;
     },
-    [existingRecords, todayStr]
+    [selectedMaterialKey, nodes]
   );
 
-  const getCellValue = useCallback(
-    (studentId: string, nodeKey: string): CellValue => {
-      const key = cellKey(studentId, nodeKey);
-      if (pending[key]) return pending[key];
-      return getExisting(studentId, nodeKey);
+  const getStudentPointer = useCallback(
+    (student: Student) => {
+      const sm = student.materials.find(
+        (m) => m.material_key === selectedMaterialKey
+      );
+      return sm?.pointer ?? 1;
     },
-    [pending, getExisting]
+    [selectedMaterialKey]
   );
 
-  const updateCell = useCallback(
-    (studentId: string, nodeKey: string, value: Partial<CellValue>) => {
-      const key = cellKey(studentId, nodeKey);
-      setPending((prev) => {
-        const existing = prev[key] || getExisting(studentId, nodeKey);
-        return { ...prev, [key]: { ...existing, ...value } };
-      });
-    },
-    [getExisting]
-  );
+  const getInput = (studentId: string): StudentInput => {
+    return inputs[studentId] || { status: null, score: null };
+  };
 
-  // Toggle pass/fail on click
-  const toggleStatus = useCallback(
-    (studentId: string, nodeKey: string) => {
-      const current = getCellValue(studentId, nodeKey);
-      let nextStatus: CellValue["status"];
-      if (current.status === "" || current.status === "partial") {
-        nextStatus = "completed";
-      } else if (current.status === "completed") {
-        nextStatus = "retry";
-      } else {
-        nextStatus = "";
-      }
-      updateCell(studentId, nodeKey, { status: nextStatus });
-    },
-    [getCellValue, updateCell]
-  );
+  const setInput = (studentId: string, update: Partial<StudentInput>) => {
+    setInputs((prev) => ({
+      ...prev,
+      [studentId]: { ...getInput(studentId), ...update },
+    }));
+  };
 
-  const handleScoreInput = useCallback(
-    (studentId: string, nodeKey: string, raw: string) => {
-      const val = raw === "" ? null : Math.min(100, Math.max(0, parseInt(raw) || 0));
-      updateCell(studentId, nodeKey, { score: val });
-    },
-    [updateCell]
-  );
+  const toggleStatus = (studentId: string) => {
+    const current = getInput(studentId).status;
+    let next: InputState;
+    if (current === null) next = "completed";
+    else if (current === "completed") next = "retry";
+    else next = null;
+    setInput(studentId, { status: next });
+  };
 
-  const pendingCount = Object.keys(pending).length;
+  const pendingCount = Object.values(inputs).filter(
+    (v) => v.status !== null
+  ).length;
 
   const handleSave = () => {
-    const records: LessonRecordUpsert[] = [];
-    for (const [key, value] of Object.entries(pending)) {
-      const [studentId, nodeKey] = key.split("__");
-      if (!value.status && value.score === null) continue;
+    const records: MasteryInput[] = [];
+    for (const student of relevantStudents) {
+      const input = getInput(student.id);
+      if (input.status === null) continue;
+
+      const currentNode = getCurrentNode(student);
+      if (!currentNode) continue;
+
       records.push({
-        student_id: studentId,
+        student_id: student.id,
         material_key: selectedMaterialKey,
-        node_key: nodeKey,
+        node_key: currentNode.key,
         lesson_date: todayStr,
-        status: value.status || "completed",
-        score: value.score ?? undefined,
+        status: input.status,
+        score: input.score ?? undefined,
       });
     }
+
     if (records.length === 0) {
-      toast.info("保存するデータがありません");
+      toast.info("入力されたデータがありません");
       return;
     }
-    batchUpsertMutation.mutate(records, {
-      onSuccess: () => {
-        toast.success(`${records.length}件の記録を保存しました`);
-        setPending({});
+
+    masteryMutation.mutate(records, {
+      onSuccess: (data) => {
+        setLastResult(data);
+        setInputs({});
+        toast.success(
+          `${data.processed}件処理: ${data.advanced}件合格進行 / ${data.retried}件再実施 / ${data.queued}件印刷キュー追加`
+        );
       },
       onError: (err) => toast.error(`エラー: ${err.message}`),
     });
   };
 
   const handleReset = () => {
-    setPending({});
-    toast.info("変更をリセットしました");
-  };
-
-  // Keyboard navigation
-  const handleKeyDown = useCallback(
-    (
-      e: React.KeyboardEvent,
-      studentIdx: number,
-      nodeIdx: number,
-      type: "score" | "status"
-    ) => {
-      const maxRow = relevantStudents.length - 1;
-      const maxCol = nodes.length - 1;
-
-      let nextRow = studentIdx;
-      let nextCol = nodeIdx;
-
-      if (e.key === "Tab" && !e.shiftKey) {
-        e.preventDefault();
-        nextCol = nodeIdx < maxCol ? nodeIdx + 1 : 0;
-        if (nodeIdx >= maxCol) nextRow = Math.min(studentIdx + 1, maxRow);
-      } else if (e.key === "Tab" && e.shiftKey) {
-        e.preventDefault();
-        nextCol = nodeIdx > 0 ? nodeIdx - 1 : maxCol;
-        if (nodeIdx <= 0) nextRow = Math.max(studentIdx - 1, 0);
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        nextRow = Math.min(studentIdx + 1, maxRow);
-      } else if (e.key === "ArrowDown") {
-        nextRow = Math.min(studentIdx + 1, maxRow);
-      } else if (e.key === "ArrowUp") {
-        nextRow = Math.max(studentIdx - 1, 0);
-      } else if (e.key === "ArrowRight" && type === "status") {
-        nextCol = Math.min(nodeIdx + 1, maxCol);
-      } else if (e.key === "ArrowLeft" && type === "status") {
-        nextCol = Math.max(nodeIdx - 1, 0);
-      } else {
-        return;
-      }
-
-      const nextId = `cell-${nextRow}-${nextCol}`;
-      setActiveCell(nextId);
-      setTimeout(() => {
-        const el = document.getElementById(nextId);
-        if (el) {
-          el.focus();
-          if (el.tagName === "INPUT") (el as HTMLInputElement).select();
-        }
-      }, 0);
-    },
-    [relevantStudents.length, nodes.length]
-  );
-
-  const statusDisplay = (status: CellValue["status"]) => {
-    switch (status) {
-      case "completed":
-        return { label: "\u25cb", className: "bg-red-600 text-white" };
-      case "retry":
-        return { label: "\u00d7", className: "bg-gray-900 text-white" };
-      case "partial":
-        return { label: "\u25b3", className: "bg-gray-400 text-white" };
-      case "skipped":
-        return { label: "-", className: "bg-gray-200 text-gray-600" };
-      default:
-        return { label: "", className: "bg-white" };
-    }
+    setInputs({});
+    setLastResult(null);
+    toast.info("リセットしました");
   };
 
   const isLoading = matsLoading || studsLoading;
@@ -231,11 +154,11 @@ export default function ScoringPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Table2 className="h-6 w-6 text-primary" />
+          <ClipboardCheck className="h-6 w-6 text-primary" />
           <div>
             <h1 className="text-2xl font-bold tracking-tight">定着度入力</h1>
             <p className="text-sm text-muted-foreground">
-              Excel風の採点・合否入力
+              合格→次へ進む / 不合格→再実施 / 自動で印刷キューに追加
             </p>
           </div>
         </div>
@@ -246,7 +169,7 @@ export default function ScoringPage() {
           {pendingCount > 0 && (
             <>
               <Badge variant="secondary" className="text-xs">
-                {pendingCount}件変更
+                {pendingCount}件入力済
               </Badge>
               <Button size="sm" variant="ghost" onClick={handleReset}>
                 <RotateCcw className="mr-1 h-3 w-3" />
@@ -255,11 +178,11 @@ export default function ScoringPage() {
               <Button
                 size="sm"
                 onClick={handleSave}
-                disabled={batchUpsertMutation.isPending}
+                disabled={masteryMutation.isPending}
               >
                 <Save className="mr-1.5 h-4 w-4" />
-                {batchUpsertMutation.isPending
-                  ? "保存中..."
+                {masteryMutation.isPending
+                  ? "処理中..."
                   : `${pendingCount}件を保存`}
               </Button>
             </>
@@ -273,7 +196,8 @@ export default function ScoringPage() {
           value={selectedMaterialKey}
           onValueChange={(v) => {
             setSelectedMaterialKey(v);
-            setPending({});
+            setInputs({});
+            setLastResult(null);
           }}
         >
           <SelectTrigger className="w-80">
@@ -289,18 +213,20 @@ export default function ScoringPage() {
         </Select>
         {selectedMaterial && (
           <span className="text-sm text-muted-foreground">
-            {relevantStudents.length}名の生徒 / {nodes.length}ノード
+            {relevantStudents.length}名の生徒
           </span>
         )}
       </div>
 
-      {/* Excel Grid */}
+      {/* Main content */}
       {isLoading ? (
         <div className="h-96 rounded-xl skeleton-pulse" />
       ) : !selectedMaterial ? (
         <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-          <Table2 className="mb-3 h-12 w-12 opacity-20" />
-          <p className="text-sm">教材を選択するとスプレッドシートが表示されます</p>
+          <ClipboardCheck className="mb-3 h-12 w-12 opacity-20" />
+          <p className="text-sm">
+            教材を選択すると生徒ごとの定着度入力が表示されます
+          </p>
         </div>
       ) : relevantStudents.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
@@ -309,123 +235,215 @@ export default function ScoringPage() {
           </p>
         </div>
       ) : (
-        <div
-          ref={gridRef}
-          className="overflow-auto rounded-lg border border-border shadow-premium"
-          style={{ maxHeight: "calc(100vh - 260px)" }}
-        >
-          <table className="w-full border-collapse text-sm">
-            <thead className="sticky top-0 z-20">
-              <tr className="bg-gray-900 text-white">
-                <th className="sticky left-0 z-30 bg-gray-900 border-r border-gray-700 px-3 py-2 text-left text-xs font-bold min-w-[140px]">
-                  生徒名
-                </th>
-                {nodes.map((node) => (
-                  <th
-                    key={node.key}
-                    className="border-r border-gray-700 px-1 py-2 text-center text-[10px] font-semibold min-w-[70px] max-w-[90px]"
-                    title={node.title}
-                  >
-                    <div className="truncate">{node.sort_order}</div>
-                    <div className="truncate text-gray-400 font-normal">
-                      {node.title}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {relevantStudents.map((student, sIdx) => (
-                <tr
-                  key={student.id}
-                  className={
-                    sIdx % 2 === 0 ? "bg-white" : "bg-gray-50"
-                  }
-                >
-                  <td className="sticky left-0 z-10 border-r border-b border-gray-200 px-3 py-1.5 font-medium text-xs bg-inherit">
-                    {student.name}
-                  </td>
-                  {nodes.map((node, nIdx) => {
-                    const val = getCellValue(student.id, node.key);
-                    const isPending = !!pending[cellKey(student.id, node.key)];
-                    const display = statusDisplay(val.status);
-                    const cellId = `cell-${sIdx}-${nIdx}`;
+        <div className="space-y-2">
+          {/* Table header */}
+          <div className="grid grid-cols-[180px_1fr_100px_80px_1fr] gap-2 px-3 py-2 rounded-lg bg-gray-900 text-white text-xs font-semibold">
+            <div>生徒名</div>
+            <div>現在の範囲</div>
+            <div className="text-center">スコア</div>
+            <div className="text-center">結果</div>
+            <div>次回の範囲</div>
+          </div>
 
-                    return (
-                      <td
-                        key={node.key}
-                        className={`border-r border-b border-gray-200 p-0 text-center ${
-                          isPending ? "bg-red-50" : ""
-                        }`}
+          {/* Student rows */}
+          {relevantStudents.map((student) => {
+            const currentNode = getCurrentNode(student);
+            const pointer = getStudentPointer(student);
+            const totalNodes = nodes.length;
+            const isCompleted = pointer > totalNodes;
+            const input = getInput(student.id);
+
+            // Determine next node preview
+            let nextPreview = "";
+            if (input.status === "completed" && pointer + 1 <= totalNodes) {
+              const nextNode = nodes.find(
+                (n) => n.sort_order === pointer + 1
+              );
+              nextPreview = nextNode
+                ? `→ ${nextNode.sort_order}. ${nextNode.title}`
+                : "";
+            } else if (input.status === "retry" && currentNode) {
+              nextPreview = `↻ ${currentNode.sort_order}. ${currentNode.title} (再)`;
+            }
+
+            // Check last result for this student
+            const resultItem = lastResult?.results.find(
+              (r) => r.student_id === student.id
+            );
+
+            return (
+              <div
+                key={student.id}
+                className={`grid grid-cols-[180px_1fr_100px_80px_1fr] gap-2 px-3 py-2.5 rounded-lg border transition-colors ${
+                  isCompleted
+                    ? "bg-green-50 border-green-200 opacity-60"
+                    : input.status === "completed"
+                    ? "bg-red-50 border-red-200"
+                    : input.status === "retry"
+                    ? "bg-gray-100 border-gray-300"
+                    : "bg-white border-border hover:bg-gray-50"
+                }`}
+              >
+                {/* Student name */}
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm truncate">
+                    {student.name}
+                  </span>
+                  <Badge variant="outline" className="text-[10px] shrink-0">
+                    {pointer}/{totalNodes}
+                  </Badge>
+                </div>
+
+                {/* Current node */}
+                <div className="flex items-center text-sm">
+                  {isCompleted ? (
+                    <span className="text-green-600 font-medium flex items-center gap-1">
+                      <CheckCircle2 className="h-4 w-4" />
+                      全範囲完了
+                    </span>
+                  ) : currentNode ? (
+                    <span>
+                      <span className="font-mono text-xs text-muted-foreground mr-1.5">
+                        {currentNode.sort_order}.
+                      </span>
+                      <span className="font-medium">{currentNode.title}</span>
+                      {currentNode.range_text && (
+                        <span className="text-muted-foreground ml-1.5 text-xs">
+                          ({currentNode.range_text})
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </div>
+
+                {/* Score input */}
+                <div className="flex items-center justify-center">
+                  {!isCompleted && (
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      className="h-8 w-16 text-center text-sm rounded border border-border bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      placeholder="-"
+                      value={input.score ?? ""}
+                      onChange={(e) => {
+                        const val =
+                          e.target.value === ""
+                            ? null
+                            : Math.min(
+                                100,
+                                Math.max(0, parseInt(e.target.value) || 0)
+                              );
+                        setInput(student.id, { score: val });
+                      }}
+                    />
+                  )}
+                </div>
+
+                {/* Pass/Fail toggle */}
+                <div className="flex items-center justify-center">
+                  {!isCompleted && (
+                    <button
+                      type="button"
+                      className={`h-8 w-14 rounded-md text-sm font-bold transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+                        input.status === "completed"
+                          ? "bg-red-600 text-white focus:ring-red-400"
+                          : input.status === "retry"
+                          ? "bg-gray-800 text-white focus:ring-gray-500"
+                          : "bg-gray-100 text-gray-400 border border-gray-200 hover:bg-gray-200 focus:ring-gray-300"
+                      }`}
+                      onClick={() => toggleStatus(student.id)}
+                    >
+                      {input.status === "completed"
+                        ? "○"
+                        : input.status === "retry"
+                        ? "×"
+                        : "—"}
+                    </button>
+                  )}
+                </div>
+
+                {/* Next range preview / result */}
+                <div className="flex items-center text-sm">
+                  {resultItem ? (
+                    <span className="flex items-center gap-1.5 text-xs">
+                      {resultItem.advanced ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                      ) : (
+                        <XCircle className="h-3.5 w-3.5 text-gray-500" />
+                      )}
+                      <span
+                        className={
+                          resultItem.advanced
+                            ? "text-green-700"
+                            : "text-gray-600"
+                        }
                       >
-                        <div className="flex flex-col">
-                          {/* Status toggle (top half) */}
-                          <button
-                            id={cellId}
-                            type="button"
-                            className={`h-7 w-full text-xs font-bold cursor-pointer transition-colors border-b border-gray-100 ${display.className} hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-inset`}
-                            onClick={() =>
-                              toggleStatus(student.id, node.key)
-                            }
-                            onKeyDown={(e) =>
-                              handleKeyDown(e, sIdx, nIdx, "status")
-                            }
-                            tabIndex={0}
-                          >
-                            {display.label}
-                          </button>
-                          {/* Score input (bottom half) */}
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            className="h-6 w-full text-center text-[11px] bg-transparent border-0 focus:outline-none focus:bg-red-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            placeholder="-"
-                            value={val.score ?? ""}
-                            onChange={(e) =>
-                              handleScoreInput(
-                                student.id,
-                                node.key,
-                                e.target.value
-                              )
-                            }
-                            onKeyDown={(e) =>
-                              handleKeyDown(e, sIdx, nIdx, "score")
-                            }
-                          />
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        {resultItem.advanced ? "合格→進行" : "再実施"}
+                      </span>
+                      {resultItem.queued_node_title && (
+                        <span className="flex items-center gap-1 text-blue-600">
+                          <Printer className="h-3 w-3" />
+                          {resultItem.queued_node_title}
+                        </span>
+                      )}
+                    </span>
+                  ) : nextPreview ? (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <ArrowRight className="h-3 w-3" />
+                      {nextPreview}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Last result summary */}
+      {lastResult && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+          <h3 className="text-sm font-semibold text-green-800 mb-2">
+            処理結果
+          </h3>
+          <div className="flex gap-6 text-sm">
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              合格進行: {lastResult.advanced}件
+            </span>
+            <span className="flex items-center gap-1.5">
+              <XCircle className="h-4 w-4 text-gray-500" />
+              再実施: {lastResult.retried}件
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Printer className="h-4 w-4 text-blue-600" />
+              印刷キュー追加: {lastResult.queued}件
+            </span>
+          </div>
         </div>
       )}
 
       {/* Legend */}
       {selectedMaterial && relevantStudents.length > 0 && (
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span className="font-medium">凡例:</span>
+          <span className="font-medium">操作:</span>
           <span className="flex items-center gap-1">
-            <span className="inline-block h-4 w-4 rounded bg-red-600 text-white text-center text-[10px] leading-4 font-bold">
-              {"\u25cb"}
+            <span className="inline-block h-4 w-6 rounded bg-red-600 text-white text-center text-[10px] leading-4 font-bold">
+              ○
             </span>
-            合格
+            合格（次へ進む）
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block h-4 w-4 rounded bg-gray-900 text-white text-center text-[10px] leading-4 font-bold">
-              {"\u00d7"}
+            <span className="inline-block h-4 w-6 rounded bg-gray-800 text-white text-center text-[10px] leading-4 font-bold">
+              ×
             </span>
-            再実施
+            再実施（同じ範囲）
           </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-4 w-4 rounded bg-red-50 border border-red-200" />
-            未保存
-          </span>
-          <span className="ml-auto">
-            Tab/Enter でセル移動 / クリックで合否切替 / 下段にスコア入力
+          <span className="ml-auto text-muted-foreground">
+            結果ボタンをクリックで切替 → 保存で自動的に印刷キューに追加
           </span>
         </div>
       )}
