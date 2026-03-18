@@ -218,6 +218,6 @@ async def delete_material(material_key: str, db: AsyncSession = Depends(get_db))
             delete(StudentMaterial).where(StudentMaterial.material_key == material_key)
         )
 
-    await db.delete(material)
+    await db.execute(delete(Material).where(Material.key == material_key))
     await db.commit()
     return {"status": "deleted", "unassigned": unassigned_count}
