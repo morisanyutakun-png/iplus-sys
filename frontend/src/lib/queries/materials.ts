@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "../api";
+import { apiFetch, apiUrl } from "../api";
 import type { Material } from "../types";
 
 export function useMaterials() {
@@ -42,6 +42,30 @@ export function useAddNode(materialKey: string) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["materials"] });
+    },
+  });
+}
+
+export function useAddNodeSimple(materialKey: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ title, file }: { title: string; file?: File }) => {
+      const formData = new FormData();
+      formData.append("title", title);
+      if (file) formData.append("file", file);
+      const res = await fetch(
+        apiUrl(`/api/materials/${encodeURIComponent(materialKey)}/nodes/simple`),
+        { method: "POST", body: formData }
+      );
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`追加に失敗: ${text}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["materials"] });
+      qc.invalidateQueries({ queryKey: ["pdfs"] });
     },
   });
 }

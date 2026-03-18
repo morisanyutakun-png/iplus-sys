@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMaterials, useCreateMaterial, useAddNode } from "@/lib/queries/materials";
-import { usePdfTree } from "@/lib/queries/pdfs";
+import { useMaterials, useCreateMaterial, useAddNodeSimple } from "@/lib/queries/materials";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,19 +21,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, FileText, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Plus, Upload } from "lucide-react";
 
 export default function MaterialsPage() {
   const { data: materials, isLoading } = useMaterials();
-  const { data: pdfTree } = usePdfTree();
   const createMutation = useCreateMaterial();
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -42,14 +33,6 @@ export default function MaterialsPage() {
   const [newKey, setNewKey] = useState("");
   const [newName, setNewName] = useState("");
   const [newAliases, setNewAliases] = useState("");
-
-  // Node add state
-  const [addNodeFor, setAddNodeFor] = useState("");
-  const [nodeKey, setNodeKey] = useState("");
-  const [nodeTitle, setNodeTitle] = useState("");
-  const [nodeRange, setNodeRange] = useState("");
-  const [nodePdf, setNodePdf] = useState("");
-  const [nodeDuplex, setNodeDuplex] = useState(false);
 
   if (isLoading) {
     return (
@@ -90,12 +73,6 @@ export default function MaterialsPage() {
       }
     );
   };
-
-  // Flatten PDF tree for selector
-  const allPdfs =
-    pdfTree?.flatMap((entry) =>
-      entry.files.map((f) => ({ label: f.path, value: f.path }))
-    ) || [];
 
   return (
     <div className="space-y-6">
@@ -163,19 +140,6 @@ export default function MaterialsPage() {
             mat={mat}
             isExpanded={expanded.has(mat.key)}
             onToggle={() => toggleExpand(mat.key)}
-            allPdfs={allPdfs}
-            addNodeFor={addNodeFor}
-            setAddNodeFor={setAddNodeFor}
-            nodeKey={nodeKey}
-            setNodeKey={setNodeKey}
-            nodeTitle={nodeTitle}
-            setNodeTitle={setNodeTitle}
-            nodeRange={nodeRange}
-            setNodeRange={setNodeRange}
-            nodePdf={nodePdf}
-            setNodePdf={setNodePdf}
-            nodeDuplex={nodeDuplex}
-            setNodeDuplex={setNodeDuplex}
           />
         ))}
       </div>
@@ -187,62 +151,48 @@ function MaterialCard({
   mat,
   isExpanded,
   onToggle,
-  allPdfs,
-  addNodeFor,
-  setAddNodeFor,
-  nodeKey,
-  setNodeKey,
-  nodeTitle,
-  setNodeTitle,
-  nodeRange,
-  setNodeRange,
-  nodePdf,
-  setNodePdf,
-  nodeDuplex,
-  setNodeDuplex,
 }: {
   mat: { key: string; name: string; nodes: any[] };
   isExpanded: boolean;
   onToggle: () => void;
-  allPdfs: { label: string; value: string }[];
-  addNodeFor: string;
-  setAddNodeFor: (v: string) => void;
-  nodeKey: string;
-  setNodeKey: (v: string) => void;
-  nodeTitle: string;
-  setNodeTitle: (v: string) => void;
-  nodeRange: string;
-  setNodeRange: (v: string) => void;
-  nodePdf: string;
-  setNodePdf: (v: string) => void;
-  nodeDuplex: boolean;
-  setNodeDuplex: (v: boolean) => void;
 }) {
-  const addNodeMutation = useAddNode(mat.key);
+  const addNodeMutation = useAddNodeSimple(mat.key);
+  const [addOpen, setAddOpen] = useState(false);
+  const [nodeTitle, setNodeTitle] = useState("");
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const resetForm = () => {
+    setNodeTitle("");
+    setPdfFile(null);
+    setIsDragging(false);
+  };
 
   const handleAddNode = () => {
-    if (!nodeKey.trim() || !nodeTitle.trim()) return;
+    if (!nodeTitle.trim()) return;
     addNodeMutation.mutate(
-      {
-        key: nodeKey.trim(),
-        title: nodeTitle.trim(),
-        range_text: nodeRange.trim(),
-        pdf_relpath: nodePdf === "__none__" ? "" : nodePdf,
-        duplex: nodeDuplex,
-      },
+      { title: nodeTitle.trim(), file: pdfFile || undefined },
       {
         onSuccess: () => {
           toast.success("範囲を追加しました");
-          setAddNodeFor("");
-          setNodeKey("");
-          setNodeTitle("");
-          setNodeRange("");
-          setNodePdf("");
-          setNodeDuplex(false);
+          resetForm();
+          setAddOpen(false);
         },
         onError: (err) => toast.error(`追加に失敗: ${err.message}`),
       }
     );
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file?.type === "application/pdf") setPdfFile(file);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) setPdfFile(file);
   };
 
   return (
@@ -306,9 +256,10 @@ function MaterialCard({
           </Table>
 
           <Dialog
-            open={addNodeFor === mat.key}
+            open={addOpen}
             onOpenChange={(open) => {
-              if (!open) setAddNodeFor("");
+              setAddOpen(open);
+              if (!open) resetForm();
             }}
           >
             <DialogTrigger asChild>
@@ -318,7 +269,7 @@ function MaterialCard({
                 className="mt-4"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setAddNodeFor(mat.key);
+                  setAddOpen(true);
                 }}
               >
                 <Plus className="mr-2 h-4 w-4" />
@@ -332,74 +283,77 @@ function MaterialCard({
               <div className="space-y-4">
                 <div>
                   <label className="mb-1 block text-sm font-medium">
-                    範囲キー
-                  </label>
-                  <Input
-                    value={nodeKey}
-                    onChange={(e) => setNodeKey(e.target.value)}
-                    placeholder="例: w:英単語1900:001"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">
                     タイトル
                   </label>
                   <Input
                     value={nodeTitle}
                     onChange={(e) => setNodeTitle(e.target.value)}
                     placeholder="例: 1-100"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && nodeTitle.trim()) handleAddNode();
+                    }}
                   />
                 </div>
+
                 <div>
                   <label className="mb-1 block text-sm font-medium">
-                    範囲テキスト
+                    PDF（任意）
                   </label>
-                  <Input
-                    value={nodeRange}
-                    onChange={(e) => setNodeRange(e.target.value)}
-                    placeholder="例: p.1-10"
-                  />
+                  <div
+                    className={`relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors ${
+                      isDragging
+                        ? "border-primary bg-primary/5"
+                        : pdfFile
+                          ? "border-green-500 bg-green-50 dark:bg-green-950/20"
+                          : "border-muted-foreground/25 hover:border-muted-foreground/50"
+                    }`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragging(true);
+                    }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleDrop}
+                  >
+                    {pdfFile ? (
+                      <div className="flex items-center gap-2 text-sm">
+                        <FileText className="h-5 w-5 text-green-600" />
+                        <span className="font-medium">{pdfFile.name}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-xs text-muted-foreground"
+                          onClick={() => setPdfFile(null)}
+                        >
+                          取消
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="mb-2 h-8 w-8 text-muted-foreground/50" />
+                        <p className="text-sm text-muted-foreground">
+                          ドラッグ&ドロップ または
+                        </p>
+                        <label className="mt-1 cursor-pointer text-sm font-medium text-primary hover:underline">
+                          ファイルを選択
+                          <input
+                            type="file"
+                            accept=".pdf"
+                            className="hidden"
+                            onChange={handleFileSelect}
+                          />
+                        </label>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">
-                    PDFファイル
-                  </label>
-                  <Select value={nodePdf} onValueChange={setNodePdf}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="PDFを選択（任意）" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">なし</SelectItem>
-                      {allPdfs.map((pdf) => (
-                        <SelectItem key={pdf.value} value={pdf.value}>
-                          {pdf.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="duplex"
-                    checked={nodeDuplex}
-                    onChange={(e) => setNodeDuplex(e.target.checked)}
-                    className="h-4 w-4"
-                  />
-                  <label htmlFor="duplex" className="text-sm font-medium">
-                    両面印刷
-                  </label>
-                </div>
+
                 <Button
                   className="w-full"
                   onClick={handleAddNode}
-                  disabled={
-                    !nodeKey.trim() ||
-                    !nodeTitle.trim() ||
-                    addNodeMutation.isPending
-                  }
+                  disabled={!nodeTitle.trim() || addNodeMutation.isPending}
                 >
-                  追加
+                  {addNodeMutation.isPending ? "追加中..." : "追加"}
                 </Button>
               </div>
             </DialogContent>
