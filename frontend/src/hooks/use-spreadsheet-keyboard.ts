@@ -108,24 +108,39 @@ export function useSpreadsheetKeyboard({
 
       // When text input is focused, handle specific keys
       if (isTextInput) {
+        const input = document.activeElement as HTMLInputElement;
+
         if (e.key === "Escape") {
           e.preventDefault();
-          (document.activeElement as HTMLElement).blur();
+          input.blur();
           return;
         }
         if (e.key === "Tab") {
           e.preventDefault();
-          (document.activeElement as HTMLElement).blur();
+          input.blur();
           moveCell(0, e.shiftKey ? -1 : 1);
           return;
         }
         if (e.key === "Enter") {
           e.preventDefault();
-          (document.activeElement as HTMLElement).blur();
+          input.blur();
           moveCell(0, 1);
           return;
         }
-        // ArrowLeft/Right: let cursor move inside input
+        // ArrowLeft: move to prev column when cursor is at start
+        if (e.key === "ArrowLeft" && input.selectionStart === 0 && input.selectionEnd === 0) {
+          e.preventDefault();
+          input.blur();
+          moveCell(-1, 0);
+          return;
+        }
+        // ArrowRight: move to next column when cursor is at end
+        if (e.key === "ArrowRight" && input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {
+          e.preventDefault();
+          input.blur();
+          moveCell(1, 0);
+          return;
+        }
         return;
       }
 
