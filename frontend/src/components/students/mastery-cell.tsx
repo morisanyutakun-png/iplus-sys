@@ -8,6 +8,7 @@ type ScoreCellProps = {
   value: number | null;
   onChange: (value: number | null) => void;
   isFocused: boolean;
+  focusTrigger?: number;
   max?: number;
   onClick?: () => void;
 };
@@ -16,6 +17,7 @@ export function ScoreCell({
   value,
   onChange,
   isFocused,
+  focusTrigger,
   max = 9999,
   onClick,
 }: ScoreCellProps) {
@@ -26,7 +28,7 @@ export function ScoreCell({
       ref.current?.focus();
       ref.current?.select();
     }
-  }, [isFocused]);
+  }, [isFocused, focusTrigger]);
 
   return (
     <input
@@ -34,6 +36,11 @@ export function ScoreCell({
       type="text"
       inputMode="numeric"
       pattern="[0-9]*"
+      onKeyDown={(e) => {
+        if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+          e.preventDefault();
+        }
+      }}
       className={cn(
         "h-8 w-full text-center text-sm rounded-md border bg-white transition-all",
         "focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary focus:bg-white",
@@ -61,18 +68,20 @@ type PassCheckboxProps = {
   checked: boolean;
   onToggle: () => void;
   isFocused: boolean;
+  focusTrigger?: number;
 };
 
 export function PassCheckbox({
   checked,
   onToggle,
   isFocused,
+  focusTrigger,
 }: PassCheckboxProps) {
   const ref = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (isFocused) ref.current?.focus();
-  }, [isFocused]);
+  }, [isFocused, focusTrigger]);
 
   return (
     <button

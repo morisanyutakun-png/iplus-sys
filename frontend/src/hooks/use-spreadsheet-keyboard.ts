@@ -36,6 +36,7 @@ export function useSpreadsheetKeyboard({
   enabled = true,
 }: Options) {
   const [activeCell, setActiveCell] = useState<CellCoord>({ col: 0, row: 0 });
+  const [focusTrigger, setFocusTrigger] = useState(0);
 
   // Keep activeCell in bounds & skip completed cols on init
   useEffect(() => {
@@ -88,23 +89,26 @@ export function useSpreadsheetKeyboard({
         return;
       }
 
+      // Arrow keys: ALWAYS move between cells (even when input/button is focused)
+      const arrowMap: Record<string, [number, number]> = {
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+      };
+      if (e.key in arrowMap) {
+        e.preventDefault();
+        const el = document.activeElement as HTMLElement;
+        if (el?.tagName === "INPUT" || el?.tagName === "BUTTON") el.blur();
+        const [dc, dr] = arrowMap[e.key];
+        moveCell(dc, dr);
+        setFocusTrigger((prev) => prev + 1);
+        return;
+      }
+
       const isTextInput =
         document.activeElement?.tagName === "INPUT" &&
         (document.activeElement as HTMLInputElement).type === "text";
-
-      // Arrow Up/Down: ALWAYS move between rows (even when input is focused)
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        if (isTextInput) (document.activeElement as HTMLElement).blur();
-        moveCell(0, -1);
-        return;
-      }
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        if (isTextInput) (document.activeElement as HTMLElement).blur();
-        moveCell(0, 1);
-        return;
-      }
 
       // When text input is focused, handle specific keys
       if (isTextInput) {
@@ -119,25 +123,14 @@ export function useSpreadsheetKeyboard({
           e.preventDefault();
           input.blur();
           moveCell(0, e.shiftKey ? -1 : 1);
+          setFocusTrigger((prev) => prev + 1);
           return;
         }
         if (e.key === "Enter") {
           e.preventDefault();
           input.blur();
           moveCell(0, 1);
-          return;
-        }
-        // ArrowLeft/Right: always move between columns (spreadsheet-style)
-        if (e.key === "ArrowLeft") {
-          e.preventDefault();
-          input.blur();
-          moveCell(-1, 0);
-          return;
-        }
-        if (e.key === "ArrowRight") {
-          e.preventDefault();
-          input.blur();
-          moveCell(1, 0);
+          setFocusTrigger((prev) => prev + 1);
           return;
         }
         return;
@@ -145,16 +138,6 @@ export function useSpreadsheetKeyboard({
 
       // No input focused — handle all navigation
       switch (e.key) {
-        case "ArrowLeft": {
-          e.preventDefault();
-          moveCell(-1, 0);
-          break;
-        }
-        case "ArrowRight": {
-          e.preventDefault();
-          moveCell(1, 0);
-          break;
-        }
         case "Tab": {
           e.preventDefault();
           moveCell(0, e.shiftKey ? -1 : 1);
@@ -188,5 +171,6 @@ export function useSpreadsheetKeyboard({
     activeCell,
     setActiveCell,
     handleKeyDown,
+    focusTrigger,
   };
 }

@@ -136,7 +136,7 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
     toast.info("リセットしました");
   };
 
-  const { activeCell, setActiveCell, handleKeyDown } = useSpreadsheetKeyboard({
+  const { activeCell, setActiveCell, handleKeyDown, focusTrigger } = useSpreadsheetKeyboard({
     colCount: columns.length,
     completedCols,
     onTogglePass: togglePass,
@@ -148,8 +148,8 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
   // Attach keyboard listener
   useEffect(() => {
     if (!active) return;
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [active, handleKeyDown]);
 
   // Click handler for cells
@@ -317,6 +317,7 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
                             setInput(col.sm.material_key, { score: val })
                           }
                           isFocused={isFocused}
+                          focusTrigger={focusTrigger}
                           onClick={() => handleCellClick(colIdx, 0)}
                         />
                       )}
@@ -347,6 +348,7 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
                             setInput(col.sm.material_key, { maxScore: val })
                           }
                           isFocused={isFocused}
+                          focusTrigger={focusTrigger}
                           onClick={() => handleCellClick(colIdx, 1)}
                         />
                       )}
@@ -377,6 +379,7 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
                           checked={input.passed}
                           onToggle={() => togglePass(colIdx)}
                           isFocused={isFocused}
+                          focusTrigger={focusTrigger}
                         />
                       )}
                     </div>
