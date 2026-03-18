@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useCallback, useMemo } from "react";
+import { Suspense, useState, useCallback, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useStudents } from "@/lib/queries/students";
 import { StudentDetailPanel } from "@/components/students/student-detail-panel";
@@ -30,6 +30,11 @@ function StudentsContent() {
 
   const [open, setOpen] = useState(false);
   const [focusZone, setFocusZone] = useState<"list" | "spreadsheet">("list");
+  const hasPendingRef = useRef(false);
+
+  const handlePendingChange = useCallback((hasPending: boolean) => {
+    hasPendingRef.current = hasPending;
+  }, []);
 
   const selectedStudentId = searchParams.get("student");
   const initialTab = searchParams.get("tab") || "mastery";
@@ -41,12 +46,18 @@ function StudentsContent() {
 
   const handleSelectStudent = useCallback(
     (studentId: string) => {
+      if (hasPendingRef.current && studentId !== selectedStudentId) {
+        if (!window.confirm("未反映の入力があります。破棄してよろしいですか？")) {
+          setOpen(false);
+          return;
+        }
+      }
       const params = new URLSearchParams(searchParams.toString());
       params.set("student", studentId);
       router.replace(`/students?${params.toString()}`);
       setOpen(false);
     },
-    [searchParams, router]
+    [searchParams, router, selectedStudentId]
   );
 
   const handleEnterSpreadsheet = useCallback(() => {
@@ -164,6 +175,7 @@ function StudentsContent() {
           spreadsheetActive={focusZone === "spreadsheet"}
           onEnterSpreadsheet={handleEnterSpreadsheet}
           onEscapeSpreadsheet={handleEscapeSpreadsheet}
+          onPendingChange={handlePendingChange}
         />
       ) : (
         <div className="flex h-[60vh] flex-col items-center justify-center text-muted-foreground">

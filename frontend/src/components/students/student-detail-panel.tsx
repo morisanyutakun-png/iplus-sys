@@ -81,6 +81,7 @@ type Props = {
   spreadsheetActive: boolean;
   onEnterSpreadsheet: () => void;
   onEscapeSpreadsheet: () => void;
+  onPendingChange?: (hasPending: boolean) => void;
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -97,6 +98,7 @@ export function StudentDetailPanel({
   spreadsheetActive,
   onEnterSpreadsheet,
   onEscapeSpreadsheet,
+  onPendingChange,
 }: Props) {
   const { data: student, isLoading } = useStudent(studentId);
   const { data: analytics } = useStudentAnalytics(studentId);
@@ -275,6 +277,7 @@ export function StudentDetailPanel({
             active={spreadsheetActive}
             onActivate={onEnterSpreadsheet}
             onEscape={onEscapeSpreadsheet}
+            onPendingChange={onPendingChange}
           />
         </TabsContent>
 

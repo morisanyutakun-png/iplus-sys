@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   XCircle,
   Printer,
+  Upload,
 } from "lucide-react";
 import type {
   Student,
@@ -33,9 +34,10 @@ type Props = {
   active: boolean;
   onActivate?: () => void;
   onEscape: () => void;
+  onPendingChange?: (hasPending: boolean) => void;
 };
 
-export function MasterySpreadsheet({ student, active, onActivate, onEscape }: Props) {
+export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPendingChange }: Props) {
   const { data: allMaterials } = useMaterials();
   const masteryMutation = useMasteryBatch();
 
@@ -99,6 +101,10 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape }: Pr
     (v) => v.passed || v.score !== null
   ).length;
 
+  useEffect(() => {
+    onPendingChange?.(pendingCount > 0);
+  }, [pendingCount, onPendingChange]);
+
   const handleSave = useCallback(() => {
     const records: MasteryInput[] = [];
     for (const col of columns) {
@@ -123,16 +129,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape }: Pr
       onSuccess: (data) => {
         setLastResult(data);
         setInputs({});
-        const parts = [
-          `${data.processed}件処理`,
-          `${data.advanced}件合格`,
-          `${data.retried}件再実施`,
-          `${data.queued}件印刷キュー追加`,
-        ];
-        if (data.completed > 0) {
-          parts.push(`${data.completed}件教材完了（自動割当解除）`);
-        }
-        toast.success(parts.join(" / "));
+        toast.success("採点お疲れ様でした。返却お願いします。");
       },
       onError: (err) => toast.error(`エラー: ${err.message}`),
     });
@@ -159,6 +156,16 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape }: Pr
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [active, handleKeyDown]);
+
+  // Navigation guard: warn before leaving with unsaved inputs
+  useEffect(() => {
+    if (pendingCount === 0) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [pendingCount]);
 
   // Click handler for cells
   const handleCellClick = (colIdx: number, editableRow: number) => {
@@ -213,8 +220,8 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape }: Pr
                 onClick={handleSave}
                 disabled={masteryMutation.isPending}
               >
-                <Save className="mr-1.5 h-4 w-4" />
-                {masteryMutation.isPending ? "処理中..." : "保存 (Ctrl+S)"}
+                <Upload className="mr-1.5 h-4 w-4" />
+                {masteryMutation.isPending ? "処理中..." : "反映 (Ctrl+S)"}
               </Button>
             </>
           )}

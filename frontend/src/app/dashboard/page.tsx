@@ -36,14 +36,6 @@ const TOOLTIP_STYLE = {
   padding: "10px 14px",
 };
 
-const ACTION_LABELS: Record<string, string> = {
-  assign: "教材割当",
-  remove: "教材解除",
-  advance: "進行",
-  manual_set: "手動設定",
-  print: "印刷実行",
-};
-
 // Avatar color palette derived from name hash
 const AVATAR_COLORS = [
   "from-rose-500 to-red-600",
@@ -508,43 +500,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Recent Activity */}
-      <Card className="border-0 shadow-premium overflow-hidden">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base font-semibold">最近のアクティビティ</CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">直近の操作履歴</p>
-            </div>
-            <Badge variant="secondary" className="rounded-full">{stats?.recent_activity?.length || 0} 件</Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {(stats?.recent_activity || []).slice(0, 10).map((entry, idx) => (
-              <div key={entry.id} className="stagger-item flex items-center justify-between rounded-xl border border-border/50 bg-muted/30 p-3.5 transition-all hover:bg-muted/50 hover:shadow-sm" style={{ animationDelay: `${idx * 50}ms` }}>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="rounded-full text-xs">{ACTION_LABELS[entry.action] || entry.action}</Badge>
-                  <span className="text-sm font-medium">{entry.student_id}</span>
-                  <span className="text-sm text-muted-foreground">{entry.material_key}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {entry.old_pointer != null && entry.new_pointer != null && (
-                    <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">{entry.old_pointer} → {entry.new_pointer}</span>
-                  )}
-                  <span className="text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString("ja-JP")}</span>
-                </div>
-              </div>
-            ))}
-            {(!stats?.recent_activity || stats.recent_activity.length === 0) && (
-              <div className="flex flex-col items-center py-12 text-muted-foreground">
-                <TrendingUp className="mb-3 h-10 w-10 opacity-20" />
-                <p className="text-sm">アクティビティはまだありません</p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
