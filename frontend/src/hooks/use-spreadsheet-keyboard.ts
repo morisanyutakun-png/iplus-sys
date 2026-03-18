@@ -127,15 +127,14 @@ export function useSpreadsheetKeyboard({
           moveCell(0, 1);
           return;
         }
-        // ArrowLeft: move to prev column when cursor is at start
-        if (e.key === "ArrowLeft" && input.selectionStart === 0 && input.selectionEnd === 0) {
+        // ArrowLeft/Right: always move between columns (spreadsheet-style)
+        if (e.key === "ArrowLeft") {
           e.preventDefault();
           input.blur();
           moveCell(-1, 0);
           return;
         }
-        // ArrowRight: move to next column when cursor is at end
-        if (e.key === "ArrowRight" && input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {
+        if (e.key === "ArrowRight") {
           e.preventDefault();
           input.blur();
           moveCell(1, 0);
