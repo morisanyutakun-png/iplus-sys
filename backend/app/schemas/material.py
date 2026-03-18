@@ -49,3 +49,9 @@ class MaterialNodeCreate(BaseModel):
     range_text: str = ""
     pdf_relpath: str = ""
     duplex: bool = False
+
+
+class MaterialNodeUpdate(BaseModel):
+    title: str | None = None
+    range_text: str | None = None
+    duplex: bool | None = None

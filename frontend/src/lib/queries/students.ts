@@ -58,6 +58,20 @@ export function useCreateStudent() {
   });
 }
 
+export function useUpdateStudent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; name: string }) =>
+      apiFetch(`/api/students/${data.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: data.name }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["students"] });
+    },
+  });
+}
+
 export function useDeleteStudent() {
   const qc = useQueryClient();
   return useMutation({

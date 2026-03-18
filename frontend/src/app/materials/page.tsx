@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useMaterials, useCreateMaterial, useAddNodeSimple, useDeleteMaterial } from "@/lib/queries/materials";
+import { useMaterials, useCreateMaterial, useAddNodeSimple, useDeleteMaterial, useUpdateNode, useDeleteNode } from "@/lib/queries/materials";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,8 +42,12 @@ import {
   Globe,
   Layers,
   File,
+  Pencil,
+  Settings2,
+  Check,
+  X,
 } from "lucide-react";
-import type { Material } from "@/lib/types";
+import type { Material, MaterialNode } from "@/lib/types";
 
 // Subject config with icons, gradients, and colors
 interface SubjectConfig {
@@ -413,6 +417,164 @@ export default function MaterialsPage() {
   );
 }
 
+/* ── Node Edit Dialog ── */
+function NodeEditDialog({
+  node,
+  materialKey,
+  open,
+  onOpenChange,
+}: {
+  node: MaterialNode;
+  materialKey: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const updateMutation = useUpdateNode(materialKey);
+  const deleteNodeMutation = useDeleteNode(materialKey);
+  const [title, setTitle] = useState(node.title);
+  const [rangeText, setRangeText] = useState(node.range_text);
+  const [duplex, setDuplex] = useState(node.duplex);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleSave = () => {
+    const updates: { title?: string; range_text?: string; duplex?: boolean } = {};
+    if (title.trim() !== node.title) updates.title = title.trim();
+    if (rangeText.trim() !== node.range_text) updates.range_text = rangeText.trim();
+    if (duplex !== node.duplex) updates.duplex = duplex;
+    if (Object.keys(updates).length === 0) {
+      onOpenChange(false);
+      return;
+    }
+    updateMutation.mutate(
+      { nodeKey: node.key, updates },
+      {
+        onSuccess: () => {
+          toast.success("範囲を更新しました");
+          onOpenChange(false);
+        },
+        onError: () => toast.error("更新に失敗しました"),
+      }
+    );
+  };
+
+  const handleDeleteNode = () => {
+    deleteNodeMutation.mutate(node.key, {
+      onSuccess: (data) => {
+        const msg = data.pointer_adjustments > 0
+          ? `範囲を削除しました（${data.pointer_adjustments}名のポインタを調整）`
+          : "範囲を削除しました";
+        toast.success(msg);
+        setConfirmDelete(false);
+        onOpenChange(false);
+      },
+      onError: (err) => toast.error(err.message),
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Pencil className="h-4 w-4 text-muted-foreground" />
+            範囲を編集
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-1">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">タイトル</label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="h-9"
+              onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">範囲テキスト</label>
+            <Input
+              value={rangeText}
+              onChange={(e) => setRangeText(e.target.value)}
+              className="h-9"
+              placeholder="例: p.1〜p.20"
+            />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
+            <label className="text-sm font-medium">両面印刷</label>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={duplex}
+              onClick={() => setDuplex(!duplex)}
+              className={cn(
+                "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+                duplex ? "bg-primary" : "bg-muted-foreground/20"
+              )}
+            >
+              <span className={cn(
+                "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform shadow-sm",
+                duplex ? "translate-x-4.5" : "translate-x-0.5"
+              )} />
+            </button>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            <FileText className="h-3.5 w-3.5 shrink-0" />
+            <span>{node.pdf_relpath ? `PDF: ${node.pdf_relpath.split("/").pop()}` : "PDF なし"}</span>
+            <Badge variant="secondary" className="ml-auto text-[10px] px-1.5">
+              #{node.sort_order}
+            </Badge>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            {confirmDelete ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-destructive font-medium">本当に削除？</span>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-7 px-3 text-xs"
+                  onClick={handleDeleteNode}
+                  disabled={deleteNodeMutation.isPending}
+                >
+                  {deleteNodeMutation.isPending ? "削除中..." : "削除"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  戻る
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 text-xs text-muted-foreground hover:text-destructive"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                この範囲を削除
+              </Button>
+            )}
+            <Button
+              size="sm"
+              className="h-8 px-4"
+              onClick={handleSave}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? "保存中..." : "保存"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ── Material Card ── */
 function MaterialCard({
   mat,
   config,
@@ -427,7 +589,8 @@ function MaterialCard({
   const [nodeTitle, setNodeTitle] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [showAllNodes, setShowAllNodes] = useState(false);
+  const [showNodeList, setShowNodeList] = useState(false);
+  const [editingNode, setEditingNode] = useState<MaterialNode | null>(null);
 
   const resetForm = () => {
     setNodeTitle("");
@@ -477,8 +640,6 @@ function MaterialCard({
 
   const sortedNodes = [...mat.nodes].sort((a, b) => a.sort_order - b.sort_order);
   const pdfCount = mat.nodes.filter((n) => n.pdf_relpath).length;
-  const visibleNodes = showAllNodes ? sortedNodes : sortedNodes.slice(0, 8);
-  const hiddenCount = sortedNodes.length - visibleNodes.length;
 
   return (
     <Card className="group border-0 shadow-sm hover:shadow-premium-lg transition-all duration-300 overflow-hidden relative">
@@ -623,55 +784,88 @@ function MaterialCard({
           </div>
         </div>
 
-        {/* Node visualization */}
+        {/* Node summary dots + manage button */}
         {mat.nodes.length > 0 ? (
           <div className="space-y-2">
-            {/* Step indicators */}
-            <div className="flex flex-wrap gap-1.5">
-              {visibleNodes.map((node, idx) => (
-                <div
-                  key={node.key}
-                  className={cn(
-                    "stagger-item inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1 rounded-lg text-xs transition-all",
-                    "bg-muted/40 hover:bg-muted/70 border border-border/40 hover:border-border",
-                    "cursor-default"
-                  )}
-                  style={{ animationDelay: `${idx * 30}ms` }}
-                  title={[
-                    node.title,
-                    node.range_text && node.range_text !== node.title ? node.range_text : "",
-                    node.pdf_relpath ? "PDF あり" : "PDF なし",
-                    node.duplex ? "両面印刷" : "",
-                  ].filter(Boolean).join(" · ")}
-                >
-                  {/* Status dot */}
-                  <span className={cn(
-                    "h-1.5 w-1.5 rounded-full shrink-0",
-                    node.pdf_relpath ? "bg-emerald-500" : "bg-muted-foreground/30"
-                  )} />
-                  <span className="text-muted-foreground/60 font-medium tabular-nums">{node.sort_order}</span>
-                  <span className="font-medium truncate max-w-[100px]">{node.title}</span>
-                </div>
-              ))}
-              {hiddenCount > 0 && !showAllNodes && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllNodes(true)}
-                  className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
-                >
-                  +{hiddenCount} 件
-                </button>
-              )}
-              {showAllNodes && sortedNodes.length > 8 && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllNodes(false)}
-                  className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
-                >
-                  折りたたむ
-                </button>
-              )}
+            {/* Compact dot summary */}
+            <div className="flex items-center gap-1">
+              <div className="flex flex-wrap gap-1 flex-1">
+                {sortedNodes.slice(0, 20).map((node) => (
+                  <span
+                    key={node.key}
+                    className={cn(
+                      "h-2 w-2 rounded-full shrink-0",
+                      node.pdf_relpath ? "bg-emerald-500" : "bg-muted-foreground/25"
+                    )}
+                    title={`${node.sort_order}. ${node.title}`}
+                  />
+                ))}
+                {sortedNodes.length > 20 && (
+                  <span className="text-[10px] text-muted-foreground ml-0.5">+{sortedNodes.length - 20}</span>
+                )}
+              </div>
             </div>
+
+            {/* Manage nodes toggle */}
+            <button
+              type="button"
+              onClick={() => setShowNodeList(!showNodeList)}
+              className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full"
+            >
+              {showNodeList ? (
+                <ChevronDown className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5" />
+              )}
+              <Settings2 className="h-3 w-3" />
+              範囲を管理
+            </button>
+
+            {/* Expandable node list */}
+            {showNodeList && (
+              <div className="rounded-lg border border-border/60 bg-muted/20 divide-y divide-border/40 overflow-hidden">
+                {sortedNodes.map((node) => (
+                  <div
+                    key={node.key}
+                    className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/40 transition-colors group/row"
+                  >
+                    <span className="text-muted-foreground/50 font-mono tabular-nums w-5 text-right shrink-0">
+                      {node.sort_order}
+                    </span>
+                    <span className={cn(
+                      "h-1.5 w-1.5 rounded-full shrink-0",
+                      node.pdf_relpath ? "bg-emerald-500" : "bg-muted-foreground/25"
+                    )} />
+                    <span className="font-medium truncate flex-1">{node.title}</span>
+                    {node.range_text && node.range_text !== node.title && (
+                      <span className="text-muted-foreground truncate max-w-[80px]">{node.range_text}</span>
+                    )}
+                    {node.duplex && (
+                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 shrink-0">両面</Badge>
+                    )}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0"
+                      onClick={() => setEditingNode(node)}
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+                <div className="px-3 py-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-full text-xs text-primary hover:text-primary"
+                    onClick={() => setAddOpen(true)}
+                  >
+                    <Plus className="mr-1.5 h-3 w-3" />
+                    範囲を追加
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex items-center gap-2 py-3 px-3 rounded-xl bg-muted/30 border border-dashed border-border/50">
@@ -689,6 +883,16 @@ function MaterialCard({
           </div>
         )}
       </CardContent>
+
+      {/* Node edit dialog */}
+      {editingNode && (
+        <NodeEditDialog
+          node={editingNode}
+          materialKey={mat.key}
+          open={!!editingNode}
+          onOpenChange={(open) => { if (!open) setEditingNode(null); }}
+        />
+      )}
     </Card>
   );
 }

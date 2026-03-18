@@ -92,6 +92,50 @@ export function useDeleteMaterial() {
   });
 }
 
+export function useUpdateNode(materialKey: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      nodeKey: string;
+      updates: { title?: string; range_text?: string; duplex?: boolean };
+    }) =>
+      apiFetch(
+        `/api/materials/${encodeURIComponent(materialKey)}/nodes/${encodeURIComponent(data.nodeKey)}`,
+        { method: "PATCH", body: JSON.stringify(data.updates) }
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["materials"] });
+    },
+  });
+}
+
+export function useDeleteNode(materialKey: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (nodeKey: string) => {
+      const res = await fetch(
+        apiUrl(
+          `/api/materials/${encodeURIComponent(materialKey)}/nodes/${encodeURIComponent(nodeKey)}`
+        ),
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`削除に失敗しました: ${text}`);
+      }
+      return res.json() as Promise<{
+        status: string;
+        pointer_adjustments: number;
+      }>;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["materials"] });
+      qc.invalidateQueries({ queryKey: ["students"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
 export function useMaterial(key: string) {
   return useQuery({
     queryKey: ["materials", key],

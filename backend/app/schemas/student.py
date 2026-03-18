@@ -26,5 +26,9 @@ class StudentCreate(BaseModel):
     name: str
 
 
+class StudentUpdate(BaseModel):
+    name: str
+
+
 class StudentListOut(BaseModel):
     students: list[StudentOut]

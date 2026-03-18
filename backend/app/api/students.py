@@ -7,7 +7,7 @@ from app.database import get_db
 from app.models.student import Student
 from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
 from app.models.material import Material
-from app.schemas.student import StudentOut, StudentCreate, StudentListOut, StudentMaterialInfo
+from app.schemas.student import StudentOut, StudentCreate, StudentUpdate, StudentListOut, StudentMaterialInfo
 
 router = APIRouter()
 
@@ -77,6 +77,24 @@ async def create_student(body: StudentCreate, db: AsyncSession = Depends(get_db)
     return StudentOut(id=student.id, name=student.name, created_at=student.created_at, materials=[])
 
 
+@router.patch("/{student_id}", response_model=StudentOut)
+async def update_student(student_id: str, body: StudentUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Student)
+        .where(Student.id == student_id)
+        .options(
+            selectinload(Student.materials).selectinload(StudentMaterial.material).selectinload(Material.nodes)
+        )
+    )
+    student = result.scalars().first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    student.name = body.name.strip()
+    await db.commit()
+    await db.refresh(student)
+    return _build_student_out(student)
+
+
 @router.delete("/{student_id}")
 async def delete_student(student_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
@@ -90,7 +108,7 @@ async def delete_student(student_id: str, db: AsyncSession = Depends(get_db)):
     await db.execute(
         delete(StudentMaterial).where(StudentMaterial.student_id == student_id)
     )
-    await db.delete(student)
+    await db.execute(delete(Student).where(Student.id == student_id))
     await db.commit()
     return {"status": "deleted"}
 

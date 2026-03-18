@@ -10,7 +10,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.material import Material, MaterialNode
 from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
-from app.schemas.material import MaterialOut, MaterialListOut, MaterialCreate, MaterialCreateSimple, MaterialNodeCreate, MaterialNodeOut
+from app.schemas.material import MaterialOut, MaterialListOut, MaterialCreate, MaterialCreateSimple, MaterialNodeCreate, MaterialNodeOut, MaterialNodeUpdate
 
 router = APIRouter()
 
@@ -181,6 +181,91 @@ async def add_node_simple(
     await db.commit()
     await db.refresh(node)
     return MaterialNodeOut.model_validate(node)
+
+
+@router.patch("/{material_key}/nodes/{node_key}", response_model=MaterialNodeOut)
+async def update_node(
+    material_key: str, node_key: str, body: MaterialNodeUpdate, db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(MaterialNode).where(
+            MaterialNode.key == node_key, MaterialNode.material_key == material_key
+        )
+    )
+    node = result.scalars().first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    if body.title is not None:
+        node.title = body.title.strip()
+    if body.range_text is not None:
+        node.range_text = body.range_text.strip()
+    if body.duplex is not None:
+        node.duplex = body.duplex
+
+    await db.commit()
+    await db.refresh(node)
+    return MaterialNodeOut.model_validate(node)
+
+
+@router.delete("/{material_key}/nodes/{node_key}")
+async def delete_node(
+    material_key: str, node_key: str, db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(MaterialNode).where(
+            MaterialNode.key == node_key, MaterialNode.material_key == material_key
+        )
+    )
+    node = result.scalars().first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    # Delete the node
+    await db.execute(
+        delete(MaterialNode).where(MaterialNode.key == node_key)
+    )
+
+    # Re-number remaining nodes' sort_order to be contiguous
+    remaining_result = await db.execute(
+        select(MaterialNode)
+        .where(MaterialNode.material_key == material_key)
+        .order_by(MaterialNode.sort_order)
+    )
+    remaining_nodes = remaining_result.scalars().all()
+    for idx, n in enumerate(remaining_nodes, 1):
+        n.sort_order = idx
+
+    new_total = len(remaining_nodes)
+
+    # Adjust student pointers that exceed new total
+    sm_result = await db.execute(
+        select(StudentMaterial).where(StudentMaterial.material_key == material_key)
+    )
+    assignments = sm_result.scalars().all()
+    pointer_adjustments = 0
+
+    for sm in assignments:
+        if new_total == 0:
+            clamped = 1
+        elif sm.pointer > new_total:
+            clamped = new_total
+        else:
+            continue
+        db.add(ProgressHistory(
+            student_id=sm.student_id,
+            material_key=material_key,
+            node_key=node_key,
+            action="node_deleted",
+            old_pointer=sm.pointer,
+            new_pointer=clamped,
+            metadata_={"deleted_node": node_key},
+        ))
+        sm.pointer = clamped
+        pointer_adjustments += 1
+
+    await db.commit()
+    return {"status": "deleted", "pointer_adjustments": pointer_adjustments}
 
 
 @router.delete("/{material_key}")

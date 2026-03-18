@@ -1,11 +1,27 @@
 "use client";
 
-import { useStudent } from "@/lib/queries/students";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useStudent, useUpdateStudent, useDeleteStudent } from "@/lib/queries/students";
 import { useStudentAnalytics } from "@/lib/queries/analytics";
 import { useStudentProgress } from "@/lib/queries/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 import { MasterySpreadsheet } from "./mastery-spreadsheet";
 import { MaterialManager } from "./material-manager";
 import {
@@ -15,6 +31,10 @@ import {
   TrendingUp,
   TrendingDown,
   Minus as MinusIcon,
+  Pencil,
+  Trash2,
+  Check,
+  X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 
@@ -107,17 +127,127 @@ export function StudentDetailPanel({
         )
       : 0;
 
+  const router = useRouter();
+  const updateMutation = useUpdateStudent();
+  const deleteMutation = useDeleteStudent();
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState("");
+
+  const handleStartEdit = () => {
+    setEditName(student.name);
+    setIsEditingName(true);
+  };
+
+  const handleSaveName = () => {
+    const trimmed = editName.trim();
+    if (!trimmed || trimmed === student.name) {
+      setIsEditingName(false);
+      return;
+    }
+    updateMutation.mutate(
+      { id: student.id, name: trimmed },
+      {
+        onSuccess: () => {
+          toast.success("生徒名を更新しました");
+          setIsEditingName(false);
+        },
+        onError: () => toast.error("更新に失敗しました"),
+      }
+    );
+  };
+
+  const handleDelete = () => {
+    deleteMutation.mutate(student.id, {
+      onSuccess: () => {
+        toast.success(`${student.name} を削除しました`);
+        router.replace("/students");
+      },
+      onError: () => toast.error("削除に失敗しました"),
+    });
+  };
+
   return (
     <div className="space-y-4">
       {/* Student header */}
-      <div className="flex items-center gap-3">
-        <div>
-          <h2 className="text-xl font-bold">{student.name}</h2>
+      <div className="flex items-center justify-between">
+        <div className="min-w-0 flex-1">
+          {isEditingName ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveName();
+                  if (e.key === "Escape") setIsEditingName(false);
+                }}
+                className="h-8 w-48 text-lg font-bold"
+                autoFocus
+              />
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-green-600 hover:text-green-700"
+                onClick={handleSaveName}
+                disabled={updateMutation.isPending}
+              >
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={() => setIsEditingName(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold">{student.name}</h2>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                onClick={handleStartEdit}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             ID: {student.id} · {student.materials.length}教材 · 平均進捗{" "}
             {avgPercent}%
           </p>
         </div>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive shrink-0"
+            >
+              <Trash2 className="mr-1.5 h-4 w-4" />
+              削除
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>生徒を削除しますか？</AlertDialogTitle>
+              <AlertDialogDescription>
+                「{student.name}」を完全に削除します。割り当て中の教材データ・進捗履歴もすべて削除されます。この操作は元に戻せません。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>キャンセル</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                削除する
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {/* Tabs */}

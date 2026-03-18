@@ -19,8 +19,9 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
-import { Users, ChevronsUpDown, Check } from "lucide-react";
+import { Users, ChevronsUpDown, Check, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { StudentCreateDialog } from "@/components/students/student-create-dialog";
 
 function StudentsContent() {
   const searchParams = useSearchParams();
@@ -149,6 +150,9 @@ function StudentsContent() {
             </span>
           </div>
         )}
+        <div className="ml-auto">
+          <StudentCreateDialog />
+        </div>
       </div>
 
       {/* Detail content */}
