@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useMaterials, useCreateMaterial, useAddNodeSimple } from "@/lib/queries/materials";
+import { useMaterials, useCreateMaterial, useAddNodeSimple, useDeleteMaterial } from "@/lib/queries/materials";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -23,6 +34,7 @@ import {
   Upload,
   Search,
   BookOpen,
+  Trash2,
 } from "lucide-react";
 import type { Material } from "@/lib/types";
 
@@ -110,8 +122,25 @@ export default function MaterialsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="text-muted-foreground">読み込み中...</div>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="h-7 w-32 rounded-lg skeleton-pulse" />
+            <div className="h-4 w-48 rounded-lg skeleton-pulse" />
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-56 rounded-lg skeleton-pulse" />
+            <div className="h-9 w-24 rounded-lg skeleton-pulse" />
+          </div>
+        </div>
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="rounded-xl overflow-hidden">
+            <div className="h-12 skeleton-pulse" />
+            <div className="p-4 space-y-3">
+              <div className="h-24 rounded-xl skeleton-pulse" />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -217,9 +246,15 @@ export default function MaterialsPage() {
       {grouped.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
           <BookOpen className="h-12 w-12 opacity-20 mb-3" />
-          <p className="text-sm">
+          <p className="text-sm mb-3">
             {searchQuery ? "該当する教材がありません" : "教材がまだ登録されていません"}
           </p>
+          {!searchQuery && (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              教材を追加
+            </Button>
+          )}
         </div>
       )}
 
@@ -278,7 +313,9 @@ function MaterialCard({
   subjectColor: { border: string; bg: string; text: string; badge: string };
 }) {
   const addNodeMutation = useAddNodeSimple(mat.key);
+  const deleteMutation = useDeleteMaterial();
   const [addOpen, setAddOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [nodeTitle, setNodeTitle] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -304,6 +341,16 @@ function MaterialCard({
     );
   };
 
+  const handleDelete = () => {
+    deleteMutation.mutate(mat.key, {
+      onSuccess: () => {
+        toast.success(`「${mat.name}」を削除しました`);
+        setDeleteOpen(false);
+      },
+      onError: (err) => toast.error(err.message),
+    });
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -317,7 +364,7 @@ function MaterialCard({
   };
 
   return (
-    <Card className={cn("border-l-4 shadow-sm", subjectColor.border)}>
+    <Card className={cn("border-l-4 shadow-premium card-hover", subjectColor.border)}>
       <CardContent className="p-4">
         {/* Material header */}
         <div className="flex items-center justify-between mb-3">
@@ -327,6 +374,38 @@ function MaterialCard({
               {mat.nodes.length}範囲
             </Badge>
           </div>
+          <div className="flex items-center gap-1">
+          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <AlertDialogTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Trash2 className="mr-1 h-3 w-3" />
+                削除
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+              <AlertDialogHeader>
+                <AlertDialogTitle>教材を削除しますか？</AlertDialogTitle>
+                <AlertDialogDescription>
+                  「{mat.name}」と{mat.nodes.length}件の範囲が完全に削除されます。この操作は元に戻せません。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDelete}
+                  disabled={deleteMutation.isPending}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deleteMutation.isPending ? "削除中..." : "削除する"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <Dialog
             open={addOpen}
             onOpenChange={(open) => {
@@ -409,6 +488,7 @@ function MaterialCard({
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         {/* Node pills - compact horizontal display */}

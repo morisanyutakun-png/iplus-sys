@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import get_db
 from app.models.material import Material, MaterialNode
+from app.models.student_material import StudentMaterial
 from app.schemas.material import MaterialOut, MaterialListOut, MaterialCreate, MaterialCreateSimple, MaterialNodeCreate, MaterialNodeOut
 
 router = APIRouter()
@@ -180,3 +181,31 @@ async def add_node_simple(
     await db.commit()
     await db.refresh(node)
     return MaterialNodeOut.model_validate(node)
+
+
+@router.delete("/{material_key}")
+async def delete_material(material_key: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Material).where(Material.key == material_key)
+    )
+    material = result.scalars().first()
+    if not material:
+        raise HTTPException(status_code=404, detail="Material not found")
+
+    # Reject deletion if assigned to students
+    assigned_result = await db.execute(
+        select(sa_func.count()).select_from(StudentMaterial).where(
+            StudentMaterial.material_key == material_key
+        )
+    )
+    assigned_count = assigned_result.scalar()
+
+    if assigned_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"この教材は{assigned_count}名の生徒に割り当てられています。先に割当を解除してください。",
+        )
+
+    await db.delete(material)
+    await db.commit()
+    return {"status": "deleted"}

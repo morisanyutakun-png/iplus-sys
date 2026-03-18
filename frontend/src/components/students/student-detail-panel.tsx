@@ -82,8 +82,11 @@ export function StudentDetailPanel({
 
   if (isLoading) {
     return (
-      <div className="flex h-64 items-center justify-center text-muted-foreground">
-        読み込み中...
+      <div className="space-y-4">
+        <div className="h-8 w-48 rounded-lg skeleton-pulse" />
+        <div className="h-4 w-64 rounded-lg skeleton-pulse" />
+        <div className="h-10 w-full rounded-lg skeleton-pulse" />
+        <div className="h-64 rounded-xl skeleton-pulse" />
       </div>
     );
   }
@@ -155,7 +158,7 @@ export function StudentDetailPanel({
             <>
               {/* Pace summary cards */}
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <Card>
+                <Card className="border-0 shadow-premium">
                   <CardContent className="pt-5">
                     <div className="text-center">
                       <div className="text-2xl font-bold">
@@ -167,7 +170,7 @@ export function StudentDetailPanel({
                     </div>
                   </CardContent>
                 </Card>
-                <Card>
+                <Card className="border-0 shadow-premium">
                   <CardContent className="pt-5">
                     <div className="flex items-center justify-center gap-2">
                       {analytics.pace.trend === "improving" ? (
@@ -190,7 +193,7 @@ export function StudentDetailPanel({
                     </p>
                   </CardContent>
                 </Card>
-                <Card>
+                <Card className="border-0 shadow-premium">
                   <CardContent className="pt-5">
                     <div className="text-center">
                       <div className="text-2xl font-bold">{avgPercent}%</div>
@@ -204,7 +207,7 @@ export function StudentDetailPanel({
 
               {/* Completion rates bar chart */}
               {analytics.completion_rates.length > 0 && (
-                <Card>
+                <Card className="border-0 shadow-premium overflow-hidden">
                   <CardHeader>
                     <CardTitle className="text-sm">教材別完了率</CardTitle>
                   </CardHeader>
@@ -213,25 +216,32 @@ export function StudentDetailPanel({
                       <BarChart data={analytics.completion_rates}>
                         <CartesianGrid
                           strokeDasharray="3 3"
-                          className="stroke-muted"
+                          stroke="hsl(0 0% 91%)"
                         />
                         <XAxis
                           dataKey="material_name"
-                          tick={{ fontSize: 11 }}
+                          tick={{ fontSize: 11, fill: "hsl(0 0% 45%)" }}
                           interval={0}
                           angle={-20}
                           textAnchor="end"
                           height={50}
                         />
-                        <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                        <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "hsl(0 0% 45%)" }} />
                         <Tooltip
                           formatter={(value) => [`${value}%`, "完了率"]}
+                          contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 8px 30px rgba(0,0,0,0.12)", fontSize: "13px", padding: "10px 14px" }}
                         />
                         <Bar
                           dataKey="percent"
-                          fill="oklch(0.5 0.2 25)"
-                          radius={[4, 4, 0, 0]}
+                          fill="url(#completion-gradient)"
+                          radius={[6, 6, 0, 0]}
                         />
+                        <defs>
+                          <linearGradient id="completion-gradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#dc2626" />
+                            <stop offset="100%" stopColor="#f87171" />
+                          </linearGradient>
+                        </defs>
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -240,7 +250,7 @@ export function StudentDetailPanel({
 
               {/* Progress timeline */}
               {analytics.progress_timeline.length > 0 && (
-                <Card>
+                <Card className="border-0 shadow-premium overflow-hidden">
                   <CardHeader>
                     <CardTitle className="text-sm">進捗タイムライン</CardTitle>
                   </CardHeader>
@@ -253,11 +263,11 @@ export function StudentDetailPanel({
                       >
                         <CartesianGrid
                           strokeDasharray="3 3"
-                          className="stroke-muted"
+                          stroke="hsl(0 0% 91%)"
                         />
                         <XAxis
                           dataKey="date"
-                          tick={{ fontSize: 10 }}
+                          tick={{ fontSize: 10, fill: "hsl(0 0% 45%)" }}
                           tickFormatter={(v) =>
                             new Date(v).toLocaleDateString("ja-JP", {
                               month: "short",
@@ -265,7 +275,7 @@ export function StudentDetailPanel({
                             })
                           }
                         />
-                        <YAxis tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11, fill: "hsl(0 0% 45%)" }} />
                         <Tooltip
                           labelFormatter={(v) =>
                             new Date(v).toLocaleDateString("ja-JP")
@@ -274,13 +284,15 @@ export function StudentDetailPanel({
                             value,
                             name === "new_pointer" ? "ポインタ" : String(name),
                           ]}
+                          contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 8px 30px rgba(0,0,0,0.12)", fontSize: "13px", padding: "10px 14px" }}
                         />
                         <Line
                           type="monotone"
                           dataKey="new_pointer"
-                          stroke="oklch(0.5 0.2 25)"
-                          strokeWidth={2}
-                          dot={{ r: 3 }}
+                          stroke="#dc2626"
+                          strokeWidth={2.5}
+                          dot={{ r: 3, fill: "#dc2626" }}
+                          activeDot={{ r: 5 }}
                         />
                       </LineChart>
                     </ResponsiveContainer>
@@ -297,7 +309,7 @@ export function StudentDetailPanel({
 
           {/* Progress history */}
           {progress?.history && progress.history.length > 0 && (
-            <Card>
+            <Card className="border-0 shadow-premium overflow-hidden">
               <CardHeader>
                 <CardTitle className="text-sm">進捗履歴</CardTitle>
               </CardHeader>

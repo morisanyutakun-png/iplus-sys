@@ -208,20 +208,20 @@
 }
 
 .page-enter {
-  animation: page-fade-in 0.15s ease-out;
+  animation: page-fade-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes page-fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(6px) scale(0.998); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .stagger-item {
-  animation: stagger-fade 0.1s ease-out backwards;
+  animation: stagger-fade 0.15s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 @keyframes stagger-fade {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -245,4 +245,29 @@
 @keyframes skeleton-loading {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* Focus & interaction refinements */
+.card-interactive {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-interactive:hover {
+  box-shadow:
+    0 2px 6px oklch(0 0 0 / 4%),
+    0 12px 40px oklch(0 0 0 / 6%);
+}
+
+/* Smooth number transitions */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chart container fade-in */
+.recharts-wrapper {
+  animation: chart-appear 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes chart-appear {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

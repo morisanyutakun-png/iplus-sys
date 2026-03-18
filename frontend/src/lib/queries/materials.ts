@@ -70,6 +70,23 @@ export function useAddNodeSimple(materialKey: string) {
   });
 }
 
+export function useDeleteMaterial() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (materialKey: string) => {
+      const res = await apiFetch<{ status: string }>(
+        `/api/materials/${encodeURIComponent(materialKey)}`,
+        { method: "DELETE" }
+      );
+      return res;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["materials"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
 export function useMaterial(key: string) {
   return useQuery({
     queryKey: ["materials", key],
