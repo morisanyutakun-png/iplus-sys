@@ -90,7 +90,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(sa_func.count(ProgressHistory.id)).where(
             ProgressHistory.created_at >= week_start,
-            ProgressHistory.action.in_(["advance", "print"]),
+            ProgressHistory.action.in_(["advance", "print", "manual_set"]),
         )
     )
     weekly_actions = result.scalar() or 0
@@ -100,7 +100,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(ProgressHistory).where(
             ProgressHistory.created_at >= eight_weeks_ago,
-            ProgressHistory.action.in_(["advance", "print"]),
+            ProgressHistory.action.in_(["advance", "print", "manual_set"]),
         )
     )
     trend_entries = result.scalars().all()

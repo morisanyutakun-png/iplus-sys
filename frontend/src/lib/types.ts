@@ -261,6 +261,7 @@ export interface OverviewAnalytics {
     week: string;
     records_count: number;
     prints_count: number;
+    manual_set_count: number;
   }[];
   completion_heatmap: {
     student_id: string;

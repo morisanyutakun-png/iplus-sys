@@ -52,6 +52,7 @@ class WeeklyActivity(BaseModel):
     week: str
     records_count: int
     prints_count: int
+    manual_set_count: int = 0
 
 
 class OverviewAnalytics(BaseModel):

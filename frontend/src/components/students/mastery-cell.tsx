@@ -9,6 +9,7 @@ type ScoreCellProps = {
   onChange: (value: number | null) => void;
   isFocused: boolean;
   max?: number;
+  onClick?: () => void;
 };
 
 export function ScoreCell({
@@ -16,33 +17,41 @@ export function ScoreCell({
   onChange,
   isFocused,
   max = 9999,
+  onClick,
 }: ScoreCellProps) {
   const ref = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isFocused) ref.current?.focus();
+    if (isFocused) {
+      ref.current?.focus();
+      ref.current?.select();
+    }
   }, [isFocused]);
 
   return (
     <input
       ref={ref}
-      type="number"
-      min={0}
-      max={max}
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
       className={cn(
-        "h-8 w-full text-center text-sm rounded border bg-white transition-all",
-        "focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary",
-        "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
-        isFocused ? "border-primary ring-2 ring-primary/20" : "border-border"
+        "h-8 w-full text-center text-sm rounded-md border bg-white transition-all",
+        "focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary focus:bg-white",
+        isFocused
+          ? "border-primary ring-2 ring-primary/30 shadow-sm"
+          : "border-gray-200 hover:border-gray-300"
       )}
       placeholder="-"
       value={value ?? ""}
+      onClick={onClick}
       onChange={(e) => {
-        const val =
-          e.target.value === ""
-            ? null
-            : Math.max(0, parseInt(e.target.value) || 0);
-        onChange(val);
+        const raw = e.target.value.replace(/[^0-9]/g, "");
+        if (raw === "") {
+          onChange(null);
+        } else {
+          const num = Math.min(Math.max(0, parseInt(raw)), max);
+          onChange(num);
+        }
       }}
     />
   );
@@ -72,11 +81,11 @@ export function PassCheckbox({
       role="checkbox"
       aria-checked={checked}
       className={cn(
-        "flex h-7 w-7 items-center justify-center rounded border-2 transition-all cursor-pointer mx-auto",
+        "flex h-8 w-8 items-center justify-center rounded-md border-2 transition-all cursor-pointer mx-auto",
         "focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-primary/40",
         checked
-          ? "bg-emerald-600 border-emerald-600 text-white"
-          : "bg-white border-gray-300 hover:border-gray-400"
+          ? "bg-emerald-600 border-emerald-600 text-white shadow-sm"
+          : "bg-white border-gray-300 hover:border-gray-400 hover:bg-gray-50"
       )}
       onClick={onToggle}
       tabIndex={-1}

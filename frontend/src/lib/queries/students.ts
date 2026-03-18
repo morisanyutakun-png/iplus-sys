@@ -81,7 +81,9 @@ export function useSavePointers(studentId: string) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["students"] });
+      qc.invalidateQueries({ queryKey: ["students", studentId] });
       qc.invalidateQueries({ queryKey: ["material-zones", studentId] });
+      qc.invalidateQueries({ queryKey: ["progress"] });
     },
   });
 }

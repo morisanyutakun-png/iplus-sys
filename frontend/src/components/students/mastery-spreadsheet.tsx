@@ -65,6 +65,15 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
     });
   }, [student.materials, allMaterials]);
 
+  // Track completed column indices
+  const completedCols = useMemo(() => {
+    const set = new Set<number>();
+    columns.forEach((col, i) => {
+      if (col.isCompleted) set.add(i);
+    });
+    return set;
+  }, [columns]);
+
   const getInput = (materialKey: string): ColInput =>
     inputs[materialKey] ?? { score: null, maxScore: null, passed: false };
 
@@ -127,8 +136,9 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
     toast.info("リセットしました");
   };
 
-  const { activeCell, handleKeyDown } = useSpreadsheetKeyboard({
+  const { activeCell, setActiveCell, handleKeyDown } = useSpreadsheetKeyboard({
     colCount: columns.length,
+    completedCols,
     onTogglePass: togglePass,
     onSave: handleSave,
     onEscape,
@@ -142,6 +152,12 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [active, handleKeyDown]);
 
+  // Click handler for cells
+  const handleCellClick = (colIdx: number, editableRow: number) => {
+    if (completedCols.has(colIdx)) return;
+    setActiveCell({ col: colIdx, row: editableRow });
+  };
+
   if (columns.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
@@ -151,15 +167,15 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
     );
   }
 
-  // Row labels for the left header column
-  const rowLabels = [
-    "教材名",
-    "現在の範囲",
-    "得点",
-    "満点",
-    "合格",
-    "次回の範囲",
-  ];
+  // Row definitions with metadata
+  const rows = [
+    { key: "name",    label: "教材名",     editable: false },
+    { key: "current", label: "現在の範囲", editable: false },
+    { key: "score",   label: "得点",       editable: true, editRow: 0 },
+    { key: "max",     label: "満点",       editable: true, editRow: 1 },
+    { key: "pass",    label: "合格",       editable: true, editRow: 2 },
+    { key: "next",    label: "次回の範囲", editable: false },
+  ] as const;
 
   return (
     <div className="space-y-3">
@@ -196,28 +212,29 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
         </div>
       </div>
 
-      {/* Spreadsheet grid - vertical layout (columns = materials) */}
-      <div className="overflow-x-auto rounded-lg border border-border">
+      {/* Spreadsheet grid */}
+      <div className="overflow-x-auto rounded-lg border border-border shadow-sm">
         <div
           className="grid min-w-max"
           style={{
             gridTemplateColumns: `100px repeat(${columns.length}, minmax(150px, 1fr))`,
           }}
         >
-          {/* 6 rows */}
-          {rowLabels.map((label, rowIdx) => (
+          {rows.map((rowDef, rowIdx) => (
             <>
               {/* Row header (left column) */}
               <div
                 key={`label-${rowIdx}`}
                 className={cn(
-                  "flex items-center px-3 py-2 text-xs font-semibold border-b border-r border-border",
-                  rowIdx === 0
+                  "flex items-center px-3 py-2 text-xs font-semibold border-b border-r border-border select-none",
+                  rowDef.key === "name"
                     ? "bg-gray-900 text-white"
-                    : "bg-gray-50 text-gray-600"
+                    : rowDef.editable
+                    ? "bg-amber-50 text-amber-900 border-l-2 border-l-amber-400"
+                    : "bg-gray-100 text-gray-500"
                 )}
               >
-                {label}
+                {rowDef.label}
               </div>
 
               {/* Material columns */}
@@ -228,14 +245,14 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
                   (r) => r.material_key === col.sm.material_key
                 );
 
-                // Row 0: Material name
-                if (rowIdx === 0) {
+                // ── Row: Material name ──
+                if (rowDef.key === "name") {
                   return (
                     <div
                       key={`${rowIdx}-${colIdx}`}
                       className={cn(
                         "flex items-center justify-center px-3 py-2 text-sm font-bold border-b border-r border-border bg-gray-900 text-white",
-                        col.isCompleted && "opacity-50"
+                        col.isCompleted && "opacity-40"
                       )}
                     >
                       {col.sm.material_name}
@@ -243,14 +260,15 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
                   );
                 }
 
-                // Row 1: Current range (auto)
-                if (rowIdx === 1) {
+                // ── Row: Current range (read-only) ──
+                if (rowDef.key === "current") {
                   return (
                     <div
                       key={`${rowIdx}-${colIdx}`}
                       className={cn(
-                        "flex items-center justify-center px-2 py-2 text-xs border-b border-r border-border bg-blue-50",
-                        col.isCompleted && "opacity-50"
+                        "flex items-center justify-center px-2 py-2 text-xs border-b border-r border-border",
+                        isActiveCol ? "bg-blue-50" : "bg-gray-50",
+                        col.isCompleted && "opacity-40"
                       )}
                     >
                       {col.isCompleted ? (
@@ -276,16 +294,21 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
                   );
                 }
 
-                // Row 2: Score input
-                if (rowIdx === 2) {
+                // ── Row: Score input ──
+                if (rowDef.key === "score") {
                   const isFocused = isActiveCol && activeCell.row === 0;
                   return (
                     <div
                       key={`${rowIdx}-${colIdx}`}
                       className={cn(
-                        "flex items-center justify-center px-2 py-1.5 border-b border-r border-border",
-                        isFocused && "bg-primary/5"
+                        "flex items-center justify-center px-2 py-1.5 border-b border-r border-border transition-colors",
+                        isFocused
+                          ? "bg-primary/5 ring-inset ring-1 ring-primary/20"
+                          : isActiveCol
+                          ? "bg-amber-50/50"
+                          : "bg-white"
                       )}
+                      onClick={() => handleCellClick(colIdx, 0)}
                     >
                       {!col.isCompleted && (
                         <ScoreCell
@@ -294,22 +317,28 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
                             setInput(col.sm.material_key, { score: val })
                           }
                           isFocused={isFocused}
+                          onClick={() => handleCellClick(colIdx, 0)}
                         />
                       )}
                     </div>
                   );
                 }
 
-                // Row 3: Max score input
-                if (rowIdx === 3) {
+                // ── Row: Max score input ──
+                if (rowDef.key === "max") {
                   const isFocused = isActiveCol && activeCell.row === 1;
                   return (
                     <div
                       key={`${rowIdx}-${colIdx}`}
                       className={cn(
-                        "flex items-center justify-center px-2 py-1.5 border-b border-r border-border",
-                        isFocused && "bg-primary/5"
+                        "flex items-center justify-center px-2 py-1.5 border-b border-r border-border transition-colors",
+                        isFocused
+                          ? "bg-primary/5 ring-inset ring-1 ring-primary/20"
+                          : isActiveCol
+                          ? "bg-amber-50/50"
+                          : "bg-white"
                       )}
+                      onClick={() => handleCellClick(colIdx, 1)}
                     >
                       {!col.isCompleted && (
                         <ScoreCell
@@ -318,23 +347,30 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
                             setInput(col.sm.material_key, { maxScore: val })
                           }
                           isFocused={isFocused}
+                          onClick={() => handleCellClick(colIdx, 1)}
                         />
                       )}
                     </div>
                   );
                 }
 
-                // Row 4: Pass checkbox
-                if (rowIdx === 4) {
+                // ── Row: Pass checkbox ──
+                if (rowDef.key === "pass") {
                   const isFocused = isActiveCol && activeCell.row === 2;
                   return (
                     <div
                       key={`${rowIdx}-${colIdx}`}
                       className={cn(
-                        "flex items-center justify-center px-2 py-1.5 border-b border-r border-border",
-                        isFocused && "bg-primary/5",
-                        input.passed && "bg-emerald-50"
+                        "flex items-center justify-center px-2 py-1.5 border-b border-r border-border transition-colors",
+                        input.passed
+                          ? "bg-emerald-50"
+                          : isFocused
+                          ? "bg-primary/5 ring-inset ring-1 ring-primary/20"
+                          : isActiveCol
+                          ? "bg-amber-50/50"
+                          : "bg-white"
                       )}
+                      onClick={() => handleCellClick(colIdx, 2)}
                     >
                       {!col.isCompleted && (
                         <PassCheckbox
@@ -347,8 +383,8 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
                   );
                 }
 
-                // Row 5: Next range (auto)
-                if (rowIdx === 5) {
+                // ── Row: Next range (read-only) ──
+                if (rowDef.key === "next") {
                   let nextText = "";
                   if (resultItem) {
                     if (resultItem.advanced) {
@@ -377,7 +413,7 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
                             : "bg-gray-50"
                           : input.passed
                           ? "bg-emerald-50"
-                          : ""
+                          : "bg-gray-50"
                       )}
                     >
                       {resultItem ? (
@@ -429,13 +465,14 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
       )}
 
       {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <span className="font-medium">操作:</span>
-        <span>←→ 教材移動</span>
-        <span>↑↓ 行移動</span>
-        <span>Enter/Space 合格切替</span>
+      <div className="flex items-center gap-4 text-xs text-muted-foreground border rounded-md px-3 py-2 bg-muted/30">
+        <span className="font-semibold text-foreground">操作:</span>
+        <span>← → 教材移動</span>
+        <span>↑ ↓ 行移動</span>
+        <span>Enter 次の行へ</span>
+        <span>Space/Enter 合格切替</span>
         <span>Ctrl+S 保存</span>
-        <span>Esc 生徒リストへ</span>
+        <span>Esc 戻る</span>
       </div>
     </div>
   );

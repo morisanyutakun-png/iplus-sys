@@ -195,14 +195,16 @@ async def get_overview_analytics(db: AsyncSession = Depends(get_db)):
     for h in progress_entries:
         week_key = h.created_at.strftime("%Y-W%W")
         if week_key not in weekly:
-            weekly[week_key] = {"records_count": 0, "prints_count": 0}
+            weekly[week_key] = {"records_count": 0, "prints_count": 0, "manual_set_count": 0}
         if h.action == "print":
             weekly[week_key]["prints_count"] += 1
+        elif h.action == "manual_set":
+            weekly[week_key]["manual_set_count"] += 1
 
     for l in lesson_entries:
         week_key = l.created_at.strftime("%Y-W%W")
         if week_key not in weekly:
-            weekly[week_key] = {"records_count": 0, "prints_count": 0}
+            weekly[week_key] = {"records_count": 0, "prints_count": 0, "manual_set_count": 0}
         weekly[week_key]["records_count"] += 1
 
     weekly_activity = [
