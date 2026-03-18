@@ -157,7 +157,19 @@ export default function PrintPage() {
 
   const handlePrint = () => {
     executeMutation.mutate(effectivePrinter || undefined, {
-      onSuccess: () => toast.success("印刷ジョブを実行しました"),
+      onSuccess: (data) => {
+        const successCount = data.results.filter((r) => r.success).length;
+        const failCount = data.results.filter((r) => !r.success).length;
+        if (failCount === 0) {
+          toast.success(`${successCount}件の印刷を実行しました`);
+        } else if (successCount === 0) {
+          toast.error(`全${failCount}件が失敗しました（キューに残っています）`);
+        } else {
+          toast.warning(
+            `${successCount}件成功 / ${failCount}件失敗（失敗分はキューに残っています）`
+          );
+        }
+      },
       onError: (err) => toast.error(`印刷エラー: ${err.message}`),
     });
   };
@@ -305,15 +317,24 @@ export default function PrintPage() {
               <div className="flex items-center gap-1.5">
                 <Printer className="h-4 w-4 text-muted-foreground" />
                 <Select value={effectivePrinter} onValueChange={setSelectedPrinter}>
-                  <SelectTrigger className="h-8 w-[220px] text-xs">
+                  <SelectTrigger className="h-8 w-[280px] text-xs">
                     <SelectValue placeholder="プリンタを選択" />
                   </SelectTrigger>
                   <SelectContent>
                     {printerOptions.length > 0 ? (
                       printerOptions.map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                          {p === printerData?.default ? " (デフォルト)" : ""}
+                        <SelectItem key={p.name} value={p.name}>
+                          <span className="flex items-center gap-2">
+                            <span
+                              className={`inline-block h-2 w-2 rounded-full ${
+                                p.status === "online"
+                                  ? "bg-emerald-500"
+                                  : "bg-gray-400"
+                              }`}
+                            />
+                            {p.name}
+                            {p.name === printerData?.default ? " (デフォルト)" : ""}
+                          </span>
                         </SelectItem>
                       ))
                     ) : (

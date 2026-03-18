@@ -31,7 +31,9 @@ async def list_printers():
         for line in result.stdout.splitlines():
             if line.startswith("printer "):
                 name = line.split()[1]
-                printers.append(name)
+                low = line.lower()
+                status = "online" if ("idle" in low or "printing" in low) else "offline"
+                printers.append({"name": name, "status": status})
         return {"printers": printers, "default": settings.printer_name}
     except Exception:
         return {"printers": [], "default": settings.printer_name}
@@ -157,6 +159,22 @@ async def execute_print(body: dict = None, db: AsyncSession = Depends(get_db)):
 
     printer = (body or {}).get("printer_name") or settings.printer_name
 
+    # Check printer is online before sending
+    try:
+        check = subprocess.run(
+            ["lpstat", "-p", printer], capture_output=True, text=True, timeout=5
+        )
+        output = check.stdout.lower()
+        if "disabled" in output or check.returncode != 0:
+            raise HTTPException(
+                status_code=503,
+                detail=f"プリンタ '{printer}' はオフラインまたは無効です。オンラインを確認してから再実行してください。",
+            )
+    except FileNotFoundError:
+        raise HTTPException(status_code=503, detail="lpstatコマンドが見つかりません")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=503, detail="プリンタ状態の確認がタイムアウトしました")
+
     # Prepare job first
     result = await db.execute(
         select(PrintQueue)
@@ -171,6 +189,7 @@ async def execute_print(body: dict = None, db: AsyncSession = Depends(get_db)):
     job_id = now.strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
 
     results = []
+    success_ids = []
     for idx, qi in enumerate(queue_items):
         pdf_relpath = ""
         duplex = False
@@ -220,6 +239,7 @@ async def execute_print(body: dict = None, db: AsyncSession = Depends(get_db)):
 
         # Advance pointer if success
         if success:
+            success_ids.append(qi.id)
             sm_result = await db.execute(
                 select(StudentMaterial).where(
                     StudentMaterial.student_id == qi.student_id,
@@ -248,8 +268,9 @@ async def execute_print(body: dict = None, db: AsyncSession = Depends(get_db)):
             "message": message,
         })
 
-    # Clear printed queue items
-    await db.execute(delete(PrintQueue).where(PrintQueue.status == "pending"))
+    # Only remove successfully printed items from queue
+    if success_ids:
+        await db.execute(delete(PrintQueue).where(PrintQueue.id.in_(success_ids)))
     await db.commit()
 
     return {"job_id": job_id, "results": results}

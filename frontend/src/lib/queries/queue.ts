@@ -47,11 +47,13 @@ export function useReorderQueue() {
   });
 }
 
+type PrintResult = { student: string; material: string; node: string; success: boolean; message: string };
+
 export function useExecutePrint() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (printerName?: string) =>
-      apiFetch<{ job_id: string; results: unknown[] }>("/api/jobs/execute", {
+      apiFetch<{ job_id: string; results: PrintResult[] }>("/api/jobs/execute", {
         method: "POST",
         body: JSON.stringify({ printer_name: printerName }),
       }),
@@ -64,10 +66,12 @@ export function useExecutePrint() {
   });
 }
 
+export type PrinterInfo = { name: string; status: string };
+
 export function usePrinters() {
   return useQuery({
     queryKey: ["printers"],
     queryFn: () =>
-      apiFetch<{ printers: string[]; default: string }>("/api/jobs/printers"),
+      apiFetch<{ printers: PrinterInfo[]; default: string }>("/api/jobs/printers"),
   });
 }
