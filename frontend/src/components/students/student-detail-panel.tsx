@@ -99,6 +99,11 @@ export function StudentDetailPanel({
   const { data: student, isLoading } = useStudent(studentId);
   const { data: analytics } = useStudentAnalytics(studentId);
   const { data: progress } = useStudentProgress(studentId);
+  const router = useRouter();
+  const updateMutation = useUpdateStudent();
+  const deleteMutation = useDeleteStudent();
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState("");
 
   if (isLoading) {
     return (
@@ -126,12 +131,6 @@ export function StudentDetailPanel({
             student.materials.length
         )
       : 0;
-
-  const router = useRouter();
-  const updateMutation = useUpdateStudent();
-  const deleteMutation = useDeleteStudent();
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [editName, setEditName] = useState("");
 
   const handleStartEdit = () => {
     setEditName(student.name);
