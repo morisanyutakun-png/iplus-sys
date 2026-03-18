@@ -159,7 +159,7 @@ export function StudentDetailPanel({
                         {analytics.pace.nodes_per_week}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        ノード/週
+                        範囲/週
                       </p>
                     </div>
                   </CardContent>

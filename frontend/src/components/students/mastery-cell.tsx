@@ -2,14 +2,21 @@
 
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { Check } from "lucide-react";
 
 type ScoreCellProps = {
   value: number | null;
   onChange: (value: number | null) => void;
   isFocused: boolean;
+  max?: number;
 };
 
-export function ScoreCell({ value, onChange, isFocused }: ScoreCellProps) {
+export function ScoreCell({
+  value,
+  onChange,
+  isFocused,
+  max = 9999,
+}: ScoreCellProps) {
   const ref = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -21,9 +28,9 @@ export function ScoreCell({ value, onChange, isFocused }: ScoreCellProps) {
       ref={ref}
       type="number"
       min={0}
-      max={100}
+      max={max}
       className={cn(
-        "h-8 w-16 text-center text-sm rounded border bg-white transition-all",
+        "h-8 w-full text-center text-sm rounded border bg-white transition-all",
         "focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary",
         "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
         isFocused ? "border-primary ring-2 ring-primary/20" : "border-border"
@@ -34,20 +41,24 @@ export function ScoreCell({ value, onChange, isFocused }: ScoreCellProps) {
         const val =
           e.target.value === ""
             ? null
-            : Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+            : Math.max(0, parseInt(e.target.value) || 0);
         onChange(val);
       }}
     />
   );
 }
 
-type StatusCellProps = {
-  value: "completed" | "retry" | null;
+type PassCheckboxProps = {
+  checked: boolean;
   onToggle: () => void;
   isFocused: boolean;
 };
 
-export function StatusCell({ value, onToggle, isFocused }: StatusCellProps) {
+export function PassCheckbox({
+  checked,
+  onToggle,
+  isFocused,
+}: PassCheckboxProps) {
   const ref = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -58,20 +69,19 @@ export function StatusCell({ value, onToggle, isFocused }: StatusCellProps) {
     <button
       ref={ref}
       type="button"
+      role="checkbox"
+      aria-checked={checked}
       className={cn(
-        "h-8 w-14 rounded-md text-sm font-bold transition-all cursor-pointer",
-        "focus:outline-none focus:ring-2 focus:ring-offset-1",
-        value === "completed"
-          ? "bg-red-600 text-white focus:ring-red-400"
-          : value === "retry"
-          ? "bg-gray-800 text-white focus:ring-gray-500"
-          : "bg-gray-100 text-gray-400 border border-gray-200 hover:bg-gray-200 focus:ring-gray-300",
-        isFocused && "ring-2 ring-offset-1"
+        "flex h-7 w-7 items-center justify-center rounded border-2 transition-all cursor-pointer mx-auto",
+        "focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-primary/40",
+        checked
+          ? "bg-emerald-600 border-emerald-600 text-white"
+          : "bg-white border-gray-300 hover:border-gray-400"
       )}
       onClick={onToggle}
       tabIndex={-1}
     >
-      {value === "completed" ? "○" : value === "retry" ? "×" : "—"}
+      {checked && <Check className="h-4 w-4" strokeWidth={3} />}
     </button>
   );
 }

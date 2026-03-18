@@ -1,37 +1,37 @@
 import { useCallback, useEffect, useState } from "react";
 
-type CellCoord = { row: number; col: number };
+type CellCoord = { col: number; row: number };
 
-// Editable columns: 0=score, 1=status
-const EDITABLE_COLS = 2;
+// Editable rows: 0=score, 1=maxScore, 2=pass checkbox
+const EDITABLE_ROWS = 3;
 
 type Options = {
-  rowCount: number;
-  onToggleStatus: (row: number) => void;
+  colCount: number;
+  onTogglePass: (col: number) => void;
   onSave: () => void;
   onEscape: () => void;
   enabled?: boolean;
 };
 
 export function useSpreadsheetKeyboard({
-  rowCount,
-  onToggleStatus,
+  colCount,
+  onTogglePass,
   onSave,
   onEscape,
   enabled = true,
 }: Options) {
-  const [activeCell, setActiveCell] = useState<CellCoord>({ row: 0, col: 0 });
+  const [activeCell, setActiveCell] = useState<CellCoord>({ col: 0, row: 0 });
 
   // Keep activeCell in bounds
   useEffect(() => {
-    if (rowCount > 0 && activeCell.row >= rowCount) {
-      setActiveCell((prev) => ({ ...prev, row: Math.max(0, rowCount - 1) }));
+    if (colCount > 0 && activeCell.col >= colCount) {
+      setActiveCell((prev) => ({ ...prev, col: Math.max(0, colCount - 1) }));
     }
-  }, [rowCount, activeCell.row]);
+  }, [colCount, activeCell.col]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (!enabled || rowCount === 0) return;
+      if (!enabled || colCount === 0) return;
 
       // Ctrl+S / Cmd+S to save
       if (e.key === "s" && (e.ctrlKey || e.metaKey)) {
@@ -40,13 +40,12 @@ export function useSpreadsheetKeyboard({
         return;
       }
 
-      // Don't intercept when an input is focused (let it handle typing)
+      // Don't intercept when a number input is focused (let it handle typing)
       const isInputFocused =
         document.activeElement?.tagName === "INPUT" &&
         (document.activeElement as HTMLInputElement).type === "number";
 
       if (isInputFocused) {
-        // Only handle navigation keys when input is focused
         if (e.key === "Escape") {
           e.preventDefault();
           (document.activeElement as HTMLElement).blur();
@@ -54,23 +53,52 @@ export function useSpreadsheetKeyboard({
         }
         if (e.key === "Tab") {
           e.preventDefault();
-          const nextCol = e.shiftKey
-            ? Math.max(0, activeCell.col - 1)
-            : Math.min(EDITABLE_COLS - 1, activeCell.col + 1);
-          setActiveCell((prev) => ({ ...prev, col: nextCol }));
+          // Tab moves to next editable row, or next column
+          const nextRow = e.shiftKey ? activeCell.row - 1 : activeCell.row + 1;
+          if (nextRow < 0) {
+            // Move to prev column, last row
+            setActiveCell({
+              col: Math.max(0, activeCell.col - 1),
+              row: EDITABLE_ROWS - 1,
+            });
+          } else if (nextRow >= EDITABLE_ROWS) {
+            // Move to next column, first row
+            setActiveCell({
+              col: Math.min(colCount - 1, activeCell.col + 1),
+              row: 0,
+            });
+          } else {
+            setActiveCell((prev) => ({ ...prev, row: nextRow }));
+          }
           return;
         }
         if (e.key === "Enter") {
           e.preventDefault();
-          // Move to next row, same column
-          const nextRow = Math.min(rowCount - 1, activeCell.row + 1);
-          setActiveCell({ row: nextRow, col: activeCell.col });
+          // Move down within same column
+          const nextRow = Math.min(EDITABLE_ROWS - 1, activeCell.row + 1);
+          setActiveCell((prev) => ({ ...prev, row: nextRow }));
           return;
         }
         return;
       }
 
       switch (e.key) {
+        case "ArrowLeft": {
+          e.preventDefault();
+          setActiveCell((prev) => ({
+            ...prev,
+            col: Math.max(0, prev.col - 1),
+          }));
+          break;
+        }
+        case "ArrowRight": {
+          e.preventDefault();
+          setActiveCell((prev) => ({
+            ...prev,
+            col: Math.min(colCount - 1, prev.col + 1),
+          }));
+          break;
+        }
         case "ArrowUp": {
           e.preventDefault();
           setActiveCell((prev) => ({
@@ -83,45 +111,34 @@ export function useSpreadsheetKeyboard({
           e.preventDefault();
           setActiveCell((prev) => ({
             ...prev,
-            row: Math.min(rowCount - 1, prev.row + 1),
-          }));
-          break;
-        }
-        case "ArrowLeft":
-        case "ArrowRight": {
-          e.preventDefault();
-          const delta = e.key === "ArrowLeft" ? -1 : 1;
-          setActiveCell((prev) => ({
-            ...prev,
-            col: Math.max(0, Math.min(EDITABLE_COLS - 1, prev.col + delta)),
+            row: Math.min(EDITABLE_ROWS - 1, prev.row + 1),
           }));
           break;
         }
         case "Tab": {
           e.preventDefault();
-          const nextCol = e.shiftKey
-            ? activeCell.col - 1
-            : activeCell.col + 1;
-          if (nextCol < 0 || nextCol >= EDITABLE_COLS) {
-            // Move to next/prev row
-            const nextRow = e.shiftKey
-              ? Math.max(0, activeCell.row - 1)
-              : Math.min(rowCount - 1, activeCell.row + 1);
+          const nextRow = e.shiftKey ? activeCell.row - 1 : activeCell.row + 1;
+          if (nextRow < 0) {
             setActiveCell({
-              row: nextRow,
-              col: e.shiftKey ? EDITABLE_COLS - 1 : 0,
+              col: Math.max(0, activeCell.col - 1),
+              row: EDITABLE_ROWS - 1,
+            });
+          } else if (nextRow >= EDITABLE_ROWS) {
+            setActiveCell({
+              col: Math.min(colCount - 1, activeCell.col + 1),
+              row: 0,
             });
           } else {
-            setActiveCell((prev) => ({ ...prev, col: nextCol }));
+            setActiveCell((prev) => ({ ...prev, row: nextRow }));
           }
           break;
         }
         case "Enter":
         case " ": {
           e.preventDefault();
-          // If on status column (col 1), toggle
-          if (activeCell.col === 1) {
-            onToggleStatus(activeCell.row);
+          // If on pass checkbox row (row 2), toggle
+          if (activeCell.row === 2) {
+            onTogglePass(activeCell.col);
           }
           break;
         }
@@ -132,7 +149,7 @@ export function useSpreadsheetKeyboard({
         }
       }
     },
-    [enabled, rowCount, activeCell, onToggleStatus, onSave, onEscape]
+    [enabled, colCount, activeCell, onTogglePass, onSave, onEscape]
   );
 
   return {

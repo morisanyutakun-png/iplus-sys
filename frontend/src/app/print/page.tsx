@@ -255,14 +255,14 @@ export default function PrintPage() {
                   {selectedMat && (
                     <div>
                       <label className="mb-1 block text-sm font-medium">
-                        ノード
+                        範囲
                       </label>
                       <Select
                         value={selectedNode}
                         onValueChange={setSelectedNode}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="ノードを選択（任意）" />
+                          <SelectValue placeholder="範囲を選択（任意）" />
                         </SelectTrigger>
                         <SelectContent>
                           {selectedMat.nodes.map((n) => (
@@ -344,7 +344,7 @@ export default function PrintPage() {
                           <TableHeader>
                             <TableRow className="bg-muted/10">
                               <TableHead className="text-xs">教材</TableHead>
-                              <TableHead className="text-xs">ノード</TableHead>
+                              <TableHead className="text-xs">範囲</TableHead>
                               <TableHead className="text-xs w-20">
                                 ステータス
                               </TableHead>
@@ -504,7 +504,7 @@ export default function PrintPage() {
                       教材
                     </TableHead>
                     <TableHead className="text-xs font-semibold uppercase tracking-wider">
-                      ノード
+                      範囲
                     </TableHead>
                     <TableHead className="text-xs font-semibold uppercase tracking-wider">
                       タイプ

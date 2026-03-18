@@ -97,7 +97,7 @@ export default function AnalyticsPage() {
                   平均進捗率
                 </TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wider">
-                  完了ノード数
+                  完了範囲数
                 </TableHead>
               </TableRow>
             </TableHeader>

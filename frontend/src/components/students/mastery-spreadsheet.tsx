@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { useMaterials } from "@/lib/queries/materials";
 import { useMasteryBatch } from "@/lib/queries/lesson-records";
 import { useSpreadsheetKeyboard } from "@/hooks/use-spreadsheet-keyboard";
-import { ScoreCell, StatusCell } from "./mastery-cell";
+import { ScoreCell, PassCheckbox } from "./mastery-cell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -15,18 +15,18 @@ import {
   CheckCircle2,
   XCircle,
   Printer,
-  ArrowRight,
 } from "lucide-react";
 import type {
   Student,
   MasteryInput,
   MasteryBatchResponse,
-  StudentMaterialInfo,
-  MaterialNode,
 } from "@/lib/types";
 
-type InputState = "completed" | "retry" | null;
-type RowInput = { status: InputState; score: number | null };
+type ColInput = {
+  score: number | null;
+  maxScore: number | null;
+  passed: boolean;
+};
 
 type Props = {
   student: Student;
@@ -38,7 +38,7 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
   const { data: allMaterials } = useMaterials();
   const masteryMutation = useMasteryBatch();
 
-  const [inputs, setInputs] = useState<Record<string, RowInput>>({});
+  const [inputs, setInputs] = useState<Record<string, ColInput>>({});
   const [lastResult, setLastResult] = useState<MasteryBatchResponse | null>(null);
 
   const todayStr = new Date().toISOString().split("T")[0];
@@ -49,60 +49,59 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
     setLastResult(null);
   }, [student.id]);
 
-  // Build rows: one per assigned material
-  const rows = useMemo(() => {
+  // Build columns: one per assigned material
+  const columns = useMemo(() => {
     return student.materials.map((sm) => {
       const material = allMaterials?.find((m) => m.key === sm.material_key);
       const nodes = material?.nodes
         ? [...material.nodes].sort((a, b) => a.sort_order - b.sort_order)
         : [];
-      const currentNode = nodes.find((n) => n.sort_order === sm.pointer) ?? null;
+      const currentNode =
+        nodes.find((n) => n.sort_order === sm.pointer) ?? null;
+      const nextNode =
+        nodes.find((n) => n.sort_order === sm.pointer + 1) ?? null;
       const isCompleted = sm.pointer > sm.total_nodes;
-      return { sm, material, nodes, currentNode, isCompleted };
+      return { sm, material, nodes, currentNode, nextNode, isCompleted };
     });
   }, [student.materials, allMaterials]);
 
-  const getInput = (materialKey: string): RowInput =>
-    inputs[materialKey] ?? { status: null, score: null };
+  const getInput = (materialKey: string): ColInput =>
+    inputs[materialKey] ?? { score: null, maxScore: null, passed: false };
 
-  const setInput = (materialKey: string, update: Partial<RowInput>) => {
+  const setInput = (materialKey: string, update: Partial<ColInput>) => {
     setInputs((prev) => ({
       ...prev,
       [materialKey]: { ...getInput(materialKey), ...update },
     }));
   };
 
-  const toggleStatus = useCallback(
-    (rowIndex: number) => {
-      const row = rows[rowIndex];
-      if (!row || row.isCompleted) return;
-      const current = getInput(row.sm.material_key).status;
-      let next: InputState;
-      if (current === null) next = "completed";
-      else if (current === "completed") next = "retry";
-      else next = null;
-      setInput(row.sm.material_key, { status: next });
+  const togglePass = useCallback(
+    (colIndex: number) => {
+      const col = columns[colIndex];
+      if (!col || col.isCompleted) return;
+      const current = getInput(col.sm.material_key);
+      setInput(col.sm.material_key, { passed: !current.passed });
     },
-    [rows, inputs]
+    [columns, inputs]
   );
 
   const pendingCount = Object.values(inputs).filter(
-    (v) => v.status !== null
+    (v) => v.passed || v.score !== null
   ).length;
 
   const handleSave = useCallback(() => {
     const records: MasteryInput[] = [];
-    for (const row of rows) {
-      if (row.isCompleted) continue;
-      const input = getInput(row.sm.material_key);
-      if (input.status === null) continue;
-      if (!row.currentNode) continue;
+    for (const col of columns) {
+      if (col.isCompleted) continue;
+      const input = getInput(col.sm.material_key);
+      if (!input.passed && input.score === null) continue;
+      if (!col.currentNode) continue;
       records.push({
         student_id: student.id,
-        material_key: row.sm.material_key,
-        node_key: row.currentNode.key,
+        material_key: col.sm.material_key,
+        node_key: col.currentNode.key,
         lesson_date: todayStr,
-        status: input.status,
+        status: input.passed ? "completed" : "retry",
         score: input.score ?? undefined,
       });
     }
@@ -120,7 +119,7 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
       },
       onError: (err) => toast.error(`エラー: ${err.message}`),
     });
-  }, [rows, inputs, student.id, todayStr, masteryMutation]);
+  }, [columns, inputs, student.id, todayStr, masteryMutation]);
 
   const handleReset = () => {
     setInputs({});
@@ -129,8 +128,8 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
   };
 
   const { activeCell, handleKeyDown } = useSpreadsheetKeyboard({
-    rowCount: rows.length,
-    onToggleStatus: toggleStatus,
+    colCount: columns.length,
+    onTogglePass: togglePass,
     onSave: handleSave,
     onEscape,
     enabled: active,
@@ -143,7 +142,7 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [active, handleKeyDown]);
 
-  if (rows.length === 0) {
+  if (columns.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
         <p className="text-sm">教材が割り当てられていません</p>
@@ -151,6 +150,16 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
       </div>
     );
   }
+
+  // Row labels for the left header column
+  const rowLabels = [
+    "教材名",
+    "現在の範囲",
+    "得点",
+    "満点",
+    "合格",
+    "次回の範囲",
+  ];
 
   return (
     <div className="space-y-3">
@@ -180,168 +189,223 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
                 disabled={masteryMutation.isPending}
               >
                 <Save className="mr-1.5 h-4 w-4" />
-                {masteryMutation.isPending
-                  ? "処理中..."
-                  : `保存 (Ctrl+S)`}
+                {masteryMutation.isPending ? "処理中..." : "保存 (Ctrl+S)"}
               </Button>
             </>
           )}
         </div>
       </div>
 
-      {/* Spreadsheet grid */}
-      <div className="rounded-lg border border-border overflow-hidden">
-        {/* Header */}
-        <div className="grid grid-cols-[180px_1fr_70px_80px_80px_1fr] gap-px bg-gray-900 text-white text-xs font-semibold">
-          <div className="px-3 py-2">教材</div>
-          <div className="px-3 py-2">現在のノード</div>
-          <div className="px-3 py-2 text-center">進捗</div>
-          <div className="px-3 py-2 text-center">点数</div>
-          <div className="px-3 py-2 text-center">結果</div>
-          <div className="px-3 py-2">次回</div>
-        </div>
-
-        {/* Rows */}
-        {rows.map((row, rowIndex) => {
-          const input = getInput(row.sm.material_key);
-          const isScoreFocused =
-            active && activeCell.row === rowIndex && activeCell.col === 0;
-          const isStatusFocused =
-            active && activeCell.row === rowIndex && activeCell.col === 1;
-
-          // Next preview
-          let nextPreview = "";
-          if (
-            input.status === "completed" &&
-            row.sm.pointer + 1 <= row.sm.total_nodes
-          ) {
-            const nextNode = row.nodes.find(
-              (n) => n.sort_order === row.sm.pointer + 1
-            );
-            nextPreview = nextNode
-              ? `→ ${nextNode.sort_order}. ${nextNode.title}`
-              : "";
-          } else if (input.status === "retry" && row.currentNode) {
-            nextPreview = `↻ ${row.currentNode.sort_order}. ${row.currentNode.title} (再)`;
-          }
-
-          // Result from last save
-          const resultItem = lastResult?.results.find(
-            (r) => r.material_key === row.sm.material_key
-          );
-
-          return (
-            <div
-              key={row.sm.material_key}
-              className={cn(
-                "grid grid-cols-[180px_1fr_70px_80px_80px_1fr] gap-px border-t border-border transition-colors",
-                row.isCompleted
-                  ? "bg-green-50 opacity-60"
-                  : input.status === "completed"
-                  ? "bg-red-50"
-                  : input.status === "retry"
-                  ? "bg-gray-100"
-                  : "bg-white hover:bg-gray-50",
-                active &&
-                  activeCell.row === rowIndex &&
-                  "ring-1 ring-inset ring-primary/40"
-              )}
-            >
-              {/* Material name */}
-              <div className="flex items-center px-3 py-2.5">
-                <span className="text-sm font-medium truncate">
-                  {row.sm.material_name}
-                </span>
-              </div>
-
-              {/* Current node */}
-              <div className="flex items-center px-3 py-2.5 text-sm">
-                {row.isCompleted ? (
-                  <span className="text-green-600 font-medium flex items-center gap-1">
-                    <CheckCircle2 className="h-4 w-4" />
-                    全範囲完了
-                  </span>
-                ) : row.currentNode ? (
-                  <span className="truncate">
-                    <span className="font-mono text-xs text-muted-foreground mr-1.5">
-                      {row.currentNode.sort_order}.
-                    </span>
-                    <span className="font-medium">{row.currentNode.title}</span>
-                    {row.currentNode.range_text && (
-                      <span className="text-muted-foreground ml-1.5 text-xs">
-                        ({row.currentNode.range_text})
-                      </span>
-                    )}
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">-</span>
+      {/* Spreadsheet grid - vertical layout (columns = materials) */}
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <div
+          className="grid min-w-max"
+          style={{
+            gridTemplateColumns: `100px repeat(${columns.length}, minmax(150px, 1fr))`,
+          }}
+        >
+          {/* 6 rows */}
+          {rowLabels.map((label, rowIdx) => (
+            <>
+              {/* Row header (left column) */}
+              <div
+                key={`label-${rowIdx}`}
+                className={cn(
+                  "flex items-center px-3 py-2 text-xs font-semibold border-b border-r border-border",
+                  rowIdx === 0
+                    ? "bg-gray-900 text-white"
+                    : "bg-gray-50 text-gray-600"
                 )}
+              >
+                {label}
               </div>
 
-              {/* Progress */}
-              <div className="flex items-center justify-center px-2 py-2.5">
-                <Badge variant="outline" className="text-[10px]">
-                  {row.sm.pointer}/{row.sm.total_nodes}
-                </Badge>
-              </div>
+              {/* Material columns */}
+              {columns.map((col, colIdx) => {
+                const input = getInput(col.sm.material_key);
+                const isActiveCol = active && activeCell.col === colIdx;
+                const resultItem = lastResult?.results.find(
+                  (r) => r.material_key === col.sm.material_key
+                );
 
-              {/* Score input */}
-              <div className="flex items-center justify-center px-2 py-2.5">
-                {!row.isCompleted && (
-                  <ScoreCell
-                    value={input.score}
-                    onChange={(val) =>
-                      setInput(row.sm.material_key, { score: val })
-                    }
-                    isFocused={isScoreFocused}
-                  />
-                )}
-              </div>
-
-              {/* Status toggle */}
-              <div className="flex items-center justify-center px-2 py-2.5">
-                {!row.isCompleted && (
-                  <StatusCell
-                    value={input.status}
-                    onToggle={() => toggleStatus(rowIndex)}
-                    isFocused={isStatusFocused}
-                  />
-                )}
-              </div>
-
-              {/* Next preview / result */}
-              <div className="flex items-center px-3 py-2.5 text-sm">
-                {resultItem ? (
-                  <span className="flex items-center gap-1.5 text-xs">
-                    {resultItem.advanced ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-                    ) : (
-                      <XCircle className="h-3.5 w-3.5 text-gray-500" />
-                    )}
-                    <span
-                      className={
-                        resultItem.advanced ? "text-green-700" : "text-gray-600"
-                      }
+                // Row 0: Material name
+                if (rowIdx === 0) {
+                  return (
+                    <div
+                      key={`${rowIdx}-${colIdx}`}
+                      className={cn(
+                        "flex items-center justify-center px-3 py-2 text-sm font-bold border-b border-r border-border bg-gray-900 text-white",
+                        col.isCompleted && "opacity-50"
+                      )}
                     >
-                      {resultItem.advanced ? "合格→進行" : "再実施"}
-                    </span>
-                    {resultItem.queued_node_title && (
-                      <span className="flex items-center gap-1 text-blue-600">
-                        <Printer className="h-3 w-3" />
-                        {resultItem.queued_node_title}
-                      </span>
-                    )}
-                  </span>
-                ) : nextPreview ? (
-                  <span className="text-xs text-muted-foreground flex items-center gap-1 truncate">
-                    <ArrowRight className="h-3 w-3 shrink-0" />
-                    {nextPreview}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
+                      {col.sm.material_name}
+                    </div>
+                  );
+                }
+
+                // Row 1: Current range (auto)
+                if (rowIdx === 1) {
+                  return (
+                    <div
+                      key={`${rowIdx}-${colIdx}`}
+                      className={cn(
+                        "flex items-center justify-center px-2 py-2 text-xs border-b border-r border-border bg-blue-50",
+                        col.isCompleted && "opacity-50"
+                      )}
+                    >
+                      {col.isCompleted ? (
+                        <span className="text-green-600 font-medium flex items-center gap-1">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          完了
+                        </span>
+                      ) : col.currentNode ? (
+                        <span className="text-center leading-tight">
+                          <span className="font-medium">
+                            {col.currentNode.title}
+                          </span>
+                          {col.currentNode.range_text && (
+                            <span className="block text-[10px] text-muted-foreground">
+                              {col.currentNode.range_text}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Row 2: Score input
+                if (rowIdx === 2) {
+                  const isFocused = isActiveCol && activeCell.row === 0;
+                  return (
+                    <div
+                      key={`${rowIdx}-${colIdx}`}
+                      className={cn(
+                        "flex items-center justify-center px-2 py-1.5 border-b border-r border-border",
+                        isFocused && "bg-primary/5"
+                      )}
+                    >
+                      {!col.isCompleted && (
+                        <ScoreCell
+                          value={input.score}
+                          onChange={(val) =>
+                            setInput(col.sm.material_key, { score: val })
+                          }
+                          isFocused={isFocused}
+                        />
+                      )}
+                    </div>
+                  );
+                }
+
+                // Row 3: Max score input
+                if (rowIdx === 3) {
+                  const isFocused = isActiveCol && activeCell.row === 1;
+                  return (
+                    <div
+                      key={`${rowIdx}-${colIdx}`}
+                      className={cn(
+                        "flex items-center justify-center px-2 py-1.5 border-b border-r border-border",
+                        isFocused && "bg-primary/5"
+                      )}
+                    >
+                      {!col.isCompleted && (
+                        <ScoreCell
+                          value={input.maxScore}
+                          onChange={(val) =>
+                            setInput(col.sm.material_key, { maxScore: val })
+                          }
+                          isFocused={isFocused}
+                        />
+                      )}
+                    </div>
+                  );
+                }
+
+                // Row 4: Pass checkbox
+                if (rowIdx === 4) {
+                  const isFocused = isActiveCol && activeCell.row === 2;
+                  return (
+                    <div
+                      key={`${rowIdx}-${colIdx}`}
+                      className={cn(
+                        "flex items-center justify-center px-2 py-1.5 border-b border-r border-border",
+                        isFocused && "bg-primary/5",
+                        input.passed && "bg-emerald-50"
+                      )}
+                    >
+                      {!col.isCompleted && (
+                        <PassCheckbox
+                          checked={input.passed}
+                          onToggle={() => togglePass(colIdx)}
+                          isFocused={isFocused}
+                        />
+                      )}
+                    </div>
+                  );
+                }
+
+                // Row 5: Next range (auto)
+                if (rowIdx === 5) {
+                  let nextText = "";
+                  if (resultItem) {
+                    if (resultItem.advanced) {
+                      nextText = resultItem.queued_node_title
+                        ? `→ ${resultItem.queued_node_title}`
+                        : "合格→進行";
+                    } else {
+                      nextText = "再実施";
+                    }
+                  } else if (input.passed && col.nextNode) {
+                    nextText = `→ ${col.nextNode.title}`;
+                  } else if (input.passed && !col.nextNode) {
+                    nextText = "→ 全範囲完了";
+                  } else if (!input.passed && input.score !== null && col.currentNode) {
+                    nextText = `↻ ${col.currentNode.title} (再)`;
+                  }
+
+                  return (
+                    <div
+                      key={`${rowIdx}-${colIdx}`}
+                      className={cn(
+                        "flex items-center justify-center px-2 py-2 text-xs border-b border-r border-border",
+                        resultItem
+                          ? resultItem.advanced
+                            ? "bg-green-50"
+                            : "bg-gray-50"
+                          : input.passed
+                          ? "bg-emerald-50"
+                          : ""
+                      )}
+                    >
+                      {resultItem ? (
+                        <span className="flex items-center gap-1">
+                          {resultItem.advanced ? (
+                            <CheckCircle2 className="h-3 w-3 text-green-600" />
+                          ) : (
+                            <XCircle className="h-3 w-3 text-gray-500" />
+                          )}
+                          {resultItem.queued_node_title && (
+                            <Printer className="h-3 w-3 text-blue-600" />
+                          )}
+                          <span className="truncate">{nextText}</span>
+                        </span>
+                      ) : nextText ? (
+                        <span className="text-muted-foreground truncate">
+                          {nextText}
+                        </span>
+                      ) : null}
+                    </div>
+                  );
+                }
+
+                return null;
+              })}
+            </>
+          ))}
+        </div>
       </div>
 
       {/* Last result summary */}
@@ -367,21 +431,11 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
       {/* Legend */}
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         <span className="font-medium">操作:</span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-4 w-6 rounded bg-red-600 text-white text-center text-[10px] leading-4 font-bold">
-            ○
-          </span>
-          合格
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-4 w-6 rounded bg-gray-800 text-white text-center text-[10px] leading-4 font-bold">
-            ×
-          </span>
-          再実施
-        </span>
-        <span className="ml-auto">
-          ↑↓←→ セル移動 · Enter/Space 合否切替 · Ctrl+S 保存 · Esc 生徒リストへ
-        </span>
+        <span>←→ 教材移動</span>
+        <span>↑↓ 行移動</span>
+        <span>Enter/Space 合格切替</span>
+        <span>Ctrl+S 保存</span>
+        <span>Esc 生徒リストへ</span>
       </div>
     </div>
   );

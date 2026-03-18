@@ -154,7 +154,7 @@ export function MaterialManager({ studentId }: Props) {
                 <div className="flex items-center gap-2">
                   <span className="text-sm">{mat.name}</span>
                   <span className="text-xs text-muted-foreground">
-                    ({mat.total_nodes}ノード)
+                    ({mat.total_nodes}範囲)
                   </span>
                 </div>
                 <Button

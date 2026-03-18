@@ -232,7 +232,7 @@ function MaterialCard({
       },
       {
         onSuccess: () => {
-          toast.success("ノードを追加しました");
+          toast.success("範囲を追加しました");
           setAddNodeFor("");
           setNodeKey("");
           setNodeTitle("");
@@ -258,7 +258,7 @@ function MaterialCard({
             <CardTitle className="text-base">{mat.name}</CardTitle>
             <Badge variant="outline">{mat.key}</Badge>
           </div>
-          <Badge variant="secondary">{mat.nodes.length} ノード</Badge>
+          <Badge variant="secondary">{mat.nodes.length} 範囲</Badge>
         </div>
       </CardHeader>
       {isExpanded && (
@@ -322,17 +322,17 @@ function MaterialCard({
                 }}
               >
                 <Plus className="mr-2 h-4 w-4" />
-                ノード追加
+                範囲追加
               </Button>
             </DialogTrigger>
             <DialogContent onClick={(e) => e.stopPropagation()}>
               <DialogHeader>
-                <DialogTitle>{mat.name} にノード追加</DialogTitle>
+                <DialogTitle>{mat.name} に範囲追加</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
                   <label className="mb-1 block text-sm font-medium">
-                    ノードキー
+                    範囲キー
                   </label>
                   <Input
                     value={nodeKey}
