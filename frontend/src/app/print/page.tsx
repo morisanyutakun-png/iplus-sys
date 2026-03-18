@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   useQueue,
   useAddToQueue,
   useRemoveFromQueue,
   useExecutePrint,
+  usePrinters,
 } from "@/lib/queries/queue";
 import { useStudents } from "@/lib/queries/students";
 import { useMaterials } from "@/lib/queries/materials";
@@ -75,6 +76,7 @@ export default function PrintPage() {
   const { data: materials } = useMaterials();
   const { data: jobs } = useJobs();
   const { data: logs } = useLogs();
+  const { data: printerData } = usePrinters();
   const addMutation = useAddToQueue();
   const removeMutation = useRemoveFromQueue();
   const executeMutation = useExecutePrint();
@@ -84,11 +86,21 @@ export default function PrintPage() {
   const [selectedStudent, setSelectedStudent] = useState("");
   const [selectedMaterial, setSelectedMaterial] = useState("");
   const [selectedNode, setSelectedNode] = useState("");
+  const [selectedPrinter, setSelectedPrinter] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set()
   );
 
+  // Set default printer when data loads
+  useEffect(() => {
+    if (printerData?.default && !selectedPrinter) {
+      setSelectedPrinter(printerData.default);
+    }
+  }, [printerData, selectedPrinter]);
+
   const selectedMat = materials?.find((m) => m.key === selectedMaterial);
+  const printerOptions = printerData?.printers ?? [];
+  const effectivePrinter = selectedPrinter || printerData?.default || "";
 
   // Group queue items by student
   const groupedQueue = useMemo<StudentGroup[]>(() => {
@@ -144,7 +156,7 @@ export default function PrintPage() {
   };
 
   const handlePrint = () => {
-    executeMutation.mutate(undefined, {
+    executeMutation.mutate(effectivePrinter || undefined, {
       onSuccess: () => toast.success("印刷ジョブを実行しました"),
       onError: (err) => toast.error(`印刷エラー: ${err.message}`),
     });
@@ -288,14 +300,39 @@ export default function PrintPage() {
                 </div>
               </DialogContent>
             </Dialog>
-            <Button
-              size="sm"
-              onClick={handlePrint}
-              disabled={!items?.length || executeMutation.isPending}
-            >
-              <Printer className="mr-2 h-4 w-4" />
-              {executeMutation.isPending ? "実行中..." : "印刷実行"}
-            </Button>
+
+            <div className="ml-auto flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <Printer className="h-4 w-4 text-muted-foreground" />
+                <Select value={effectivePrinter} onValueChange={setSelectedPrinter}>
+                  <SelectTrigger className="h-8 w-[220px] text-xs">
+                    <SelectValue placeholder="プリンタを選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {printerOptions.length > 0 ? (
+                      printerOptions.map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {p}
+                          {p === printerData?.default ? " (デフォルト)" : ""}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value={printerData?.default || "unknown"}>
+                        {printerData?.default || "プリンタ未検出"}
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                size="sm"
+                onClick={handlePrint}
+                disabled={!items?.length || executeMutation.isPending}
+              >
+                <Printer className="mr-2 h-4 w-4" />
+                {executeMutation.isPending ? "実行中..." : "印刷実行"}
+              </Button>
+            </div>
           </div>
 
           {/* Grouped queue display */}

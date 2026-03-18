@@ -50,9 +50,10 @@ export function useReorderQueue() {
 export function useExecutePrint() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () =>
+    mutationFn: (printerName?: string) =>
       apiFetch<{ job_id: string; results: unknown[] }>("/api/jobs/execute", {
         method: "POST",
+        body: JSON.stringify({ printer_name: printerName }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["queue"] });
@@ -60,5 +61,13 @@ export function useExecutePrint() {
       qc.invalidateQueries({ queryKey: ["logs"] });
       qc.invalidateQueries({ queryKey: ["students"] });
     },
+  });
+}
+
+export function usePrinters() {
+  return useQuery({
+    queryKey: ["printers"],
+    queryFn: () =>
+      apiFetch<{ printers: string[]; default: string }>("/api/jobs/printers"),
   });
 }

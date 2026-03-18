@@ -19,6 +19,24 @@ from app.schemas.job import PrintJobOut, PrintJobListOut
 router = APIRouter()
 
 
+@router.get("/printers")
+async def list_printers():
+    """List available printers from CUPS via lpstat."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["lpstat", "-p"], capture_output=True, text=True, timeout=5
+        )
+        printers = []
+        for line in result.stdout.splitlines():
+            if line.startswith("printer "):
+                name = line.split()[1]
+                printers.append(name)
+        return {"printers": printers, "default": settings.printer_name}
+    except Exception:
+        return {"printers": [], "default": settings.printer_name}
+
+
 def _resolve_pdf_path(pdf_relpath: str) -> str | None:
     """Find the actual file path for a PDF across configured base directories and local storage."""
     if not pdf_relpath:
@@ -137,6 +155,8 @@ async def execute_print(body: dict = None, db: AsyncSession = Depends(get_db)):
     """Execute printing: prepare job if needed, advance pointers, clear queue."""
     import subprocess
 
+    printer = (body or {}).get("printer_name") or settings.printer_name
+
     # Prepare job first
     result = await db.execute(
         select(PrintQueue)
@@ -171,7 +191,7 @@ async def execute_print(body: dict = None, db: AsyncSession = Depends(get_db)):
 
         if resolved:
             try:
-                cmd = [settings.printer_command, "-d", settings.printer_name]
+                cmd = [settings.printer_command, "-d", printer]
                 if duplex:
                     cmd += ["-o", "sides=two-sided-long-edge"]
                 cmd.append(resolved)
