@@ -15,7 +15,7 @@ export function useMaterials() {
 export function useCreateMaterial() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string }) =>
+    mutationFn: (data: { name: string; subject?: string }) =>
       apiFetch<Material>("/api/materials/simple", {
         method: "POST",
         body: JSON.stringify(data),

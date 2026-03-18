@@ -68,6 +68,7 @@ async def create_material_simple(body: MaterialCreateSimple, db: AsyncSession = 
     material = Material(
         key=key,
         name=name,
+        subject=body.subject,
         aliases=[],
         sort_order=max_order + 1,
     )

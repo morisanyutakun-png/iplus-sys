@@ -18,6 +18,7 @@ class MaterialNodeOut(BaseModel):
 class MaterialOut(BaseModel):
     key: str
     name: str
+    subject: str = "その他"
     start_on: str | None = None
     aliases: list[str] = []
     sort_order: int
@@ -39,6 +40,7 @@ class MaterialCreate(BaseModel):
 
 class MaterialCreateSimple(BaseModel):
     name: str
+    subject: str = "その他"
 
 
 class MaterialNodeCreate(BaseModel):

@@ -11,6 +11,7 @@ class Material(Base):
 
     key: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    subject: Mapped[str] = mapped_column(String, default="その他")
     start_on: Mapped[str | None] = mapped_column(String, nullable=True)
     aliases: Mapped[list] = mapped_column(JSON, default=list)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)

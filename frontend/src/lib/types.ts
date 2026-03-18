@@ -27,6 +27,7 @@ export interface MaterialNode {
 export interface Material {
   key: string;
   name: string;
+  subject: string;
   start_on?: string;
   aliases: string[];
   sort_order: number;
