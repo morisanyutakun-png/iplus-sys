@@ -155,9 +155,6 @@ export default function MaterialsPage() {
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="例: 英単語ターゲット1900"
                     autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && newName.trim()) handleCreate();
-                    }}
                   />
                 </div>
                 <div>
@@ -360,9 +357,6 @@ function MaterialCard({
                     onChange={(e) => setNodeTitle(e.target.value)}
                     placeholder="例: 1-100"
                     autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && nodeTitle.trim()) handleAddNode();
-                    }}
                   />
                 </div>
                 <div>
