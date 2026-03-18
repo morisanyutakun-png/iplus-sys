@@ -194,6 +194,7 @@ export interface MasteryResultItem {
   node_key: string;
   status: string;
   advanced: boolean;
+  completed: boolean;
   new_pointer: number;
   queued_node_key?: string;
   queued_node_title?: string;
@@ -204,6 +205,7 @@ export interface MasteryBatchResponse {
   advanced: number;
   retried: number;
   queued: number;
+  completed: number;
   results: MasteryResultItem[];
 }
 

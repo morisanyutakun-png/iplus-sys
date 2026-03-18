@@ -1,14 +1,14 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func as sa_func
+from sqlalchemy import select, delete, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.lesson_record import LessonRecord
-from app.models.student_material import StudentMaterial, ProgressHistory
+from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
 from app.models.material import Material, MaterialNode
 from app.models.print_queue import PrintQueue
 from app.schemas.lesson_record import (
@@ -102,6 +102,7 @@ async def batch_mastery_input(
     advanced_count = 0
     retried_count = 0
     queued_count = 0
+    completed_count = 0
 
     for rec in body.records:
         # 1. Save lesson record (upsert)
@@ -165,12 +166,37 @@ async def batch_mastery_input(
         else:
             retried_count += 1
 
-        # 4. Queue next node for printing
+        # 4. Check if material is completed (pointer exceeded total)
+        is_completed = False
+        if did_advance and sm.pointer > total_nodes:
+            is_completed = True
+            completed_count += 1
+            # Archive progress before removing assignment
+            db.add(ArchivedProgress(
+                student_id=rec.student_id,
+                material_key=rec.material_key,
+                pointer=total_nodes,
+            ))
+            db.add(ProgressHistory(
+                student_id=rec.student_id,
+                material_key=rec.material_key,
+                action="complete",
+                old_pointer=total_nodes,
+                metadata_={"auto_unassign": True, "total_nodes": total_nodes},
+            ))
+            await db.execute(
+                delete(StudentMaterial).where(
+                    StudentMaterial.student_id == rec.student_id,
+                    StudentMaterial.material_key == rec.material_key,
+                )
+            )
+
+        # 5. Queue next node for printing (only if not completed)
         new_pointer = sm.pointer
         queued_node_key = None
         queued_node_title = None
 
-        if new_pointer <= total_nodes:
+        if not is_completed and new_pointer <= total_nodes:
             # Find the node at current pointer
             next_node = next(
                 (n for n in nodes_sorted if n.sort_order == new_pointer), None
@@ -198,6 +224,7 @@ async def batch_mastery_input(
             node_key=rec.node_key,
             status=rec.status,
             advanced=did_advance,
+            completed=is_completed,
             new_pointer=new_pointer,
             queued_node_key=queued_node_key,
             queued_node_title=queued_node_title,
@@ -209,5 +236,6 @@ async def batch_mastery_input(
         advanced=advanced_count,
         retried=retried_count,
         queued=queued_count,
+        completed=completed_count,
         results=results,
     )

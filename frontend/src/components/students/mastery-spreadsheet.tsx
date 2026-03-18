@@ -123,9 +123,16 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape }: Pr
       onSuccess: (data) => {
         setLastResult(data);
         setInputs({});
-        toast.success(
-          `${data.processed}件処理: ${data.advanced}件合格 / ${data.retried}件再実施 / ${data.queued}件印刷キュー追加`
-        );
+        const parts = [
+          `${data.processed}件処理`,
+          `${data.advanced}件合格`,
+          `${data.retried}件再実施`,
+          `${data.queued}件印刷キュー追加`,
+        ];
+        if (data.completed > 0) {
+          parts.push(`${data.completed}件教材完了（自動割当解除）`);
+        }
+        toast.success(parts.join(" / "));
       },
       onError: (err) => toast.error(`エラー: ${err.message}`),
     });

@@ -74,15 +74,20 @@ export function useDeleteMaterial() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (materialKey: string) => {
-      const res = await apiFetch<{ status: string }>(
-        `/api/materials/${encodeURIComponent(materialKey)}`,
+      const res = await fetch(
+        apiUrl(`/api/materials/${encodeURIComponent(materialKey)}`),
         { method: "DELETE" }
       );
-      return res;
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`削除に失敗しました: ${text}`);
+      }
+      return res.json() as Promise<{ status: string; unassigned: number }>;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["materials"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["students"] });
     },
   });
 }

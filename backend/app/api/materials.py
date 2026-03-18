@@ -2,14 +2,14 @@ import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy import select, func as sa_func
+from sqlalchemy import select, delete, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import get_db
 from app.models.material import Material, MaterialNode
-from app.models.student_material import StudentMaterial
+from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
 from app.schemas.material import MaterialOut, MaterialListOut, MaterialCreate, MaterialCreateSimple, MaterialNodeCreate, MaterialNodeOut
 
 router = APIRouter()
@@ -192,20 +192,32 @@ async def delete_material(material_key: str, db: AsyncSession = Depends(get_db))
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
 
-    # Reject deletion if assigned to students
+    # Archive and unassign all student assignments before deletion
     assigned_result = await db.execute(
-        select(sa_func.count()).select_from(StudentMaterial).where(
-            StudentMaterial.material_key == material_key
-        )
+        select(StudentMaterial).where(StudentMaterial.material_key == material_key)
     )
-    assigned_count = assigned_result.scalar()
+    assigned = assigned_result.scalars().all()
+    unassigned_count = len(assigned)
 
-    if assigned_count > 0:
-        raise HTTPException(
-            status_code=409,
-            detail=f"この教材は{assigned_count}名の生徒に割り当てられています。先に割当を解除してください。",
+    for sm in assigned:
+        db.add(ArchivedProgress(
+            student_id=sm.student_id,
+            material_key=material_key,
+            pointer=sm.pointer,
+        ))
+        db.add(ProgressHistory(
+            student_id=sm.student_id,
+            material_key=material_key,
+            action="remove",
+            old_pointer=sm.pointer,
+            metadata_={"reason": "material_deleted"},
+        ))
+
+    if unassigned_count > 0:
+        await db.execute(
+            delete(StudentMaterial).where(StudentMaterial.material_key == material_key)
         )
 
     await db.delete(material)
     await db.commit()
-    return {"status": "deleted"}
+    return {"status": "deleted", "unassigned": unassigned_count}

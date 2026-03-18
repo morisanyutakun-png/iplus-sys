@@ -56,6 +56,7 @@ class MasteryResultItem(BaseModel):
     node_key: str
     status: str
     advanced: bool
+    completed: bool = False
     new_pointer: int
     queued_node_key: str | None = None
     queued_node_title: str | None = None
@@ -66,4 +67,5 @@ class MasteryBatchResponse(BaseModel):
     advanced: int
     retried: int
     queued: int
+    completed: int = 0
     results: list[MasteryResultItem]

@@ -35,21 +35,94 @@ import {
   Search,
   BookOpen,
   Trash2,
+  Calculator,
+  Languages,
+  PenLine,
+  FlaskConical,
+  Globe,
+  Layers,
+  File,
 } from "lucide-react";
 import type { Material } from "@/lib/types";
 
-// Subject color config
-const SUBJECT_COLORS: Record<string, { border: string; bg: string; text: string; badge: string }> = {
-  "数学": { border: "border-l-blue-500", bg: "bg-blue-50", text: "text-blue-700", badge: "bg-blue-100 text-blue-800" },
-  "英語": { border: "border-l-red-500", bg: "bg-red-50", text: "text-red-700", badge: "bg-red-100 text-red-800" },
-  "国語": { border: "border-l-emerald-500", bg: "bg-emerald-50", text: "text-emerald-700", badge: "bg-emerald-100 text-emerald-800" },
-  "理科": { border: "border-l-purple-500", bg: "bg-purple-50", text: "text-purple-700", badge: "bg-purple-100 text-purple-800" },
-  "社会": { border: "border-l-amber-500", bg: "bg-amber-50", text: "text-amber-700", badge: "bg-amber-100 text-amber-800" },
-};
-const DEFAULT_COLOR = { border: "border-l-gray-400", bg: "bg-gray-50", text: "text-gray-600", badge: "bg-gray-100 text-gray-700" };
+// Subject config with icons, gradients, and colors
+interface SubjectConfig {
+  icon: React.ComponentType<{ className?: string }>;
+  gradient: string;
+  headerBg: string;
+  accent: string;
+  text: string;
+  badge: string;
+  border: string;
+  dot: string;
+}
 
-function getSubjectColor(subject: string) {
-  return SUBJECT_COLORS[subject] || DEFAULT_COLOR;
+const SUBJECT_CONFIG: Record<string, SubjectConfig> = {
+  "数学": {
+    icon: Calculator,
+    gradient: "from-blue-500 to-indigo-600",
+    headerBg: "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30",
+    accent: "bg-blue-500",
+    text: "text-blue-700 dark:text-blue-300",
+    badge: "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300",
+    border: "border-blue-200 dark:border-blue-800",
+    dot: "bg-blue-500",
+  },
+  "英語": {
+    icon: Languages,
+    gradient: "from-rose-500 to-red-600",
+    headerBg: "bg-gradient-to-r from-rose-50 to-red-50 dark:from-rose-950/30 dark:to-red-950/30",
+    accent: "bg-rose-500",
+    text: "text-rose-700 dark:text-rose-300",
+    badge: "bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300",
+    border: "border-rose-200 dark:border-rose-800",
+    dot: "bg-rose-500",
+  },
+  "国語": {
+    icon: PenLine,
+    gradient: "from-emerald-500 to-green-600",
+    headerBg: "bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/30",
+    accent: "bg-emerald-500",
+    text: "text-emerald-700 dark:text-emerald-300",
+    badge: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300",
+    border: "border-emerald-200 dark:border-emerald-800",
+    dot: "bg-emerald-500",
+  },
+  "理科": {
+    icon: FlaskConical,
+    gradient: "from-violet-500 to-purple-600",
+    headerBg: "bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30",
+    accent: "bg-violet-500",
+    text: "text-violet-700 dark:text-violet-300",
+    badge: "bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-300",
+    border: "border-violet-200 dark:border-violet-800",
+    dot: "bg-violet-500",
+  },
+  "社会": {
+    icon: Globe,
+    gradient: "from-amber-500 to-orange-600",
+    headerBg: "bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30",
+    accent: "bg-amber-500",
+    text: "text-amber-700 dark:text-amber-300",
+    badge: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300",
+    border: "border-amber-200 dark:border-amber-800",
+    dot: "bg-amber-500",
+  },
+};
+
+const DEFAULT_CONFIG: SubjectConfig = {
+  icon: BookOpen,
+  gradient: "from-gray-500 to-gray-600",
+  headerBg: "bg-gradient-to-r from-gray-50 to-slate-50 dark:from-gray-950/30 dark:to-slate-950/30",
+  accent: "bg-gray-500",
+  text: "text-gray-700 dark:text-gray-300",
+  badge: "bg-gray-100 text-gray-800 dark:bg-gray-900/50 dark:text-gray-300",
+  border: "border-gray-200 dark:border-gray-800",
+  dot: "bg-gray-500",
+};
+
+function getConfig(subject: string) {
+  return SUBJECT_CONFIG[subject] || DEFAULT_CONFIG;
 }
 
 const PRESET_SUBJECTS = ["数学", "英語", "国語", "理科", "社会"];
@@ -65,7 +138,6 @@ export default function MaterialsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedSubjects, setCollapsedSubjects] = useState<Set<string>>(new Set());
 
-  // Group materials by subject
   const grouped = useMemo(() => {
     const filtered = (materials || []).filter((m) =>
       searchQuery ? m.name.toLowerCase().includes(searchQuery.toLowerCase()) : true
@@ -76,7 +148,6 @@ export default function MaterialsPage() {
       if (!groups.has(subject)) groups.set(subject, []);
       groups.get(subject)!.push(mat);
     }
-    // Sort: preset subjects first, then alphabetical
     const sorted = [...groups.entries()].sort(([a], [b]) => {
       const ai = PRESET_SUBJECTS.indexOf(a);
       const bi = PRESET_SUBJECTS.indexOf(b);
@@ -88,8 +159,8 @@ export default function MaterialsPage() {
     return sorted;
   }, [materials, searchQuery]);
 
-  const subjectCount = grouped.length;
   const totalMaterials = materials?.length || 0;
+  const totalNodes = (materials || []).reduce((s, m) => s + m.nodes.length, 0);
 
   const toggleSubjectCollapse = (subject: string) => {
     setCollapsedSubjects((prev) => {
@@ -122,22 +193,23 @@ export default function MaterialsPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-8">
         <div className="flex items-center justify-between">
           <div className="space-y-2">
-            <div className="h-7 w-32 rounded-lg skeleton-pulse" />
-            <div className="h-4 w-48 rounded-lg skeleton-pulse" />
+            <div className="h-9 w-40 rounded-xl skeleton-pulse" />
+            <div className="h-4 w-56 rounded-lg skeleton-pulse" />
           </div>
           <div className="flex items-center gap-3">
-            <div className="h-9 w-56 rounded-lg skeleton-pulse" />
-            <div className="h-9 w-24 rounded-lg skeleton-pulse" />
+            <div className="h-10 w-64 rounded-xl skeleton-pulse" />
+            <div className="h-10 w-28 rounded-xl skeleton-pulse" />
           </div>
         </div>
         {[1, 2, 3].map((i) => (
-          <div key={i} className="rounded-xl overflow-hidden">
-            <div className="h-12 skeleton-pulse" />
-            <div className="p-4 space-y-3">
-              <div className="h-24 rounded-xl skeleton-pulse" />
+          <div key={i} className="rounded-2xl overflow-hidden">
+            <div className="h-14 skeleton-pulse" />
+            <div className="p-5 grid grid-cols-2 gap-4">
+              <div className="h-36 rounded-xl skeleton-pulse" />
+              <div className="h-36 rounded-xl skeleton-pulse" />
             </div>
           </div>
         ))}
@@ -146,63 +218,76 @@ export default function MaterialsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">教材管理</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {totalMaterials}教材 · {subjectCount}教科
-          </p>
+          <h1 className="text-3xl font-bold tracking-tight">教材管理</h1>
+          <div className="flex items-center gap-3 mt-2">
+            <Badge variant="secondary" className="rounded-full text-xs font-medium">
+              <Layers className="mr-1 h-3 w-3" />
+              {totalMaterials} 教材
+            </Badge>
+            <Badge variant="secondary" className="rounded-full text-xs font-medium">
+              <File className="mr-1 h-3 w-3" />
+              {totalNodes} 範囲
+            </Badge>
+            <Badge variant="secondary" className="rounded-full text-xs font-medium">
+              {grouped.length} 教科
+            </Badge>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="教材を検索..."
-              className="pl-9 w-56 h-9"
+              className="pl-10 w-64 h-10 rounded-xl bg-muted/40 border-0 focus-visible:bg-background focus-visible:ring-2 transition-all"
             />
           </div>
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">
+              <Button className="h-10 rounded-xl shadow-premium font-medium">
                 <Plus className="mr-2 h-4 w-4" />
                 教材追加
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>教材登録</DialogTitle>
+                <DialogTitle className="text-lg">新しい教材を登録</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
+              <div className="space-y-5 pt-2">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium">教材名</label>
+                  <label className="mb-2 block text-sm font-medium">教材名</label>
                   <Input
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="例: 英単語ターゲット1900"
+                    className="h-10 rounded-xl"
                     autoFocus
                   />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium">教科</label>
+                  <label className="mb-2 block text-sm font-medium">教科</label>
                   <div className="flex flex-wrap gap-2">
                     {PRESET_SUBJECTS.map((s) => {
-                      const color = getSubjectColor(s);
+                      const cfg = getConfig(s);
+                      const SubjectIcon = cfg.icon;
                       return (
                         <button
                           key={s}
                           type="button"
                           onClick={() => { setSelectedSubject(s); setCustomSubject(""); }}
                           className={cn(
-                            "px-3 py-1.5 rounded-full text-sm font-medium transition-all border-2",
+                            "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all border-2",
                             selectedSubject === s
-                              ? `${color.badge} border-current shadow-sm scale-105`
+                              ? `${cfg.badge} border-current shadow-sm scale-105`
                               : "border-transparent bg-muted/60 text-muted-foreground hover:bg-muted"
                           )}
                         >
+                          <SubjectIcon className="h-3.5 w-3.5" />
                           {s}
                         </button>
                       );
@@ -211,12 +296,13 @@ export default function MaterialsPage() {
                       type="button"
                       onClick={() => setSelectedSubject("カスタム")}
                       className={cn(
-                        "px-3 py-1.5 rounded-full text-sm font-medium transition-all border-2",
+                        "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all border-2",
                         selectedSubject === "カスタム"
-                          ? "bg-gray-100 text-gray-800 border-gray-300 shadow-sm"
+                          ? "bg-gray-100 text-gray-800 border-gray-300 shadow-sm dark:bg-gray-800 dark:text-gray-200"
                           : "border-transparent bg-muted/60 text-muted-foreground hover:bg-muted"
                       )}
                     >
+                      <BookOpen className="h-3.5 w-3.5" />
                       その他
                     </button>
                   </div>
@@ -225,16 +311,16 @@ export default function MaterialsPage() {
                       value={customSubject}
                       onChange={(e) => setCustomSubject(e.target.value)}
                       placeholder="教科名を入力"
-                      className="mt-2"
+                      className="mt-3 h-10 rounded-xl"
                     />
                   )}
                 </div>
                 <Button
-                  className="w-full"
+                  className="w-full h-10 rounded-xl font-medium"
                   onClick={handleCreate}
                   disabled={!newName.trim() || createMutation.isPending}
                 >
-                  {createMutation.isPending ? "登録中..." : "登録"}
+                  {createMutation.isPending ? "登録中..." : "登録する"}
                 </Button>
               </div>
             </DialogContent>
@@ -242,59 +328,81 @@ export default function MaterialsPage() {
         </div>
       </div>
 
-      {/* Subject groups */}
+      {/* Empty state */}
       {grouped.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <BookOpen className="h-12 w-12 opacity-20 mb-3" />
-          <p className="text-sm mb-3">
-            {searchQuery ? "該当する教材がありません" : "教材がまだ登録されていません"}
-          </p>
-          {!searchQuery && (
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              教材を追加
-            </Button>
-          )}
-        </div>
+        <Card className="border-0 shadow-premium overflow-hidden">
+          <CardContent className="flex flex-col items-center justify-center py-24">
+            <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-primary/10 to-primary/5 mb-6">
+              <BookOpen className="h-10 w-10 text-primary/40" />
+            </div>
+            <h3 className="text-lg font-semibold mb-1">
+              {searchQuery ? "該当する教材がありません" : "教材がまだ登録されていません"}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              {searchQuery ? "検索条件を変更してみてください" : "教材を追加して、学習管理を始めましょう"}
+            </p>
+            {!searchQuery && (
+              <Button onClick={() => setCreateOpen(true)} className="rounded-xl font-medium">
+                <Plus className="mr-2 h-4 w-4" />
+                最初の教材を追加
+              </Button>
+            )}
+          </CardContent>
+        </Card>
       )}
 
+      {/* Subject groups */}
       {grouped.map(([subject, mats]) => {
-        const color = getSubjectColor(subject);
+        const cfg = getConfig(subject);
         const isCollapsed = collapsedSubjects.has(subject);
+        const SubjectIcon = cfg.icon;
+        const subjectNodeCount = mats.reduce((s, m) => s + m.nodes.length, 0);
 
         return (
-          <div key={subject} className={cn("rounded-xl border border-border overflow-hidden")}>
+          <div key={subject} className="rounded-2xl border border-border/60 overflow-hidden shadow-premium">
             {/* Subject header */}
             <button
               type="button"
               onClick={() => toggleSubjectCollapse(subject)}
               className={cn(
-                "w-full flex items-center justify-between px-5 py-3 transition-colors",
-                color.bg,
-                "hover:opacity-90 cursor-pointer"
+                "w-full flex items-center justify-between px-6 py-4 transition-all",
+                cfg.headerBg,
+                "hover:opacity-95 cursor-pointer"
               )}
             >
-              <div className="flex items-center gap-3">
-                {isCollapsed ? (
-                  <ChevronRight className={cn("h-4 w-4", color.text)} />
-                ) : (
-                  <ChevronDown className={cn("h-4 w-4", color.text)} />
-                )}
-                <span className={cn("font-bold text-base", color.text)}>{subject}</span>
-                <Badge className={cn("rounded-full text-xs", color.badge)}>
-                  {mats.length}教材
+              <div className="flex items-center gap-4">
+                <div className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br shadow-sm text-white",
+                  cfg.gradient
+                )}>
+                  <SubjectIcon className="h-5 w-5" />
+                </div>
+                <div className="text-left">
+                  <div className="flex items-center gap-2">
+                    <span className={cn("font-bold text-base", cfg.text)}>{subject}</span>
+                    {isCollapsed ? (
+                      <ChevronRight className={cn("h-4 w-4", cfg.text)} />
+                    ) : (
+                      <ChevronDown className={cn("h-4 w-4", cfg.text)} />
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {mats.length}教材 · {subjectNodeCount}範囲
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge className={cn("rounded-full text-[10px] font-semibold", cfg.badge)}>
+                  {mats.length}
                 </Badge>
               </div>
-              <span className="text-xs text-muted-foreground">
-                {mats.reduce((sum, m) => sum + m.nodes.length, 0)}範囲
-              </span>
             </button>
 
-            {/* Material cards */}
+            {/* Material cards grid */}
             {!isCollapsed && (
-              <div className="p-4 space-y-3 bg-white">
+              <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-4 bg-card">
                 {mats.map((mat) => (
-                  <MaterialCard key={mat.key} mat={mat} subjectColor={color} />
+                  <MaterialCard key={mat.key} mat={mat} config={cfg} />
                 ))}
               </div>
             )}
@@ -307,10 +415,10 @@ export default function MaterialsPage() {
 
 function MaterialCard({
   mat,
-  subjectColor,
+  config,
 }: {
   mat: Material;
-  subjectColor: { border: string; bg: string; text: string; badge: string };
+  config: SubjectConfig;
 }) {
   const addNodeMutation = useAddNodeSimple(mat.key);
   const deleteMutation = useDeleteMaterial();
@@ -319,6 +427,7 @@ function MaterialCard({
   const [nodeTitle, setNodeTitle] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [showAllNodes, setShowAllNodes] = useState(false);
 
   const resetForm = () => {
     setNodeTitle("");
@@ -343,8 +452,11 @@ function MaterialCard({
 
   const handleDelete = () => {
     deleteMutation.mutate(mat.key, {
-      onSuccess: () => {
-        toast.success(`「${mat.name}」を削除しました`);
+      onSuccess: (data) => {
+        const msg = data.unassigned > 0
+          ? `「${mat.name}」を削除しました（${data.unassigned}名の割当を解除）`
+          : `「${mat.name}」を削除しました`;
+        toast.success(msg);
         setDeleteOpen(false);
       },
       onError: (err) => toast.error(err.message),
@@ -363,164 +475,218 @@ function MaterialCard({
     if (file) setPdfFile(file);
   };
 
+  const sortedNodes = [...mat.nodes].sort((a, b) => a.sort_order - b.sort_order);
+  const pdfCount = mat.nodes.filter((n) => n.pdf_relpath).length;
+  const visibleNodes = showAllNodes ? sortedNodes : sortedNodes.slice(0, 8);
+  const hiddenCount = sortedNodes.length - visibleNodes.length;
+
   return (
-    <Card className={cn("border-l-4 shadow-premium card-hover", subjectColor.border)}>
-      <CardContent className="p-4">
-        {/* Material header */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-sm">{mat.name}</h3>
-            <Badge variant="secondary" className="text-[10px] rounded-full">
-              {mat.nodes.length}範囲
-            </Badge>
+    <Card className="group border-0 shadow-sm hover:shadow-premium-lg transition-all duration-300 overflow-hidden relative">
+      {/* Top accent line */}
+      <div className={cn("h-1 w-full bg-gradient-to-r", config.gradient)} />
+
+      <CardContent className="p-5 pt-4">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="min-w-0 flex-1">
+            <h3 className="font-bold text-[15px] tracking-tight truncate">{mat.name}</h3>
+            <div className="flex items-center gap-2 mt-1.5">
+              <Badge variant="secondary" className="rounded-full text-[10px] font-medium px-2 py-0">
+                {mat.nodes.length} 範囲
+              </Badge>
+              {pdfCount > 0 && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                  <FileText className="h-3 w-3" />
+                  PDF {pdfCount}/{mat.nodes.length}
+                </span>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <AlertDialogTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Trash2 className="mr-1 h-3 w-3" />
-                削除
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-              <AlertDialogHeader>
-                <AlertDialogTitle>教材を削除しますか？</AlertDialogTitle>
-                <AlertDialogDescription>
-                  「{mat.name}」と{mat.nodes.length}件の範囲が完全に削除されます。この操作は元に戻せません。
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDelete}
-                  disabled={deleteMutation.isPending}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  {deleteMutation.isPending ? "削除中..." : "削除する"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          <Dialog
-            open={addOpen}
-            onOpenChange={(open) => {
-              setAddOpen(open);
-              if (!open) resetForm();
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Plus className="mr-1 h-3 w-3" />
-                範囲追加
-              </Button>
-            </DialogTrigger>
-            <DialogContent onClick={(e) => e.stopPropagation()}>
-              <DialogHeader>
-                <DialogTitle>{mat.name} に範囲追加</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">タイトル</label>
-                  <Input
-                    value={nodeTitle}
-                    onChange={(e) => setNodeTitle(e.target.value)}
-                    placeholder="例: 1-100"
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">PDF（任意）</label>
-                  <div
-                    className={cn(
-                      "relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors",
-                      isDragging
-                        ? "border-primary bg-primary/5"
-                        : pdfFile
-                          ? "border-green-500 bg-green-50 dark:bg-green-950/20"
-                          : "border-muted-foreground/25 hover:border-muted-foreground/50"
-                    )}
-                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={handleDrop}
-                  >
-                    {pdfFile ? (
-                      <div className="flex items-center gap-2 text-sm">
-                        <FileText className="h-5 w-5 text-green-600" />
-                        <span className="font-medium">{pdfFile.name}</span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 px-2 text-xs text-muted-foreground"
-                          onClick={() => setPdfFile(null)}
-                        >
-                          取消
-                        </Button>
-                      </div>
-                    ) : (
-                      <>
-                        <Upload className="mb-2 h-8 w-8 text-muted-foreground/50" />
-                        <p className="text-sm text-muted-foreground">ドラッグ&ドロップ または</p>
-                        <label className="mt-1 cursor-pointer text-sm font-medium text-primary hover:underline">
-                          ファイルを選択
-                          <input type="file" accept=".pdf" className="hidden" onChange={handleFileSelect} />
-                        </label>
-                      </>
-                    )}
-                  </div>
-                </div>
+
+          {/* Actions - visible on hover */}
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+              <AlertDialogTrigger asChild>
                 <Button
-                  className="w-full"
-                  onClick={handleAddNode}
-                  disabled={!nodeTitle.trim() || addNodeMutation.isPending}
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  {addNodeMutation.isPending ? "追加中..." : "追加"}
+                  <Trash2 className="h-3.5 w-3.5" />
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </AlertDialogTrigger>
+              <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>教材を削除しますか？</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    「{mat.name}」と{mat.nodes.length}件の範囲が完全に削除されます。
+                    割り当て中の生徒がいる場合は自動的に割当が解除されます。
+                    この操作は元に戻せません。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDelete}
+                    disabled={deleteMutation.isPending}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {deleteMutation.isPending ? "削除中..." : "削除する"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            <Dialog
+              open={addOpen}
+              onOpenChange={(open) => {
+                setAddOpen(open);
+                if (!open) resetForm();
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent onClick={(e) => e.stopPropagation()} className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>{mat.name} に範囲追加</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">タイトル</label>
+                    <Input
+                      value={nodeTitle}
+                      onChange={(e) => setNodeTitle(e.target.value)}
+                      placeholder="例: 1-100"
+                      className="h-10 rounded-xl"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">PDF（任意）</label>
+                    <div
+                      className={cn(
+                        "relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-all",
+                        isDragging
+                          ? "border-primary bg-primary/5 scale-[1.02]"
+                          : pdfFile
+                            ? "border-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20"
+                            : "border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/30"
+                      )}
+                      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={handleDrop}
+                    >
+                      {pdfFile ? (
+                        <div className="flex items-center gap-2 text-sm">
+                          <FileText className="h-5 w-5 text-emerald-600" />
+                          <span className="font-medium">{pdfFile.name}</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-xs text-muted-foreground"
+                            onClick={() => setPdfFile(null)}
+                          >
+                            取消
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <Upload className="mb-2 h-8 w-8 text-muted-foreground/30" />
+                          <p className="text-sm text-muted-foreground">ドラッグ&ドロップ</p>
+                          <label className="mt-1.5 cursor-pointer text-sm font-medium text-primary hover:underline">
+                            またはファイルを選択
+                            <input type="file" accept=".pdf" className="hidden" onChange={handleFileSelect} />
+                          </label>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    className="w-full h-10 rounded-xl font-medium"
+                    onClick={handleAddNode}
+                    disabled={!nodeTitle.trim() || addNodeMutation.isPending}
+                  >
+                    {addNodeMutation.isPending ? "追加中..." : "追加する"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
-        {/* Node pills - compact horizontal display */}
+        {/* Node visualization */}
         {mat.nodes.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            {[...mat.nodes]
-              .sort((a, b) => a.sort_order - b.sort_order)
-              .map((node) => (
+          <div className="space-y-2">
+            {/* Step indicators */}
+            <div className="flex flex-wrap gap-1.5">
+              {visibleNodes.map((node, idx) => (
                 <div
                   key={node.key}
                   className={cn(
-                    "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition-colors",
-                    "bg-muted/50 hover:bg-muted text-foreground/80",
-                    "border border-border/50"
+                    "stagger-item inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1 rounded-lg text-xs transition-all",
+                    "bg-muted/40 hover:bg-muted/70 border border-border/40 hover:border-border",
+                    "cursor-default"
                   )}
+                  style={{ animationDelay: `${idx * 30}ms` }}
                   title={[
                     node.title,
                     node.range_text && node.range_text !== node.title ? node.range_text : "",
-                    node.pdf_relpath ? "PDF あり" : "",
+                    node.pdf_relpath ? "PDF あり" : "PDF なし",
                     node.duplex ? "両面印刷" : "",
                   ].filter(Boolean).join(" · ")}
                 >
-                  <span className="text-muted-foreground font-medium">{node.sort_order}.</span>
-                  <span className="font-medium truncate max-w-[120px]">{node.title}</span>
-                  {node.pdf_relpath && (
-                    <FileText className="h-3 w-3 text-blue-500 shrink-0" />
-                  )}
+                  {/* Status dot */}
+                  <span className={cn(
+                    "h-1.5 w-1.5 rounded-full shrink-0",
+                    node.pdf_relpath ? "bg-emerald-500" : "bg-muted-foreground/30"
+                  )} />
+                  <span className="text-muted-foreground/60 font-medium tabular-nums">{node.sort_order}</span>
+                  <span className="font-medium truncate max-w-[100px]">{node.title}</span>
                 </div>
               ))}
+              {hiddenCount > 0 && !showAllNodes && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllNodes(true)}
+                  className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+                >
+                  +{hiddenCount} 件
+                </button>
+              )}
+              {showAllNodes && sortedNodes.length > 8 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllNodes(false)}
+                  className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
+                >
+                  折りたたむ
+                </button>
+              )}
+            </div>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">範囲がまだありません</p>
+          <div className="flex items-center gap-2 py-3 px-3 rounded-xl bg-muted/30 border border-dashed border-border/50">
+            <BookOpen className="h-4 w-4 text-muted-foreground/40" />
+            <span className="text-xs text-muted-foreground">範囲がまだありません</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-xs text-primary ml-auto"
+              onClick={() => setAddOpen(true)}
+            >
+              <Plus className="mr-1 h-3 w-3" />
+              追加
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>
