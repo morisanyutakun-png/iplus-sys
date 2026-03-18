@@ -31,9 +31,12 @@ async def run_migrations(conn):
         if sql_file.name not in applied:
             logger.info(f"Applying migration: {sql_file.name}")
             sql = sql_file.read_text()
-            for statement in sql.split(";"):
+            # Remove comment lines before splitting on semicolons
+            lines = [line for line in sql.splitlines() if not line.strip().startswith("--")]
+            clean_sql = "\n".join(lines)
+            for statement in clean_sql.split(";"):
                 stmt = statement.strip()
-                if stmt and not stmt.startswith("--"):
+                if stmt:
                     await conn.execute(text(stmt))
             await conn.execute(
                 text("INSERT INTO _migrations (filename) VALUES (:f)"),

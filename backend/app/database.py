@@ -1,5 +1,6 @@
 import ssl
 
+import certifi
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
@@ -7,7 +8,7 @@ from app.config import settings
 # Neon requires SSL; detect from URL
 connect_args = {}
 if "neon.tech" in settings.database_url or "sslmode" in settings.database_url:
-    ssl_ctx = ssl.create_default_context()
+    ssl_ctx = ssl.create_default_context(cafile=certifi.where())
     connect_args["ssl"] = ssl_ctx
 
 engine = create_async_engine(
