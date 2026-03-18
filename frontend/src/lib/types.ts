@@ -82,11 +82,43 @@ export interface ProgressEntry {
   created_at: string;
 }
 
+export interface NearlyCompleteItem {
+  student_id: string;
+  student_name: string;
+  material_key: string;
+  material_name: string;
+  pointer: number;
+  total_nodes: number;
+  remaining: number;
+}
+
+export interface WeeklyTrendItem {
+  week: string;
+  actions: number;
+}
+
+export interface StudentMaterialProgress {
+  material_key: string;
+  material_name: string;
+  pointer: number;
+  total_nodes: number;
+  percent: number;
+}
+
+export interface StudentProgressRow {
+  student_id: string;
+  student_name: string;
+  materials: StudentMaterialProgress[];
+  avg_percent: number;
+}
+
 export interface DashboardStats {
   total_students: number;
   total_materials: number;
-  active_assignments: number;
-  avg_completion: number;
+  nearly_complete: NearlyCompleteItem[];
+  weekly_actions: number;
+  weekly_trend: WeeklyTrendItem[];
+  student_progress: StudentProgressRow[];
   recent_activity: ProgressEntry[];
 }
 

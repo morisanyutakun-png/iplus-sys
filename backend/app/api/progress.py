@@ -7,8 +7,14 @@ from app.database import get_db
 from app.models.student import Student
 from app.models.material import Material
 from app.models.student_material import StudentMaterial, ProgressHistory
+from datetime import datetime, timedelta, timezone
+
 from app.schemas.progress import (
     DashboardStats,
+    NearlyCompleteItem,
+    WeeklyTrendItem,
+    StudentMaterialProgress,
+    StudentProgressRow,
     StudentProgressOut,
     MaterialProgress,
     ProgressEntryOut,
@@ -27,26 +33,89 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(sa_func.count(Material.key)))
     total_materials = result.scalar()
 
-    # Active assignments
-    result = await db.execute(select(sa_func.count()).select_from(StudentMaterial))
-    active_assignments = result.scalar()
-
-    # Average completion
+    # All student-material assignments with eager loading
     result = await db.execute(
-        select(StudentMaterial).options(
-            selectinload(StudentMaterial.material).selectinload(Material.nodes)
+        select(Student).options(
+            selectinload(Student.materials)
+            .selectinload(StudentMaterial.material)
+            .selectinload(Material.nodes)
         )
     )
-    sms = result.scalars().all()
-    if sms:
-        completions = []
-        for sm in sms:
+    students = result.scalars().unique().all()
+
+    # Build student progress table & nearly complete list
+    nearly_complete: list[NearlyCompleteItem] = []
+    student_progress: list[StudentProgressRow] = []
+
+    for student in students:
+        mat_progress_list: list[StudentMaterialProgress] = []
+        percents: list[float] = []
+        for sm in student.materials:
             total = len(sm.material.nodes) if sm.material else 0
-            if total > 0:
-                completions.append(min(sm.pointer / total * 100, 100))
-        avg_completion = sum(completions) / len(completions) if completions else 0
-    else:
-        avg_completion = 0
+            pct = min(sm.pointer / total * 100, 100) if total > 0 else 0
+            remaining = max(total - sm.pointer, 0) if total > 0 else 0
+            percents.append(pct)
+            mat_progress_list.append(StudentMaterialProgress(
+                material_key=sm.material_key,
+                material_name=sm.material.name if sm.material else sm.material_key,
+                pointer=sm.pointer,
+                total_nodes=total,
+                percent=round(pct, 1),
+            ))
+            if 0 < remaining <= 2 and total > 0:
+                nearly_complete.append(NearlyCompleteItem(
+                    student_id=student.id,
+                    student_name=student.name,
+                    material_key=sm.material_key,
+                    material_name=sm.material.name if sm.material else sm.material_key,
+                    pointer=sm.pointer,
+                    total_nodes=total,
+                    remaining=remaining,
+                ))
+        avg_pct = round(sum(percents) / len(percents), 1) if percents else 0
+        student_progress.append(StudentProgressRow(
+            student_id=student.id,
+            student_name=student.name,
+            materials=mat_progress_list,
+            avg_percent=avg_pct,
+        ))
+
+    # Sort nearly_complete by remaining ascending
+    nearly_complete.sort(key=lambda x: x.remaining)
+
+    # Weekly actions (this week, Mon-Sun)
+    now = datetime.now(timezone.utc)
+    week_start = now - timedelta(days=now.weekday())
+    week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+    result = await db.execute(
+        select(sa_func.count(ProgressHistory.id)).where(
+            ProgressHistory.created_at >= week_start,
+            ProgressHistory.action.in_(["advance", "print"]),
+        )
+    )
+    weekly_actions = result.scalar() or 0
+
+    # Weekly trend (last 8 weeks)
+    eight_weeks_ago = now - timedelta(weeks=8)
+    result = await db.execute(
+        select(ProgressHistory).where(
+            ProgressHistory.created_at >= eight_weeks_ago,
+            ProgressHistory.action.in_(["advance", "print"]),
+        )
+    )
+    trend_entries = result.scalars().all()
+    weeks_data: dict[str, int] = {}
+    for h in trend_entries:
+        week_key = h.created_at.strftime("%m/%d")
+        # Use Monday of that week as key
+        entry_date = h.created_at
+        monday = entry_date - timedelta(days=entry_date.weekday())
+        week_label = monday.strftime("%m/%d")
+        weeks_data[week_label] = weeks_data.get(week_label, 0) + 1
+    weekly_trend = [
+        WeeklyTrendItem(week=k, actions=v)
+        for k, v in sorted(weeks_data.items())
+    ]
 
     # Recent activity
     result = await db.execute(
@@ -59,8 +128,10 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     return DashboardStats(
         total_students=total_students,
         total_materials=total_materials,
-        active_assignments=active_assignments,
-        avg_completion=round(avg_completion, 1),
+        nearly_complete=nearly_complete,
+        weekly_actions=weekly_actions,
+        weekly_trend=weekly_trend,
+        student_progress=student_progress,
         recent_activity=[ProgressEntryOut.model_validate(r) for r in recent],
     )
 

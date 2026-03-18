@@ -6,7 +6,7 @@ import { useAutoQueue } from "@/lib/queries/auto-print";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Users, BookOpen, TrendingUp, Zap, Printer } from "lucide-react";
+import { Users, BookOpen, Zap, Printer, AlertTriangle, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -21,6 +21,8 @@ const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.Respo
 const PieChart = dynamic(() => import("recharts").then((m) => m.PieChart), { ssr: false });
 const Pie = dynamic(() => import("recharts").then((m) => m.Pie), { ssr: false });
 const Cell = dynamic(() => import("recharts").then((m) => m.Cell), { ssr: false });
+const AreaChart = dynamic(() => import("recharts").then((m) => m.AreaChart), { ssr: false });
+const Area = dynamic(() => import("recharts").then((m) => m.Area), { ssr: false });
 
 const COLORS = ["#dc2626", "#991b1b", "#ef4444", "#b91c1c", "#7f1d1d", "#f87171", "#450a0a", "#fca5a5"];
 
@@ -31,24 +33,6 @@ const ACTION_LABELS: Record<string, string> = {
   manual_set: "手動設定",
   print: "印刷実行",
 };
-
-function ProgressRing({ value, size = 56, strokeWidth = 5 }: { value: number; size?: number; strokeWidth?: number }) {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const offset = circumference - (value / 100) * circumference;
-  return (
-    <svg width={size} height={size} className="-rotate-90">
-      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={strokeWidth} className="text-muted/40" />
-      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="url(#ring-gradient)" strokeWidth={strokeWidth} strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="transition-all duration-1000 ease-out" style={{ animation: "progress-fill 1s ease-out" }} />
-      <defs>
-        <linearGradient id="ring-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#dc2626" />
-          <stop offset="100%" stopColor="#991b1b" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
 
 function StatCard({ title, value, subtitle, icon: Icon, gradient }: {
   title: string; value: string | number; subtitle?: string;
@@ -73,6 +57,22 @@ function StatCard({ title, value, subtitle, icon: Icon, gradient }: {
   );
 }
 
+function ProgressBar({ percent }: { percent: number }) {
+  const color =
+    percent >= 90 ? "bg-emerald-500" :
+    percent >= 50 ? "bg-blue-500" :
+    percent > 0 ? "bg-amber-500" :
+    "bg-gray-300";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-2 w-full max-w-[100px] rounded-full bg-muted/60">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${Math.min(percent, 100)}%` }} />
+      </div>
+      <span className="text-xs font-medium tabular-nums w-10 text-right">{Math.round(percent)}%</span>
+    </div>
+  );
+}
+
 function LoadingSkeleton() {
   return (
     <div className="space-y-8">
@@ -80,8 +80,8 @@ function LoadingSkeleton() {
         <div className="h-8 w-48 rounded-lg skeleton-pulse" />
         <div className="h-4 w-64 rounded-lg skeleton-pulse" />
       </div>
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {[1, 2, 3, 4].map((i) => (
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+        {[1, 2, 3].map((i) => (
           <div key={i} className="h-32 rounded-2xl skeleton-pulse" />
         ))}
       </div>
@@ -106,12 +106,12 @@ export default function DashboardPage() {
 
   if (statsLoading || studentsLoading) return <LoadingSkeleton />;
 
-  const studentChartData = (students || []).map((s) => {
-    const totalPercent = s.materials.length > 0
-      ? s.materials.reduce((acc, m) => acc + m.percent, 0) / s.materials.length : 0;
-    return { name: s.name, percent: Math.round(totalPercent) };
-  });
+  // Bar chart data: student progress sorted by avg_percent
+  const studentChartData = (stats?.student_progress || [])
+    .map((s) => ({ name: s.student_name, percent: s.avg_percent }))
+    .sort((a, b) => b.percent - a.percent);
 
+  // Pie chart data: material enrollment counts
   const materialCounts: Record<string, number> = {};
   (students || []).forEach((s) => {
     s.materials.forEach((m) => {
@@ -120,12 +120,24 @@ export default function DashboardPage() {
   });
   const pieData = Object.entries(materialCounts).map(([name, value]) => ({ name, value }));
 
+  // Collect all unique material names for table header
+  const allMaterials = new Map<string, string>();
+  (stats?.student_progress || []).forEach((sp) => {
+    sp.materials.forEach((m) => {
+      if (!allMaterials.has(m.material_key)) {
+        allMaterials.set(m.material_key, m.material_name);
+      }
+    });
+  });
+  const materialList = Array.from(allMaterials.entries());
+
   return (
     <div className="space-y-8">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">ダッシュボード</h1>
-          <p className="mt-1 text-muted-foreground">システムの概要と進捗状況</p>
+          <p className="mt-1 text-muted-foreground">進捗状況とリマインド</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -146,42 +158,66 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <StatCard title="生徒数" value={stats?.total_students || 0} subtitle="登録済み生徒" icon={Users} gradient="bg-gradient-to-br from-red-600 to-red-800" />
         <StatCard title="教材数" value={stats?.total_materials || 0} subtitle="登録済み教材" icon={BookOpen} gradient="bg-gradient-to-br from-gray-800 to-black" />
-        <StatCard title="アクティブ割当" value={stats?.active_assignments || 0} subtitle="進行中の割当" icon={TrendingUp} gradient="bg-gradient-to-br from-red-500 to-red-700" />
-        <Card className="card-hover stat-card border-0 shadow-premium overflow-hidden h-full">
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between">
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">平均進捗</p>
-                <p className="text-3xl font-bold tracking-tight">{stats?.avg_completion || 0}%</p>
-                <p className="text-xs text-muted-foreground">全生徒の平均</p>
-              </div>
-              <ProgressRing value={stats?.avg_completion || 0} />
+        <StatCard title="今週の学習" value={stats?.weekly_actions || 0} subtitle="advance + print アクション" icon={Zap} gradient="bg-gradient-to-br from-red-500 to-red-700" />
+      </div>
+
+      {/* Nearly Complete Reminder */}
+      {(stats?.nearly_complete || []).length > 0 && (
+        <Card className="border-0 shadow-premium overflow-hidden border-l-4 border-l-amber-500">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <CardTitle className="text-base font-semibold">完了間近リマインド</CardTitle>
+              <Badge variant="secondary" className="rounded-full ml-auto">{stats!.nearly_complete.length} 件</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">残り1〜2ノードで教材が完了する生徒です。次の教材割当を検討してください。</p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {stats!.nearly_complete.map((item, idx) => (
+                <div key={`${item.student_id}-${item.material_key}`} className="stagger-item flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/30 p-3.5 transition-colors hover:bg-amber-100/60 dark:hover:bg-amber-950/50" style={{ animationDelay: `${idx * 50}ms` }}>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold">{item.student_name}</span>
+                    <span className="text-sm text-muted-foreground">{item.material_name}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="rounded-full bg-amber-100 dark:bg-amber-900 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-200">
+                      残り {item.remaining} ノード
+                    </span>
+                    <span className="text-xs font-medium tabular-nums">
+                      {item.pointer}/{item.total_nodes} ({Math.round(item.pointer / item.total_nodes * 100)}%)
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
-      </div>
+      )}
 
+      {/* Charts Row: Student Progress Bar + Weekly Activity Area */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="border-0 shadow-premium overflow-hidden">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">生徒別 進捗率</CardTitle>
-            <p className="text-xs text-muted-foreground">各生徒の平均教材進捗</p>
+            <CardTitle className="text-base font-semibold">生徒別 平均進捗率</CardTitle>
+            <p className="text-xs text-muted-foreground">各生徒の全教材平均（進捗率順）</p>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={studentChartData} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0 0% 91%)" />
-                <XAxis dataKey="name" fontSize={11} tick={{ fill: "hsl(0 0% 45%)" }} />
-                <YAxis domain={[0, 100]} unit="%" fontSize={11} tick={{ fill: "hsl(0 0% 45%)" }} />
+              <BarChart data={studentChartData} layout="vertical" margin={{ top: 8, right: 16, bottom: 0, left: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0 0% 91%)" horizontal={false} />
+                <XAxis type="number" domain={[0, 100]} unit="%" fontSize={11} tick={{ fill: "hsl(0 0% 45%)" }} />
+                <YAxis type="category" dataKey="name" fontSize={12} tick={{ fill: "hsl(0 0% 35%)" }} width={60} />
                 <Tooltip formatter={(v) => [`${v}%`, "進捗率"]} contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 8px 30px rgba(0,0,0,0.12)", fontSize: "13px" }} />
-                <Bar dataKey="percent" fill="url(#bar-gradient)" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="percent" fill="url(#bar-gradient)" radius={[0, 6, 6, 0]} barSize={20} />
                 <defs>
-                  <linearGradient id="bar-gradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#dc2626" />
-                    <stop offset="100%" stopColor="#991b1b" />
+                  <linearGradient id="bar-gradient" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#991b1b" />
+                    <stop offset="100%" stopColor="#dc2626" />
                   </linearGradient>
                 </defs>
               </BarChart>
@@ -189,6 +225,81 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
+        <Card className="border-0 shadow-premium overflow-hidden">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">週間アクティビティ推移</CardTitle>
+            <p className="text-xs text-muted-foreground">過去8週間の学習アクション数</p>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={stats?.weekly_trend || []} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0 0% 91%)" />
+                <XAxis dataKey="week" fontSize={11} tick={{ fill: "hsl(0 0% 45%)" }} />
+                <YAxis fontSize={11} tick={{ fill: "hsl(0 0% 45%)" }} allowDecimals={false} />
+                <Tooltip formatter={(v) => [`${v} 件`, "アクション"]} contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 8px 30px rgba(0,0,0,0.12)", fontSize: "13px" }} />
+                <Area type="monotone" dataKey="actions" stroke="#dc2626" fill="url(#area-gradient)" strokeWidth={2} />
+                <defs>
+                  <linearGradient id="area-gradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#dc2626" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#dc2626" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Student x Material Progress Table */}
+      {(stats?.student_progress || []).length > 0 && materialList.length > 0 && (
+        <Card className="border-0 shadow-premium overflow-hidden">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">生徒 x 教材 進捗一覧</CardTitle>
+            <p className="text-xs text-muted-foreground">各生徒の教材ごとの進捗状況</p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/50">
+                    <th className="py-2 px-3 text-left font-semibold text-muted-foreground">生徒名</th>
+                    {materialList.map(([key, name]) => (
+                      <th key={key} className="py-2 px-3 text-left font-semibold text-muted-foreground max-w-[140px] truncate" title={name}>{name}</th>
+                    ))}
+                    <th className="py-2 px-3 text-left font-semibold text-muted-foreground">平均</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(stats?.student_progress || [])
+                    .sort((a, b) => b.avg_percent - a.avg_percent)
+                    .map((sp) => {
+                      const matMap = new Map(sp.materials.map((m) => [m.material_key, m]));
+                      return (
+                        <tr key={sp.student_id} className="border-b border-border/30 hover:bg-muted/30 transition-colors">
+                          <td className="py-2.5 px-3 font-medium">{sp.student_name}</td>
+                          {materialList.map(([key]) => {
+                            const mat = matMap.get(key);
+                            return (
+                              <td key={key} className="py-2.5 px-3">
+                                {mat ? <ProgressBar percent={mat.percent} /> : <span className="text-xs text-muted-foreground">-</span>}
+                              </td>
+                            );
+                          })}
+                          <td className="py-2.5 px-3">
+                            <span className="text-sm font-semibold tabular-nums">{sp.avg_percent}%</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pie Chart: Material Enrollment */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="border-0 shadow-premium overflow-hidden">
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold">教材別 受講者数</CardTitle>
@@ -207,8 +318,12 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           </CardContent>
         </Card>
+
+        {/* Empty space or future chart slot */}
+        <div />
       </div>
 
+      {/* Recent Activity */}
       <Card className="border-0 shadow-premium overflow-hidden">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">

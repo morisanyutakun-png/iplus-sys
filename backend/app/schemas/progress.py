@@ -31,11 +31,43 @@ class StudentProgressOut(BaseModel):
     history: list[ProgressEntryOut]
 
 
+class NearlyCompleteItem(BaseModel):
+    student_id: str
+    student_name: str
+    material_key: str
+    material_name: str
+    pointer: int
+    total_nodes: int
+    remaining: int
+
+
+class WeeklyTrendItem(BaseModel):
+    week: str
+    actions: int
+
+
+class StudentMaterialProgress(BaseModel):
+    material_key: str
+    material_name: str
+    pointer: int
+    total_nodes: int
+    percent: float
+
+
+class StudentProgressRow(BaseModel):
+    student_id: str
+    student_name: str
+    materials: list[StudentMaterialProgress]
+    avg_percent: float
+
+
 class DashboardStats(BaseModel):
     total_students: int
     total_materials: int
-    active_assignments: int
-    avg_completion: float
+    nearly_complete: list[NearlyCompleteItem]
+    weekly_actions: int
+    weekly_trend: list[WeeklyTrendItem]
+    student_progress: list[StudentProgressRow]
     recent_activity: list[ProgressEntryOut]
 
 
