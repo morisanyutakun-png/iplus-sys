@@ -6,6 +6,7 @@ import {
   useToggleMaterial,
   useSavePointers,
 } from "@/lib/queries/students";
+import { useAcknowledgeReminder, useUnacknowledgeReminder, useDashboard } from "@/lib/queries/progress";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -21,6 +22,9 @@ import {
   ChevronDown,
   X,
   Layers,
+  AlertTriangle,
+  CheckCircle2,
+  Circle,
 } from "lucide-react";
 
 type Props = {
@@ -29,8 +33,11 @@ type Props = {
 
 export function MaterialManager({ studentId }: Props) {
   const { data: zones } = useMaterialZones(studentId);
+  const { data: dashboard } = useDashboard();
   const toggleMutation = useToggleMaterial(studentId);
   const saveMutation = useSavePointers(studentId);
+  const ackMutation = useAcknowledgeReminder();
+  const unackMutation = useUnacknowledgeReminder();
 
   const [editedPointers, setEditedPointers] = useState<
     Record<string, number>
@@ -66,8 +73,71 @@ export function MaterialManager({ studentId }: Props) {
   const assigned = zones?.assigned || [];
   const source = zones?.source || [];
 
+  // Filter nearly complete items for this student from dashboard data
+  const nearlyComplete = (dashboard?.nearly_complete || []).filter(
+    (item) => item.student_id === studentId
+  );
+
   return (
     <div className="space-y-6">
+      {/* ── Nearly Complete Reminder ── */}
+      {nearlyComplete.length > 0 && (
+        <div className="rounded-xl border border-amber-200/60 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/20 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-200/40 dark:border-amber-800/30">
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+              完了間近リマインド
+            </span>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full ml-auto">
+              {nearlyComplete.length} 件
+            </Badge>
+          </div>
+          <div className="p-3 space-y-2">
+            {nearlyComplete.map((item) => (
+              <div
+                key={`${item.student_id}-${item.material_key}`}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2 transition-all",
+                  item.acknowledged
+                    ? "bg-amber-100/30 dark:bg-amber-900/10 opacity-50"
+                    : "bg-white/60 dark:bg-white/5 border border-amber-200/40 dark:border-amber-800/30"
+                )}
+              >
+                <button
+                  type="button"
+                  className="shrink-0 transition-colors"
+                  onClick={() => {
+                    if (item.acknowledged) {
+                      unackMutation.mutate({ student_id: item.student_id, material_key: item.material_key });
+                    } else {
+                      ackMutation.mutate({ student_id: item.student_id, material_key: item.material_key });
+                    }
+                  }}
+                  title={item.acknowledged ? "対処済みを取消" : "対処済みにする"}
+                >
+                  {item.acknowledged ? (
+                    <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
+                  ) : (
+                    <Circle className="h-4.5 w-4.5 text-muted-foreground/40 hover:text-amber-500" />
+                  )}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <span className={cn("text-sm font-medium", item.acknowledged && "line-through")}>{item.material_name}</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="rounded-full bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                      残り {item.remaining}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums">
+                      {item.pointer} / {item.total_nodes}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Assigned Materials ── */}
       <div>
         <div className="flex items-center justify-between mb-3">
@@ -100,7 +170,7 @@ export function MaterialManager({ studentId }: Props) {
             const currentPointer = editedPointers[mat.key] ?? mat.pointer ?? 1;
             const percent =
               mat.total_nodes > 0
-                ? Math.round((currentPointer / mat.total_nodes) * 100)
+                ? Math.round(((currentPointer - 1) / mat.total_nodes) * 100)
                 : 0;
             const isEdited = editedPointers[mat.key] !== undefined;
 

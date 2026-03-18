@@ -1,13 +1,14 @@
 "use client";
 
-import { useDashboard } from "@/lib/queries/progress";
+import { useDashboard, useAcknowledgeReminder, useUnacknowledgeReminder } from "@/lib/queries/progress";
 import { useStudents } from "@/lib/queries/students";
 import { useAutoQueue } from "@/lib/queries/auto-print";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Users, BookOpen, Zap, Printer, AlertTriangle, TrendingUp, ExternalLink, BarChart3 } from "lucide-react";
+import { Users, BookOpen, Zap, Printer, AlertTriangle, TrendingUp, ExternalLink, BarChart3, CheckCircle2, Circle } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 
@@ -151,6 +152,8 @@ export default function DashboardPage() {
   const { data: stats, isLoading: statsLoading } = useDashboard();
   const { data: students, isLoading: studentsLoading } = useStudents();
   const autoQueueMutation = useAutoQueue();
+  const ackMutation = useAcknowledgeReminder();
+  const unackMutation = useUnacknowledgeReminder();
 
   const handleAutoQueueAll = () => {
     autoQueueMutation.mutate(undefined, {
@@ -242,13 +245,36 @@ export default function DashboardPage() {
           <CardContent className="pt-0">
             <div className="space-y-2">
               {stats!.nearly_complete.map((item, idx) => {
-                const pct = Math.round((item.pointer / item.total_nodes) * 100);
+                const pct = Math.round(((item.pointer - 1) / item.total_nodes) * 100);
                 return (
                   <div
                     key={`${item.student_id}-${item.material_key}`}
-                    className="stagger-item group flex items-center gap-4 rounded-xl border border-border/60 bg-card p-3.5 transition-all hover:shadow-md hover:border-amber-300/60"
+                    className={cn(
+                      "stagger-item group flex items-center gap-4 rounded-xl border border-border/60 bg-card p-3.5 transition-all hover:shadow-md hover:border-amber-300/60",
+                      item.acknowledged && "opacity-50"
+                    )}
                     style={{ animationDelay: `${idx * 60}ms` }}
                   >
+                    {/* Acknowledge checkbox */}
+                    <button
+                      type="button"
+                      className="shrink-0 transition-colors"
+                      onClick={() => {
+                        if (item.acknowledged) {
+                          unackMutation.mutate({ student_id: item.student_id, material_key: item.material_key });
+                        } else {
+                          ackMutation.mutate({ student_id: item.student_id, material_key: item.material_key });
+                        }
+                      }}
+                      title={item.acknowledged ? "対処済みを取消" : "対処済みにする"}
+                    >
+                      {item.acknowledged ? (
+                        <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                      ) : (
+                        <Circle className="h-5 w-5 text-muted-foreground/40 hover:text-muted-foreground" />
+                      )}
+                    </button>
+
                     {/* Avatar */}
                     <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${nameToColor(item.student_name)} text-white text-sm font-bold shadow-sm`}>
                       {item.student_name.charAt(0)}
@@ -257,7 +283,7 @@ export default function DashboardPage() {
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold truncate">{item.student_name}</span>
+                        <span className={cn("text-sm font-semibold truncate", item.acknowledged && "line-through")}>{item.student_name}</span>
                         <span className="text-xs text-muted-foreground truncate">{item.material_name}</span>
                       </div>
                       <div className="flex items-center gap-2 mt-1">
@@ -274,7 +300,7 @@ export default function DashboardPage() {
                     <CircularProgress percent={pct} size={44} />
 
                     {/* Action */}
-                    <Link href={`/students?id=${item.student_id}`}>
+                    <Link href={`/students?student=${item.student_id}&tab=materials`}>
                       <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Button>

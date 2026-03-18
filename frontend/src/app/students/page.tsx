@@ -32,6 +32,7 @@ function StudentsContent() {
   const [focusZone, setFocusZone] = useState<"list" | "spreadsheet">("list");
 
   const selectedStudentId = searchParams.get("student");
+  const initialTab = searchParams.get("tab") || "mastery";
 
   const selectedStudent = useMemo(
     () => students?.find((s) => s.id === selectedStudentId),
@@ -159,6 +160,7 @@ function StudentsContent() {
       {selectedStudentId ? (
         <StudentDetailPanel
           studentId={selectedStudentId}
+          initialTab={initialTab}
           spreadsheetActive={focusZone === "spreadsheet"}
           onEnterSpreadsheet={handleEnterSpreadsheet}
           onEscapeSpreadsheet={handleEscapeSpreadsheet}

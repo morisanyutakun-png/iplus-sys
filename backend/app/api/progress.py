@@ -1,15 +1,16 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func as sa_func
+from sqlalchemy import select, delete, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.student import Student
 from app.models.material import Material
-from app.models.student_material import StudentMaterial, ProgressHistory
+from app.models.student_material import StudentMaterial, ProgressHistory, ReminderAcknowledgment
 from datetime import datetime, timedelta, timezone
 
 from app.schemas.progress import (
+    AcknowledgeReminderRequest,
     DashboardStats,
     NearlyCompleteItem,
     WeeklyTrendItem,
@@ -52,8 +53,8 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
         percents: list[float] = []
         for sm in student.materials:
             total = len(sm.material.nodes) if sm.material else 0
-            pct = min(sm.pointer / total * 100, 100) if total > 0 else 0
-            remaining = max(total - sm.pointer, 0) if total > 0 else 0
+            pct = min((sm.pointer - 1) / total * 100, 100) if total > 0 else 0
+            remaining = max(total - sm.pointer + 1, 0) if total > 0 else 0
             percents.append(pct)
             mat_progress_list.append(StudentMaterialProgress(
                 material_key=sm.material_key,
@@ -82,6 +83,12 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
 
     # Sort nearly_complete by remaining ascending
     nearly_complete.sort(key=lambda x: x.remaining)
+
+    # Fetch acknowledgments
+    ack_result = await db.execute(select(ReminderAcknowledgment))
+    ack_set = {(a.student_id, a.material_key) for a in ack_result.scalars().all()}
+    for item in nearly_complete:
+        item.acknowledged = (item.student_id, item.material_key) in ack_set
 
     # Weekly actions (this week, Mon-Sun)
     now = datetime.now(timezone.utc)
@@ -162,7 +169,7 @@ async def get_student_progress(student_id: str, db: AsyncSession = Depends(get_d
                 material_name=sm.material.name if sm.material else sm.material_key,
                 pointer=sm.pointer,
                 total_nodes=total,
-                percent=round(min(sm.pointer / total * 100, 100), 1) if total > 0 else 0,
+                percent=round(min((sm.pointer - 1) / total * 100, 100), 1) if total > 0 else 0,
             )
         )
 
@@ -202,3 +209,34 @@ async def get_progress_history(
     entries = result.scalars().all()
 
     return {"history": [ProgressEntryOut.model_validate(e) for e in entries]}
+
+
+@router.post("/acknowledge-reminder")
+async def acknowledge_reminder(body: AcknowledgeReminderRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(ReminderAcknowledgment).where(
+            ReminderAcknowledgment.student_id == body.student_id,
+            ReminderAcknowledgment.material_key == body.material_key,
+        )
+    )
+    if result.scalars().first():
+        return {"status": "already_acknowledged"}
+
+    db.add(ReminderAcknowledgment(
+        student_id=body.student_id,
+        material_key=body.material_key,
+    ))
+    await db.commit()
+    return {"status": "acknowledged"}
+
+
+@router.post("/unacknowledge-reminder")
+async def unacknowledge_reminder(body: AcknowledgeReminderRequest, db: AsyncSession = Depends(get_db)):
+    await db.execute(
+        delete(ReminderAcknowledgment).where(
+            ReminderAcknowledgment.student_id == body.student_id,
+            ReminderAcknowledgment.material_key == body.material_key,
+        )
+    )
+    await db.commit()
+    return {"status": "unacknowledged"}

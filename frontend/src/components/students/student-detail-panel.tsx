@@ -77,6 +77,7 @@ const CartesianGrid = dynamic(
 
 type Props = {
   studentId: string;
+  initialTab?: string;
   spreadsheetActive: boolean;
   onEnterSpreadsheet: () => void;
   onEscapeSpreadsheet: () => void;
@@ -92,6 +93,7 @@ const ACTION_LABELS: Record<string, string> = {
 
 export function StudentDetailPanel({
   studentId,
+  initialTab = "mastery",
   spreadsheetActive,
   onEnterSpreadsheet,
   onEscapeSpreadsheet,
@@ -250,7 +252,7 @@ export function StudentDetailPanel({
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="mastery">
+      <Tabs defaultValue={initialTab}>
         <TabsList>
           <TabsTrigger value="mastery">
             <ClipboardCheck className="mr-1.5 h-4 w-4" />

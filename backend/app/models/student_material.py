@@ -47,6 +47,21 @@ class ProgressHistory(Base):
     )
 
 
+class ReminderAcknowledgment(Base):
+    __tablename__ = "reminder_acknowledgments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    student_id: Mapped[str] = mapped_column(
+        String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False
+    )
+    material_key: Mapped[str] = mapped_column(
+        String, ForeignKey("materials.key", ondelete="CASCADE"), nullable=False
+    )
+    acknowledged_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class ArchivedProgress(Base):
     __tablename__ = "archived_progress"
 

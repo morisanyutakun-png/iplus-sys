@@ -17,7 +17,7 @@ def _build_student_out(student: Student) -> StudentOut:
     for sm in student.materials:
         mat = sm.material
         total = len(mat.nodes) if mat else 0
-        pct = (sm.pointer / total * 100) if total > 0 else 0
+        pct = ((sm.pointer - 1) / total * 100) if total > 0 else 0
         next_title = None
         if mat and sm.pointer <= total:
             for n in mat.nodes:
@@ -136,7 +136,7 @@ async def get_materials_zones(student_id: str, db: AsyncSession = Depends(get_db
         }
         if mat.key in assigned:
             info["pointer"] = assigned[mat.key]
-            info["percent"] = round(assigned[mat.key] / total * 100, 1) if total > 0 else 0
+            info["percent"] = round((assigned[mat.key] - 1) / total * 100, 1) if total > 0 else 0
             assigned_list.append(info)
         else:
             source_list.append(info)

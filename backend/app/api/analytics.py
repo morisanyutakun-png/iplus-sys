@@ -51,7 +51,7 @@ async def get_student_analytics(student_id: str, db: AsyncSession = Depends(get_
     completion_rates = []
     for sm in sms:
         total = len(sm.material.nodes) if sm.material else 0
-        pct = min(sm.pointer / total * 100, 100) if total > 0 else 0
+        pct = min((sm.pointer - 1) / total * 100, 100) if total > 0 else 0
         completion_rates.append({
             "material_key": sm.material_key,
             "material_name": sm.material.name if sm.material else sm.material_key,
@@ -122,9 +122,9 @@ async def get_overview_analytics(db: AsyncSession = Depends(get_db)):
         total_completed = 0
         for sm in student.materials:
             total = len(sm.material.nodes) if sm.material else 0
-            pct = min(sm.pointer / total * 100, 100) if total > 0 else 0
+            pct = min((sm.pointer - 1) / total * 100, 100) if total > 0 else 0
             percents.append(pct)
-            total_completed += min(sm.pointer, total) if total > 0 else 0
+            total_completed += min(sm.pointer - 1, total) if total > 0 else 0
             heatmap.append({
                 "student_id": student.id,
                 "student_name": student.name,

@@ -39,6 +39,12 @@ class NearlyCompleteItem(BaseModel):
     pointer: int
     total_nodes: int
     remaining: int
+    acknowledged: bool = False
+
+
+class AcknowledgeReminderRequest(BaseModel):
+    student_id: str
+    material_key: str
 
 
 class WeeklyTrendItem(BaseModel):

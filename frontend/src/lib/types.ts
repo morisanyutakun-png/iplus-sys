@@ -91,6 +91,7 @@ export interface NearlyCompleteItem {
   pointer: number;
   total_nodes: number;
   remaining: number;
+  acknowledged: boolean;
 }
 
 export interface WeeklyTrendItem {
