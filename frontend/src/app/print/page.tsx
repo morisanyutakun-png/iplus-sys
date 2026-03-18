@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   useQueue,
   useAddToQueue,
@@ -42,13 +42,16 @@ import {
   Plus,
   Trash2,
   Printer,
-  GripVertical,
   Zap,
   ClipboardList,
   CheckCircle,
   XCircle,
   ScrollText,
+  ChevronDown,
+  ChevronRight,
+  User,
 } from "lucide-react";
+import type { QueueItem } from "@/lib/types";
 
 const JOB_STATUS_MAP: Record<
   string,
@@ -58,6 +61,12 @@ const JOB_STATUS_MAP: Record<
   sending: { label: "送信中", variant: "secondary" },
   completed: { label: "完了", variant: "default" },
   failed: { label: "失敗", variant: "destructive" },
+};
+
+type StudentGroup = {
+  studentId: string;
+  studentName: string;
+  items: QueueItem[];
 };
 
 export default function PrintPage() {
@@ -75,8 +84,38 @@ export default function PrintPage() {
   const [selectedStudent, setSelectedStudent] = useState("");
   const [selectedMaterial, setSelectedMaterial] = useState("");
   const [selectedNode, setSelectedNode] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set()
+  );
 
   const selectedMat = materials?.find((m) => m.key === selectedMaterial);
+
+  // Group queue items by student
+  const groupedQueue = useMemo<StudentGroup[]>(() => {
+    if (!items || items.length === 0) return [];
+    const map = new Map<string, StudentGroup>();
+    for (const item of items) {
+      const key = item.student_id;
+      if (!map.has(key)) {
+        map.set(key, {
+          studentId: key,
+          studentName: item.student_name || key,
+          items: [],
+        });
+      }
+      map.get(key)!.items.push(item);
+    }
+    return Array.from(map.values());
+  }, [items]);
+
+  const toggleGroup = (studentId: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(studentId)) next.delete(studentId);
+      else next.add(studentId);
+      return next;
+    });
+  };
 
   const handleAdd = () => {
     if (!selectedStudent || !selectedMaterial) return;
@@ -144,7 +183,7 @@ export default function PrintPage() {
           <TabsTrigger value="logs">ログ</TabsTrigger>
         </TabsList>
 
-        {/* Queue Tab */}
+        {/* Queue Tab - Per-Student Grouped */}
         <TabsContent value="queue" className="space-y-4">
           <div className="flex items-center gap-2">
             <Button
@@ -259,72 +298,103 @@ export default function PrintPage() {
             </Button>
           </div>
 
-          <Card className="border-0 shadow-premium overflow-hidden">
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/30">
-                    <TableHead className="w-10"></TableHead>
-                    <TableHead>生徒</TableHead>
-                    <TableHead>教材</TableHead>
-                    <TableHead>ノード</TableHead>
-                    <TableHead>ステータス</TableHead>
-                    <TableHead className="w-16"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(items || []).map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
-                        <GripVertical className="h-4 w-4 cursor-grab text-muted-foreground" />
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {item.student_name || item.student_id}
-                      </TableCell>
-                      <TableCell>
-                        {item.material_name || item.material_key}
-                      </TableCell>
-                      <TableCell>
-                        {item.node_name || item.node_key || "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            item.status === "pending" ? "outline" : "default"
-                          }
-                        >
-                          {item.status === "pending" ? "待機中" : item.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive"
-                          onClick={() => handleRemove(item.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {(!items || items.length === 0) && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="py-16 text-center"
-                      >
-                        <Printer className="mx-auto mb-3 h-10 w-10 text-muted-foreground/20" />
-                        <p className="text-sm text-muted-foreground">
-                          キューは空です
-                        </p>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          {/* Grouped queue display */}
+          {groupedQueue.length === 0 ? (
+            <Card className="border-0 shadow-premium">
+              <CardContent className="py-16 text-center">
+                <Printer className="mx-auto mb-3 h-10 w-10 text-muted-foreground/20" />
+                <p className="text-sm text-muted-foreground">
+                  キューは空です
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {groupedQueue.map((group) => {
+                const isCollapsed = collapsedGroups.has(group.studentId);
+                return (
+                  <Card
+                    key={group.studentId}
+                    className="border-0 shadow-premium overflow-hidden"
+                  >
+                    {/* Group header */}
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => toggleGroup(group.studentId)}
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <User className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-semibold">
+                        {group.studentName}
+                      </span>
+                      <Badge variant="secondary" className="text-xs">
+                        {group.items.length}件
+                      </Badge>
+                    </button>
+
+                    {/* Group items */}
+                    {!isCollapsed && (
+                      <CardContent className="p-0">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-muted/10">
+                              <TableHead className="text-xs">教材</TableHead>
+                              <TableHead className="text-xs">ノード</TableHead>
+                              <TableHead className="text-xs w-20">
+                                ステータス
+                              </TableHead>
+                              <TableHead className="w-12"></TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {group.items.map((item) => (
+                              <TableRow key={item.id}>
+                                <TableCell className="text-sm">
+                                  {item.material_name || item.material_key}
+                                </TableCell>
+                                <TableCell className="text-sm text-muted-foreground">
+                                  {item.node_name || item.node_key || "-"}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant={
+                                      item.status === "pending"
+                                        ? "outline"
+                                        : "default"
+                                    }
+                                    className="text-xs"
+                                  >
+                                    {item.status === "pending"
+                                      ? "待機中"
+                                      : item.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive"
+                                    onClick={() => handleRemove(item.id)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
 
         {/* Jobs Tab */}

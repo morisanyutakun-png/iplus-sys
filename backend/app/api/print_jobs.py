@@ -28,7 +28,7 @@ def _resolve_pdf_path(pdf_relpath: str) -> str | None:
     if os.path.isfile(local_path):
         return local_path
     # Check network shares
-    for base_dir in settings.materials_base_dirs:
+    for base_dir in settings.materials_base_dirs_list:
         full_path = os.path.join(base_dir, pdf_relpath)
         if os.path.isfile(full_path):
             return full_path
