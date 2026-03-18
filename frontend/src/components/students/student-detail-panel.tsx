@@ -58,6 +58,7 @@ const CartesianGrid = dynamic(
 type Props = {
   studentId: string;
   spreadsheetActive: boolean;
+  onEnterSpreadsheet: () => void;
   onEscapeSpreadsheet: () => void;
 };
 
@@ -72,6 +73,7 @@ const ACTION_LABELS: Record<string, string> = {
 export function StudentDetailPanel({
   studentId,
   spreadsheetActive,
+  onEnterSpreadsheet,
   onEscapeSpreadsheet,
 }: Props) {
   const { data: student, isLoading } = useStudent(studentId);
@@ -137,6 +139,7 @@ export function StudentDetailPanel({
           <MasterySpreadsheet
             student={student}
             active={spreadsheetActive}
+            onActivate={onEnterSpreadsheet}
             onEscape={onEscapeSpreadsheet}
           />
         </TabsContent>

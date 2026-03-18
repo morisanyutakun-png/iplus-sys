@@ -156,6 +156,7 @@ function StudentsContent() {
         <StudentDetailPanel
           studentId={selectedStudentId}
           spreadsheetActive={focusZone === "spreadsheet"}
+          onEnterSpreadsheet={handleEnterSpreadsheet}
           onEscapeSpreadsheet={handleEscapeSpreadsheet}
         />
       ) : (

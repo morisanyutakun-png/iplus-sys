@@ -31,10 +31,11 @@ type ColInput = {
 type Props = {
   student: Student;
   active: boolean;
+  onActivate?: () => void;
   onEscape: () => void;
 };
 
-export function MasterySpreadsheet({ student, active, onEscape }: Props) {
+export function MasterySpreadsheet({ student, active, onActivate, onEscape }: Props) {
   const { data: allMaterials } = useMaterials();
   const masteryMutation = useMasteryBatch();
 
@@ -155,6 +156,7 @@ export function MasterySpreadsheet({ student, active, onEscape }: Props) {
   // Click handler for cells
   const handleCellClick = (colIdx: number, editableRow: number) => {
     if (completedCols.has(colIdx)) return;
+    onActivate?.();
     setActiveCell({ col: colIdx, row: editableRow });
   };
 
