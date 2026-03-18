@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import get_db
 from app.models.material import Material, MaterialNode
-from app.schemas.material import MaterialOut, MaterialListOut, MaterialCreate, MaterialNodeCreate, MaterialNodeOut
+from app.schemas.material import MaterialOut, MaterialListOut, MaterialCreate, MaterialCreateSimple, MaterialNodeCreate, MaterialNodeOut
 
 router = APIRouter()
 
@@ -39,6 +39,36 @@ async def create_material(body: MaterialCreate, db: AsyncSession = Depends(get_d
         name=body.name,
         start_on=body.start_on,
         aliases=body.aliases,
+        sort_order=max_order + 1,
+    )
+    db.add(material)
+    await db.commit()
+    await db.refresh(material)
+    return MaterialOut.model_validate(material)
+
+
+@router.post("/simple", response_model=MaterialOut)
+async def create_material_simple(body: MaterialCreateSimple, db: AsyncSession = Depends(get_db)):
+    """Simplified material creation: name only. Key is auto-generated from name."""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="名前を入力してください")
+
+    key = name
+
+    result = await db.execute(select(Material).where(Material.key == key))
+    if result.scalars().first():
+        raise HTTPException(status_code=409, detail="同じ名前の教材が既に存在します")
+
+    max_result = await db.execute(
+        select(sa_func.coalesce(sa_func.max(Material.sort_order), 0))
+    )
+    max_order = max_result.scalar()
+
+    material = Material(
+        key=key,
+        name=name,
+        aliases=[],
         sort_order=max_order + 1,
     )
     db.add(material)

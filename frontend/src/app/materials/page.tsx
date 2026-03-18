@@ -30,9 +30,7 @@ export default function MaterialsPage() {
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
-  const [newKey, setNewKey] = useState("");
   const [newName, setNewName] = useState("");
-  const [newAliases, setNewAliases] = useState("");
 
   if (isLoading) {
     return (
@@ -52,22 +50,14 @@ export default function MaterialsPage() {
   };
 
   const handleCreate = () => {
-    if (!newKey.trim() || !newName.trim()) return;
+    if (!newName.trim()) return;
     createMutation.mutate(
-      {
-        key: newKey.trim(),
-        name: newName.trim(),
-        aliases: newAliases
-          ? newAliases.split(",").map((s) => s.trim()).filter(Boolean)
-          : [],
-      },
+      { name: newName.trim() },
       {
         onSuccess: () => {
           toast.success("教材を登録しました");
           setCreateOpen(false);
-          setNewKey("");
           setNewName("");
-          setNewAliases("");
         },
         onError: (err) => toast.error(`登録に失敗: ${err.message}`),
       }
@@ -93,39 +83,23 @@ export default function MaterialsPage() {
               </DialogHeader>
               <div className="space-y-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium">キー</label>
-                  <Input
-                    value={newKey}
-                    onChange={(e) => setNewKey(e.target.value)}
-                    placeholder="例: w:英単語1900"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">名前</label>
+                  <label className="mb-1 block text-sm font-medium">教材名</label>
                   <Input
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="例: 英単語ターゲット1900"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">
-                    エイリアス（カンマ区切り）
-                  </label>
-                  <Input
-                    value={newAliases}
-                    onChange={(e) => setNewAliases(e.target.value)}
-                    placeholder="例: ターゲット,target1900"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newName.trim()) handleCreate();
+                    }}
                   />
                 </div>
                 <Button
                   className="w-full"
                   onClick={handleCreate}
-                  disabled={
-                    !newKey.trim() || !newName.trim() || createMutation.isPending
-                  }
+                  disabled={!newName.trim() || createMutation.isPending}
                 >
-                  登録
+                  {createMutation.isPending ? "登録中..." : "登録"}
                 </Button>
               </div>
             </DialogContent>

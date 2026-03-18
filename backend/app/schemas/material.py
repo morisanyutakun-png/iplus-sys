@@ -37,6 +37,10 @@ class MaterialCreate(BaseModel):
     aliases: list[str] = []
 
 
+class MaterialCreateSimple(BaseModel):
+    name: str
+
+
 class MaterialNodeCreate(BaseModel):
     key: str
     title: str
