@@ -43,7 +43,10 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -86,6 +89,21 @@ type StudentGroup = {
   items: QueueItem[];
 };
 
+type PrinterSelectOption = {
+  value: string;
+  name: string;
+  status: string;
+  source: "configured" | "network";
+  printerName?: string;
+  discovered?: DiscoveredPrinter;
+  needsSetup?: boolean;
+};
+
+const configuredPrinterValue = (name: string) => `configured:${name}`;
+const discoveredPrinterValue = (uri: string) => `discovered:${uri}`;
+const sanitizePrinterName = (name: string) =>
+  name.replace(/[^a-zA-Z0-9_-]/g, "_");
+
 export default function PrintPage() {
   const queryClient = useQueryClient();
   const { data: items } = useQueue();
@@ -121,16 +139,61 @@ export default function PrintPage() {
   const [discoveredPrinters, setDiscoveredPrinters] = useState<DiscoveredPrinter[]>([]);
   const [ipAddress, setIpAddress] = useState("");
 
-  // Set default printer when data loads
   useEffect(() => {
-    if (printerData?.default && !selectedPrinter) {
-      setSelectedPrinter(printerData.default);
-    }
-  }, [printerData, selectedPrinter]);
+    if (discoverMutation.isPending || discoveredPrinters.length > 0) return;
+    discoverMutation.mutate(undefined, {
+      onSuccess: (data) => setDiscoveredPrinters(data.discovered),
+    });
+  }, [discoverMutation, discoveredPrinters.length]);
 
   const selectedMat = materials?.find((m) => m.key === selectedMaterial);
-  const printerOptions = printerData?.printers ?? [];
-  const effectivePrinter = selectedPrinter || printerData?.default || "";
+  const printerOptions = useMemo(
+    () => printerData?.printers ?? [],
+    [printerData?.printers]
+  );
+  const printerSelectOptions = useMemo<PrinterSelectOption[]>(() => {
+    const configured = printerOptions.map((printer) => ({
+      value: configuredPrinterValue(printer.name),
+      name: printer.name,
+      status: printer.status,
+      source: "configured" as const,
+      printerName: printer.name,
+    }));
+
+    const configuredNames = new Set(printerOptions.map((printer) => printer.name));
+    const discovered = discoveredPrinters
+      .filter((printer) => {
+        if (printer.already_configured && printer.cups_name && configuredNames.has(printer.cups_name)) {
+          return false;
+        }
+        return true;
+      })
+      .map((printer) => {
+        const printerName = printer.cups_name || sanitizePrinterName(printer.instance_name);
+        const needsSetup = !printer.already_configured;
+        return {
+          value: discoveredPrinterValue(printer.uri),
+          name: printer.instance_name,
+          status: printer.already_configured ? "configured" : "network",
+          source: "network" as const,
+          printerName,
+          discovered: printer,
+          needsSetup,
+        };
+      });
+
+    return [...configured, ...discovered];
+  }, [discoveredPrinters, printerOptions]);
+
+  const selectedPrinterOption = useMemo(
+    () => printerSelectOptions.find((option) => option.value === selectedPrinter),
+    [printerSelectOptions, selectedPrinter]
+  );
+  const activePrinterValue =
+    selectedPrinter ||
+    (printerData?.default ? configuredPrinterValue(printerData.default) : "");
+  const effectivePrinter =
+    selectedPrinterOption?.printerName || printerData?.default || "";
 
   // Group queue items by student
   const groupedQueue = useMemo<StudentGroup[]>(() => {
@@ -210,38 +273,53 @@ export default function PrintPage() {
   };
 
   const handlePrintAll = () => {
-    executeMutation.mutate(
-      { printerName: effectivePrinter || undefined, useAgent: true },
-      {
-        onSuccess: (data) => showPrintResult(data),
-        onError: (err) => toast.error(`印刷エラー: ${err.message}`),
-      }
-    );
+    ensureSelectedPrinterReady()
+      .then((printerName) => {
+        executeMutation.mutate(
+          { printerName: printerName || undefined, useAgent: true },
+          {
+            onSuccess: (data) => showPrintResult(data),
+            onError: (err) => toast.error(`印刷エラー: ${err.message}`),
+          }
+        );
+      })
+      .catch((err: Error) => toast.error(`印刷エラー: ${err.message}`));
   };
 
   const handlePrintStudent = (studentId: string, studentName: string) => {
     setPrintingStudents((prev) => new Set(prev).add(studentId));
-    executeMutation.mutate(
-      { printerName: effectivePrinter || undefined, studentIds: [studentId], useAgent: true },
-      {
-        onSuccess: (data) => {
-          showPrintResult(data, studentName);
-          setPrintingStudents((prev) => {
-            const next = new Set(prev);
-            next.delete(studentId);
-            return next;
-          });
-        },
-        onError: (err) => {
-          toast.error(`印刷エラー (${studentName}): ${err.message}`);
-          setPrintingStudents((prev) => {
-            const next = new Set(prev);
-            next.delete(studentId);
-            return next;
-          });
-        },
-      }
-    );
+    ensureSelectedPrinterReady()
+      .then((printerName) => {
+        executeMutation.mutate(
+          { printerName: printerName || undefined, studentIds: [studentId], useAgent: true },
+          {
+            onSuccess: (data) => {
+              showPrintResult(data, studentName);
+              setPrintingStudents((prev) => {
+                const next = new Set(prev);
+                next.delete(studentId);
+                return next;
+              });
+            },
+            onError: (err) => {
+              toast.error(`印刷エラー (${studentName}): ${err.message}`);
+              setPrintingStudents((prev) => {
+                const next = new Set(prev);
+                next.delete(studentId);
+                return next;
+              });
+            },
+          }
+        );
+      })
+      .catch((err: Error) => {
+        toast.error(`印刷エラー (${studentName}): ${err.message}`);
+        setPrintingStudents((prev) => {
+          const next = new Set(prev);
+          next.delete(studentId);
+          return next;
+        });
+      });
   };
 
   const handleAutoQueueAll = () => {
@@ -256,6 +334,13 @@ export default function PrintPage() {
 
   const handleRefreshPrinters = () => {
     queryClient.invalidateQueries({ queryKey: ["printers"] });
+    discoverMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        setDiscoveredPrinters(data.discovered);
+        toast.success(`${data.discovered.length}台のLANプリンタ候補を更新しました`);
+      },
+      onError: (err) => toast.error(`プリンタ更新エラー: ${err.message}`),
+    });
   };
 
   const handleAddPrinter = () => {
@@ -267,6 +352,7 @@ export default function PrintPage() {
         onSuccess: () => {
           toast.success(`プリンタ「${name}」を追加しました`);
           setNewPrinterName("");
+          setSelectedPrinter(configuredPrinterValue(name));
         },
         onError: (err) => toast.error(err.message),
       }
@@ -277,14 +363,17 @@ export default function PrintPage() {
     removePrinterMutation.mutate(name, {
       onSuccess: () => {
         toast.success(`プリンタ「${name}」を削除しました`);
-        if (selectedPrinter === name) setSelectedPrinter("");
+        if (selectedPrinter === configuredPrinterValue(name)) setSelectedPrinter("");
       },
     });
   };
 
   const handleSetDefault = (name: string) => {
     setDefaultPrinterMutation.mutate(name, {
-      onSuccess: () => toast.success(`デフォルトを「${name}」に変更しました`),
+      onSuccess: () => {
+        setSelectedPrinter(configuredPrinterValue(name));
+        toast.success(`デフォルトを「${name}」に変更しました`);
+      },
     });
   };
 
@@ -305,14 +394,18 @@ export default function PrintPage() {
 
   const handleRegisterPrinter = (printer: DiscoveredPrinter) => {
     if (printer.already_in_cups && printer.cups_name) {
+      const cupsName = printer.cups_name;
       addPrinterMutation.mutate(
-        { name: printer.cups_name, is_default: printerOptions.length === 0 },
+        { name: cupsName, is_default: printerOptions.length === 0 },
         {
           onSuccess: () => {
-            toast.success(`プリンタ「${printer.cups_name}」を登録しました`);
+            toast.success(`プリンタ「${cupsName}」を登録しました`);
+            setSelectedPrinter(configuredPrinterValue(cupsName));
             setDiscoveredPrinters((prev) =>
               prev.map((p) =>
-                p.uri === printer.uri ? { ...p, already_configured: true } : p
+                p.uri === printer.uri
+                  ? { ...p, already_configured: true }
+                  : p
               )
             );
           },
@@ -327,9 +420,12 @@ export default function PrintPage() {
       {
         onSuccess: () => {
           toast.success(`プリンタ「${safeName}」を登録しました`);
+          setSelectedPrinter(configuredPrinterValue(safeName));
           setDiscoveredPrinters((prev) =>
             prev.map((p) =>
-              p.uri === printer.uri ? { ...p, already_configured: true } : p
+              p.uri === printer.uri
+                ? { ...p, cups_name: safeName, already_configured: true }
+                : p
             )
           );
         },
@@ -349,10 +445,54 @@ export default function PrintPage() {
         onSuccess: () => {
           toast.success(`プリンタ（${ip}）を登録しました`);
           setIpAddress("");
+          setSelectedPrinter(configuredPrinterValue(safeName));
         },
         onError: (err) => toast.error(`登録エラー: ${err.message}`),
       }
     );
+  };
+
+  const ensureSelectedPrinterReady = async () => {
+    if (!selectedPrinterOption) {
+      return effectivePrinter || undefined;
+    }
+    if (!selectedPrinterOption.needsSetup || !selectedPrinterOption.discovered) {
+      return selectedPrinterOption.printerName || effectivePrinter || undefined;
+    }
+
+    const printer = selectedPrinterOption.discovered;
+    if (printer.already_in_cups && printer.cups_name) {
+      await addPrinterMutation.mutateAsync({
+        name: printer.cups_name,
+        is_default: printerOptions.length === 0,
+      });
+      setSelectedPrinter(configuredPrinterValue(printer.cups_name));
+      setDiscoveredPrinters((prev) =>
+        prev.map((item) =>
+          item.uri === printer.uri
+            ? { ...item, already_configured: true }
+            : item
+        )
+      );
+      return printer.cups_name;
+    }
+
+    const safeName = sanitizePrinterName(printer.instance_name);
+    await registerMutation.mutateAsync({
+      uri: printer.uri,
+      name: safeName,
+      is_default: printerOptions.length === 0,
+    });
+    setSelectedPrinter(configuredPrinterValue(safeName));
+    setDiscoveredPrinters((prev) =>
+      prev.map((item) =>
+        item.uri === printer.uri
+          ? { ...item, cups_name: safeName, already_configured: true }
+          : item
+      )
+    );
+    toast.success(`プリンタ「${safeName}」を利用できるようにしました`);
+    return safeName;
   };
 
   const printerStatusColor = (status: string) => {
@@ -373,11 +513,13 @@ export default function PrintPage() {
   const printerStatusLabel = (status: string) => {
     switch (status) {
       case "network":
-        return " (LAN)";
+        return "LAN";
       case "online":
-        return " (ローカル)";
+        return "ローカル";
+      case "configured":
+        return "登録済";
       default:
-        return "";
+        return "確認中";
     }
   };
 
@@ -517,30 +659,64 @@ export default function PrintPage() {
               <div className="flex items-center gap-1.5">
                 <Printer className="h-4 w-4 text-muted-foreground" />
                 <Select
-                  value={effectivePrinter}
+                  value={activePrinterValue}
                   onValueChange={setSelectedPrinter}
                 >
                   <SelectTrigger className="h-8 w-[280px] text-xs">
                     <SelectValue placeholder="プリンタを選択" />
                   </SelectTrigger>
                   <SelectContent>
-                    {printerOptions.length > 0 ? (
-                      printerOptions.map((p) => (
-                        <SelectItem key={p.name} value={p.name}>
-                          <span className="flex items-center gap-2">
-                            <span
-                              className={`inline-block h-2 w-2 rounded-full ${printerStatusColor(
-                                p.status
-                              )}`}
-                            />
-                            {p.name}
-                            {p.name === printerData?.default
-                              ? " (デフォルト)"
-                              : ""}
-                            {printerStatusLabel(p.status)}
-                          </span>
-                        </SelectItem>
-                      ))
+                    {printerSelectOptions.length > 0 ? (
+                      <>
+                        <SelectGroup>
+                          <SelectLabel>利用可能なプリンタ</SelectLabel>
+                          {printerSelectOptions
+                            .filter((option) => option.source === "configured")
+                            .map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                <span className="flex items-center gap-2">
+                                  <span
+                                    className={`inline-block h-2 w-2 rounded-full ${printerStatusColor(
+                                      option.status
+                                    )}`}
+                                  />
+                                  {option.name}
+                                  {option.printerName === printerData?.default
+                                    ? " (デフォルト)"
+                                    : ""}
+                                  <span className="text-muted-foreground">
+                                    {printerStatusLabel(option.status)}
+                                  </span>
+                                </span>
+                              </SelectItem>
+                            ))}
+                        </SelectGroup>
+                        {printerSelectOptions.some((option) => option.source === "network") && (
+                          <>
+                            <SelectSeparator />
+                            <SelectGroup>
+                              <SelectLabel>LANで見つかったプリンタ</SelectLabel>
+                              {printerSelectOptions
+                                .filter((option) => option.source === "network")
+                                .map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    <span className="flex items-center gap-2">
+                                      <span
+                                        className={`inline-block h-2 w-2 rounded-full ${printerStatusColor(
+                                          option.status
+                                        )}`}
+                                      />
+                                      {option.name}
+                                      <span className="text-muted-foreground">
+                                        {option.needsSetup ? "選択時に自動登録" : printerStatusLabel(option.status)}
+                                      </span>
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                            </SelectGroup>
+                          </>
+                        )}
+                      </>
                     ) : (
                       <SelectItem value="__none" disabled>
                         プリンタ未登録
@@ -572,14 +748,21 @@ export default function PrintPage() {
                   <Settings className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <Button
-                size="sm"
-                onClick={handlePrintAll}
-                disabled={!items?.length || executeMutation.isPending}
-              >
-                <Printer className="mr-2 h-4 w-4" />
-                {executeMutation.isPending ? "実行中..." : "全件印刷"}
-              </Button>
+                <Button
+                  size="sm"
+                  onClick={handlePrintAll}
+                  disabled={
+                    !items?.length ||
+                    executeMutation.isPending ||
+                    registerMutation.isPending ||
+                    addPrinterMutation.isPending
+                  }
+                >
+                  <Printer className="mr-2 h-4 w-4" />
+                  {executeMutation.isPending || registerMutation.isPending || addPrinterMutation.isPending
+                    ? "実行中..."
+                    : "全件印刷"}
+                </Button>
             </div>
           </div>
 
@@ -634,7 +817,12 @@ export default function PrintPage() {
                               group.studentName
                             )
                           }
-                          disabled={isPrinting || executeMutation.isPending}
+                          disabled={
+                            isPrinting ||
+                            executeMutation.isPending ||
+                            registerMutation.isPending ||
+                            addPrinterMutation.isPending
+                          }
                         >
                           <Printer className="mr-1 h-3 w-3" />
                           {isPrinting ? "印刷中..." : "印刷"}
@@ -1061,7 +1249,7 @@ export default function PrintPage() {
             )}
 
             <p className="text-xs text-muted-foreground">
-              プリンタ名を手動入力するか、IPアドレスを入力するか、LAN検索で自動検出できます。
+              メイン画面のプリンタ選択でもLAN検索結果を使えます。未登録のWi-Fiプリンタは、選んで印刷すると自動で登録されます。
             </p>
           </div>
         </DialogContent>
