@@ -11,8 +11,11 @@ import {
   useAddPrinter,
   useRemovePrinter,
   useSetDefaultPrinter,
+  useDiscoverPrinters,
+  useRegisterPrinter,
   previewUrl,
 } from "@/lib/queries/queue";
+import type { DiscoveredPrinter } from "@/lib/queries/queue";
 import { useStudents } from "@/lib/queries/students";
 import { useMaterials } from "@/lib/queries/materials";
 import { useJobs, useLogs } from "@/lib/queries/progress";
@@ -61,6 +64,9 @@ import {
   Eye,
   Settings,
   Star,
+  Wifi,
+  Loader2,
+  Globe,
 } from "lucide-react";
 import type { QueueItem } from "@/lib/types";
 
@@ -95,6 +101,8 @@ export default function PrintPage() {
   const addPrinterMutation = useAddPrinter();
   const removePrinterMutation = useRemovePrinter();
   const setDefaultPrinterMutation = useSetDefaultPrinter();
+  const discoverMutation = useDiscoverPrinters();
+  const registerMutation = useRegisterPrinter();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [printerDialogOpen, setPrinterDialogOpen] = useState(false);
@@ -110,6 +118,8 @@ export default function PrintPage() {
     new Set()
   );
   const [previewNodeKey, setPreviewNodeKey] = useState<string | null>(null);
+  const [discoveredPrinters, setDiscoveredPrinters] = useState<DiscoveredPrinter[]>([]);
+  const [ipAddress, setIpAddress] = useState("");
 
   // Set default printer when data loads
   useEffect(() => {
@@ -272,6 +282,56 @@ export default function PrintPage() {
     setDefaultPrinterMutation.mutate(name, {
       onSuccess: () => toast.success(`デフォルトを「${name}」に変更しました`),
     });
+  };
+
+  const handleDiscoverPrinters = () => {
+    setDiscoveredPrinters([]);
+    discoverMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        setDiscoveredPrinters(data.discovered);
+        if (data.discovered.length === 0) {
+          toast.info("LANプリンタが見つかりませんでした");
+        } else {
+          toast.success(`${data.discovered.length}台のプリンタを検出しました`);
+        }
+      },
+      onError: (err) => toast.error(`LAN検索エラー: ${err.message}`),
+    });
+  };
+
+  const handleRegisterPrinter = (printer: DiscoveredPrinter) => {
+    const safeName = printer.instance_name.replace(/[^a-zA-Z0-9_-]/g, "_");
+    registerMutation.mutate(
+      { uri: printer.uri, name: safeName, is_default: printerOptions.length === 0 },
+      {
+        onSuccess: () => {
+          toast.success(`プリンタ「${safeName}」を登録しました`);
+          setDiscoveredPrinters((prev) =>
+            prev.map((p) =>
+              p.uri === printer.uri ? { ...p, already_configured: true } : p
+            )
+          );
+        },
+        onError: (err) => toast.error(`登録エラー: ${err.message}`),
+      }
+    );
+  };
+
+  const handleRegisterByIp = () => {
+    const ip = ipAddress.trim();
+    if (!ip) return;
+    const uri = `ipp://${ip}:631/ipp/print`;
+    const safeName = ip.replace(/\./g, "_");
+    registerMutation.mutate(
+      { uri, name: safeName, is_default: printerOptions.length === 0 },
+      {
+        onSuccess: () => {
+          toast.success(`プリンタ（${ip}）を登録しました`);
+          setIpAddress("");
+        },
+        onError: (err) => toast.error(`登録エラー: ${err.message}`),
+      }
+    );
   };
 
   const printerStatusColor = (status: string) => {
@@ -852,6 +912,81 @@ export default function PrintPage() {
               </Button>
             </div>
 
+            {/* IP address entry */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="IPアドレス（例: 192.168.1.50）"
+                value={ipAddress}
+                onChange={(e) => setIpAddress(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleRegisterByIp()}
+              />
+              <Button
+                onClick={handleRegisterByIp}
+                disabled={!ipAddress.trim() || registerMutation.isPending}
+                variant="outline"
+              >
+                <Globe className="mr-1 h-4 w-4" />
+                IP登録
+              </Button>
+            </div>
+
+            {/* LAN discovery */}
+            <div className="space-y-2">
+              <Button
+                onClick={handleDiscoverPrinters}
+                disabled={discoverMutation.isPending}
+                variant="outline"
+                className="w-full"
+              >
+                {discoverMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Wifi className="mr-2 h-4 w-4" />
+                )}
+                {discoverMutation.isPending ? "LANプリンタを検索中..." : "LAN検索"}
+              </Button>
+
+              {discoveredPrinters.length > 0 && (
+                <div className="space-y-1.5 rounded-lg border p-2">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">
+                    検出されたプリンタ ({discoveredPrinters.length}台)
+                  </p>
+                  {discoveredPrinters.map((dp) => (
+                    <div
+                      key={dp.uri}
+                      className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2"
+                    >
+                      <Wifi className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {dp.instance_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {dp.hostname}:{dp.port}
+                        </p>
+                      </div>
+                      {dp.already_configured ? (
+                        <Badge variant="secondary" className="text-xs shrink-0">
+                          登録済
+                        </Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 h-7 text-xs"
+                          onClick={() => handleRegisterPrinter(dp)}
+                          disabled={registerMutation.isPending}
+                        >
+                          <Plus className="mr-1 h-3 w-3" />
+                          登録
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Printer list */}
             {printerOptions.length === 0 ? (
               <p className="text-center text-sm text-muted-foreground py-6">
@@ -905,7 +1040,7 @@ export default function PrintPage() {
             )}
 
             <p className="text-xs text-muted-foreground">
-              使用するプリンタ名を登録してください。ローカル環境では自動検出されたプリンタも表示されます。
+              プリンタ名を手動入力するか、IPアドレスを入力するか、LAN検索で自動検出できます。
             </p>
           </div>
         </DialogContent>

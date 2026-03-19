@@ -11,6 +11,7 @@ class ConfiguredPrinter(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    device_uri: Mapped[str | None] = mapped_column(String, nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

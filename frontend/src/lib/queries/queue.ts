@@ -118,6 +118,34 @@ export function useSetDefaultPrinter() {
   });
 }
 
+export type DiscoveredPrinter = {
+  instance_name: string;
+  hostname: string;
+  port: number;
+  uri: string;
+  already_in_cups: boolean;
+  already_configured: boolean;
+};
+
+export function useDiscoverPrinters() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ discovered: DiscoveredPrinter[] }>("/api/jobs/printers/discover"),
+  });
+}
+
+export function useRegisterPrinter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { uri: string; name: string; is_default?: boolean }) =>
+      apiFetch("/api/jobs/printers/register", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["printers"] }),
+  });
+}
+
 export function previewUrl(nodeKey: string): string {
   return apiUrl(`/api/jobs/preview/${encodeURIComponent(nodeKey)}`);
 }

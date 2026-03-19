@@ -107,6 +107,268 @@ def _detect_local_printers() -> tuple[list[dict], str | None]:
     return printers, system_default
 
 
+def _discover_lan_printers() -> list[dict]:
+    """Discover LAN printers using dns-sd (Bonjour), ippfind, and lpinfo."""
+    import subprocess
+    import re
+    import time
+    from urllib.parse import urlparse
+
+    discovered: dict[str, dict] = {}  # key: hostname/IP -> printer info
+
+    # Already registered in CUPS
+    cups_names: set[str] = set()
+    try:
+        result = subprocess.run(
+            ["lpstat", "-e"], capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.splitlines():
+            name = line.strip()
+            if name:
+                cups_names.add(name)
+    except Exception:
+        pass
+
+    # 1. dns-sd -B _ipp._tcp (Bonjour/mDNS — finds printers in standby)
+    try:
+        proc = subprocess.Popen(
+            ["dns-sd", "-B", "_ipp._tcp"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        time.sleep(4)
+        proc.kill()
+        stdout, _ = proc.communicate(timeout=3)
+
+        instance_names: list[str] = []
+        for line in stdout.splitlines():
+            # Typical line: "Timestamp  A/R  Flags  if  Domain  Service Type  Instance Name"
+            # Data lines contain "Add" or "Rmv"
+            parts = line.split()
+            if len(parts) >= 7 and parts[1] in ("Add",):
+                # Instance name is everything after the 6th column
+                instance_name = " ".join(parts[6:])
+                if instance_name and instance_name not in [d.get("instance_name") for d in discovered.values()]:
+                    instance_names.append(instance_name)
+
+        # Resolve each instance to get hostname and port
+        for inst in instance_names:
+            try:
+                rproc = subprocess.Popen(
+                    ["dns-sd", "-L", inst, "_ipp._tcp", "local."],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                time.sleep(2)
+                rproc.kill()
+                rstdout, _ = rproc.communicate(timeout=2)
+
+                hostname = None
+                port = 631
+                for rline in rstdout.splitlines():
+                    # "can be reached at hostname.local.:631"
+                    m = re.search(r"can be reached at\s+(\S+?):(\d+)", rline)
+                    if m:
+                        hostname = m.group(1)
+                        port = int(m.group(2))
+                        break
+                if hostname:
+                    uri = f"ipp://{hostname}:{port}/ipp/print"
+                    key = hostname.replace(".local.", "").replace(".local", "")
+                    if key not in discovered:
+                        discovered[key] = {
+                            "instance_name": inst,
+                            "hostname": hostname,
+                            "port": port,
+                            "uri": uri,
+                        }
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # 2. ippfind (active IPP printers)
+    try:
+        result = subprocess.run(
+            ["ippfind", "-T", "3"],
+            capture_output=True, text=True, timeout=8,
+        )
+        for line in result.stdout.splitlines():
+            uri = line.strip()
+            if not uri:
+                continue
+            parsed = urlparse(uri)
+            hostname = parsed.hostname
+            port = parsed.port or 631
+            if hostname:
+                key = hostname.replace(".local.", "").replace(".local", "")
+                if key not in discovered:
+                    discovered[key] = {
+                        "instance_name": hostname,
+                        "hostname": hostname,
+                        "port": port,
+                        "uri": uri,
+                    }
+    except Exception:
+        pass
+
+    # 3. lpinfo -v (CUPS backend enumeration)
+    try:
+        result = subprocess.run(
+            ["lpinfo", "-v"], capture_output=True, text=True, timeout=10,
+        )
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line.startswith("network "):
+                continue
+            uri = line[len("network "):].strip()
+            if not uri.startswith(("ipp://", "ipps://")):
+                continue
+            parsed = urlparse(uri)
+            hostname = parsed.hostname
+            port = parsed.port or 631
+            if hostname:
+                key = hostname.replace(".local.", "").replace(".local", "")
+                if key not in discovered:
+                    discovered[key] = {
+                        "instance_name": hostname,
+                        "hostname": hostname,
+                        "port": port,
+                        "uri": uri,
+                    }
+    except Exception:
+        pass
+
+    return list(discovered.values())
+
+
+@router.get("/printers/discover")
+async def discover_printers(db: AsyncSession = Depends(get_db)):
+    """Scan LAN for printers using Bonjour, ippfind, and lpinfo."""
+    discovered = _discover_lan_printers()
+
+    # Check CUPS registration
+    cups_names: set[str] = set()
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["lpstat", "-e"], capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.splitlines():
+            name = line.strip()
+            if name:
+                cups_names.add(name)
+    except Exception:
+        pass
+
+    # Check DB registration
+    db_result = await db.execute(select(ConfiguredPrinter))
+    configured_names = {cp.name for cp in db_result.scalars().all()}
+    configured_uris = set()
+    for cp in (await db.execute(select(ConfiguredPrinter))).scalars().all():
+        if cp.device_uri:
+            configured_uris.add(cp.device_uri)
+
+    for p in discovered:
+        # Check if already in CUPS by matching hostname in any CUPS printer name
+        p["already_in_cups"] = any(
+            p["hostname"].replace(".local.", "").replace(".local", "") in cn
+            for cn in cups_names
+        ) or any(cn in p.get("instance_name", "") for cn in cups_names)
+        p["already_configured"] = (
+            p.get("uri", "") in configured_uris
+            or p.get("instance_name", "") in configured_names
+        )
+
+    return {"discovered": discovered}
+
+
+class RegisterPrinterRequest(BaseModel):
+    uri: str
+    name: str
+    is_default: bool = False
+
+
+@router.post("/printers/register")
+async def register_printer(body: RegisterPrinterRequest, db: AsyncSession = Depends(get_db)):
+    """Register a discovered LAN printer into CUPS and the database."""
+    import subprocess
+    import re
+
+    # Validate URI
+    if not body.uri.startswith(("ipp://", "ipps://")):
+        raise HTTPException(status_code=422, detail="URIは ipp:// または ipps:// で始まる必要があります")
+
+    # Sanitize name for CUPS (alphanumeric, hyphens, underscores only)
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", body.name)
+    if not safe_name:
+        raise HTTPException(status_code=422, detail="無効なプリンタ名です")
+
+    # Check DB duplicate
+    existing = await db.execute(
+        select(ConfiguredPrinter).where(ConfiguredPrinter.name == safe_name)
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=409, detail="このプリンタは既に登録されています")
+
+    # Register in CUPS via lpadmin
+    registered = False
+    error_msg = ""
+
+    # Try driverless first (-m everywhere)
+    try:
+        result = subprocess.run(
+            ["lpadmin", "-p", safe_name, "-v", body.uri, "-m", "everywhere", "-E"],
+            capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode == 0:
+            registered = True
+        else:
+            error_msg = result.stderr.strip()
+    except Exception as e:
+        error_msg = str(e)
+
+    # Fallback to raw driver
+    if not registered:
+        try:
+            result = subprocess.run(
+                ["lpadmin", "-p", safe_name, "-v", body.uri, "-m", "raw", "-E"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                registered = True
+            else:
+                error_msg = result.stderr.strip()
+        except Exception as e:
+            error_msg = str(e)
+
+    if not registered:
+        raise HTTPException(
+            status_code=422,
+            detail=f"CUPSへの登録に失敗しました: {error_msg}",
+        )
+
+    # Verify with lpstat
+    try:
+        check = subprocess.run(
+            ["lpstat", "-p", safe_name], capture_output=True, text=True, timeout=5,
+        )
+        if check.returncode != 0:
+            raise HTTPException(
+                status_code=422,
+                detail=f"プリンタは追加されましたが、状態確認に失敗しました: {check.stderr.strip()}",
+            )
+    except subprocess.TimeoutExpired:
+        pass  # Printer added but status check timed out — proceed anyway
+
+    # Save to DB
+    if body.is_default:
+        await db.execute(update(ConfiguredPrinter).values(is_default=False))
+    printer = ConfiguredPrinter(name=safe_name, device_uri=body.uri, is_default=body.is_default)
+    db.add(printer)
+    await db.commit()
+
+    return {"status": "ok", "name": safe_name, "uri": body.uri}
+
+
 @router.get("/printers")
 async def list_printers(db: AsyncSession = Depends(get_db)):
     """List printers from DB (configured) + local detection (if available)."""
