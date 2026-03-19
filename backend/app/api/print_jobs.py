@@ -90,8 +90,52 @@ async def list_printers():
     known_names = {p["name"] for p in printers}
     if settings.printer_name and settings.printer_name not in known_names:
         printers.append({"name": settings.printer_name, "status": "unknown"})
+        known_names.add(settings.printer_name)
+
+    # LAN printer discovery via ippfind (macOS/CUPS built-in)
+    try:
+        from urllib.parse import urlparse
+        result = subprocess.run(
+            ["ippfind", "--timeout", "3"],
+            capture_output=True, text=True, timeout=8
+        )
+        for line in result.stdout.splitlines():
+            uri = line.strip()
+            if not uri:
+                continue
+            parsed = urlparse(uri)
+            display_name = parsed.hostname or uri
+            if display_name not in known_names:
+                printers.append({
+                    "name": display_name,
+                    "status": "network",
+                    "uri": uri,
+                })
+                known_names.add(display_name)
+    except Exception:
+        pass
 
     return {"printers": printers, "default": default_printer}
+
+
+@router.get("/preview/{node_key}")
+async def preview_pdf(node_key: str, db: AsyncSession = Depends(get_db)):
+    """Serve a PDF file for preview by node_key."""
+    from fastapi.responses import FileResponse
+
+    result = await db.execute(
+        select(MaterialNode).where(MaterialNode.key == node_key)
+    )
+    node = result.scalars().first()
+    if not node or not node.pdf_relpath:
+        raise HTTPException(status_code=404, detail="PDFが見つかりません")
+    resolved = _resolve_pdf_path(node.pdf_relpath)
+    if not resolved:
+        raise HTTPException(
+            status_code=404,
+            detail=f"PDFファイルが存在しません: {node.pdf_relpath}",
+        )
+    return FileResponse(resolved, media_type="application/pdf")
 
 
 def _resolve_pdf_path(pdf_relpath: str) -> str | None:

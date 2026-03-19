@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "../api";
+import { apiFetch, apiUrl } from "../api";
 import type { QueueItem } from "../types";
 
 export function useQueue() {
@@ -74,7 +74,7 @@ export function useExecutePrint() {
   });
 }
 
-export type PrinterInfo = { name: string; status: string };
+export type PrinterInfo = { name: string; status: string; uri?: string };
 
 export function usePrinters() {
   return useQuery({
@@ -82,4 +82,8 @@ export function usePrinters() {
     queryFn: () =>
       apiFetch<{ printers: PrinterInfo[]; default: string }>("/api/jobs/printers"),
   });
+}
+
+export function previewUrl(nodeKey: string): string {
+  return apiUrl(`/api/jobs/preview/${encodeURIComponent(nodeKey)}`);
 }

@@ -8,6 +8,7 @@ import {
   useRemoveFromQueue,
   useExecutePrint,
   usePrinters,
+  previewUrl,
 } from "@/lib/queries/queue";
 import { useStudents } from "@/lib/queries/students";
 import { useMaterials } from "@/lib/queries/materials";
@@ -53,6 +54,7 @@ import {
   ChevronRight,
   User,
   RefreshCw,
+  Eye,
 } from "lucide-react";
 import type { QueueItem } from "@/lib/types";
 
@@ -74,7 +76,7 @@ type StudentGroup = {
 
 export default function PrintPage() {
   const queryClient = useQueryClient();
-  const { data: items, isLoading: queueLoading } = useQueue();
+  const { data: items } = useQueue();
   const { data: students } = useStudents();
   const { data: materials } = useMaterials();
   const { data: jobs } = useJobs();
@@ -90,13 +92,13 @@ export default function PrintPage() {
   const [selectedMaterial, setSelectedMaterial] = useState("");
   const [selectedNode, setSelectedNode] = useState("");
   const [selectedPrinter, setSelectedPrinter] = useState("");
-  const [printMode, setPrintMode] = useState(false);
   const [printingStudents, setPrintingStudents] = useState<Set<string>>(
     new Set()
   );
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set()
   );
+  const [previewNodeKey, setPreviewNodeKey] = useState<string | null>(null);
 
   // Set default printer when data loads
   useEffect(() => {
@@ -162,14 +164,19 @@ export default function PrintPage() {
     });
   };
 
-  const showPrintResult = (data: { results: { success: boolean }[] }, label?: string) => {
+  const showPrintResult = (
+    data: { results: { success: boolean }[] },
+    label?: string
+  ) => {
     const successCount = data.results.filter((r) => r.success).length;
     const failCount = data.results.filter((r) => !r.success).length;
     const prefix = label ? `${label}: ` : "";
     if (failCount === 0) {
       toast.success(`${prefix}${successCount}件の印刷を実行しました`);
     } else if (successCount === 0) {
-      toast.error(`${prefix}全${failCount}件が失敗しました（キューに残っています）`);
+      toast.error(
+        `${prefix}全${failCount}件が失敗しました（キューに残っています）`
+      );
     } else {
       toast.warning(
         `${prefix}${successCount}件成功 / ${failCount}件失敗（失敗分はキューに残っています）`
@@ -226,178 +233,27 @@ export default function PrintPage() {
     queryClient.invalidateQueries({ queryKey: ["printers"] });
   };
 
-  // ─── Printer selector (shared between modes) ───
-  const printerSelector = (
-    <div className="flex items-center gap-1.5">
-      <Printer className="h-4 w-4 text-muted-foreground" />
-      <Select value={effectivePrinter} onValueChange={setSelectedPrinter}>
-        <SelectTrigger className="h-8 w-[280px] text-xs">
-          <SelectValue placeholder="プリンタを選択" />
-        </SelectTrigger>
-        <SelectContent>
-          {printerOptions.length > 0 ? (
-            printerOptions.map((p) => (
-              <SelectItem key={p.name} value={p.name}>
-                <span className="flex items-center gap-2">
-                  <span
-                    className={`inline-block h-2 w-2 rounded-full ${
-                      p.status === "online"
-                        ? "bg-emerald-500"
-                        : p.status === "unknown"
-                        ? "bg-amber-400"
-                        : "bg-gray-400"
-                    }`}
-                  />
-                  {p.name}
-                  {p.name === printerData?.default ? " (デフォルト)" : ""}
-                </span>
-              </SelectItem>
-            ))
-          ) : (
-            <SelectItem value={printerData?.default || "unknown"}>
-              {printerData?.default || "プリンタ未検出"}
-            </SelectItem>
-          )}
-        </SelectContent>
-      </Select>
-      <Button
-        size="icon"
-        variant="ghost"
-        className="h-8 w-8"
-        onClick={handleRefreshPrinters}
-        disabled={printersRefreshing}
-      >
-        <RefreshCw
-          className={`h-3.5 w-3.5 ${printersRefreshing ? "animate-spin" : ""}`}
-        />
-      </Button>
-    </div>
-  );
+  const printerStatusColor = (status: string) => {
+    switch (status) {
+      case "online":
+        return "bg-emerald-500";
+      case "network":
+        return "bg-blue-500";
+      case "unknown":
+        return "bg-amber-400";
+      default:
+        return "bg-gray-400";
+    }
+  };
 
-  // ─── Print Mode ───
-  if (printMode) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">印刷モード</h1>
-            <p className="mt-1 text-muted-foreground">
-              生徒ごとに印刷を実行
-            </p>
-          </div>
-          <Button variant="outline" onClick={() => setPrintMode(false)}>
-            通常モードに戻る
-          </Button>
-        </div>
-
-        {/* Printer selector + auto-queue */}
-        <div className="flex items-center gap-2">
-          {printerSelector}
-          <div className="ml-auto flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleAutoQueueAll}
-              disabled={autoQueueMutation.isPending}
-            >
-              <Zap className="mr-2 h-4 w-4" />
-              {autoQueueMutation.isPending
-                ? "処理中..."
-                : "全生徒の次回分を自動追加"}
-            </Button>
-          </div>
-        </div>
-
-        {/* Student cards */}
-        {groupedQueue.length === 0 ? (
-          <Card className="border-0 shadow-premium">
-            <CardContent className="py-16 text-center">
-              <Printer className="mx-auto mb-3 h-10 w-10 text-muted-foreground/20" />
-              <p className="text-sm text-muted-foreground">
-                キューは空です
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4">
-            {groupedQueue.map((group) => {
-              const isPrinting = printingStudents.has(group.studentId);
-              return (
-                <Card
-                  key={group.studentId}
-                  className="border-0 shadow-premium overflow-hidden"
-                >
-                  <div className="flex items-center justify-between px-5 py-4 bg-muted/30">
-                    <div className="flex items-center gap-3">
-                      <User className="h-5 w-5 text-primary" />
-                      <span className="text-lg font-bold">
-                        {group.studentName}
-                      </span>
-                      <Badge variant="secondary">
-                        {group.items.length}件
-                      </Badge>
-                    </div>
-                    <Button
-                      onClick={() =>
-                        handlePrintStudent(group.studentId, group.studentName)
-                      }
-                      disabled={isPrinting || executeMutation.isPending}
-                    >
-                      <Printer className="mr-2 h-4 w-4" />
-                      {isPrinting ? "印刷中..." : "印刷実行"}
-                    </Button>
-                  </div>
-                  <CardContent className="px-5 pb-4 pt-2">
-                    <div className="space-y-1.5">
-                      {group.items.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between text-sm"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span>{item.material_name || item.material_key}</span>
-                            <span className="text-muted-foreground">
-                              {item.node_name || item.node_key || ""}
-                            </span>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-destructive"
-                            onClick={() => handleRemove(item.id)}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ─── Normal Mode ───
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">印刷</h1>
-          <p className="mt-1 text-muted-foreground">
-            印刷キュー・ジョブ履歴・ログを管理
-          </p>
-        </div>
-        <Button
-          variant="default"
-          onClick={() => setPrintMode(true)}
-        >
-          <Printer className="mr-2 h-4 w-4" />
-          印刷モード
-        </Button>
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">印刷</h1>
+        <p className="mt-1 text-muted-foreground">
+          印刷キュー・ジョブ履歴・ログを管理
+        </p>
       </div>
 
       <Tabs defaultValue="queue">
@@ -414,9 +270,10 @@ export default function PrintPage() {
           <TabsTrigger value="logs">ログ</TabsTrigger>
         </TabsList>
 
-        {/* Queue Tab - Per-Student Grouped */}
+        {/* ─── Queue Tab ─── */}
         <TabsContent value="queue" className="space-y-4">
-          <div className="flex items-center gap-2">
+          {/* Toolbar */}
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               size="sm"
               variant="outline"
@@ -521,7 +378,55 @@ export default function PrintPage() {
             </Dialog>
 
             <div className="ml-auto flex items-center gap-2">
-              {printerSelector}
+              {/* Printer selector */}
+              <div className="flex items-center gap-1.5">
+                <Printer className="h-4 w-4 text-muted-foreground" />
+                <Select
+                  value={effectivePrinter}
+                  onValueChange={setSelectedPrinter}
+                >
+                  <SelectTrigger className="h-8 w-[280px] text-xs">
+                    <SelectValue placeholder="プリンタを選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {printerOptions.length > 0 ? (
+                      printerOptions.map((p) => (
+                        <SelectItem key={p.name} value={p.name}>
+                          <span className="flex items-center gap-2">
+                            <span
+                              className={`inline-block h-2 w-2 rounded-full ${printerStatusColor(
+                                p.status
+                              )}`}
+                            />
+                            {p.name}
+                            {p.name === printerData?.default
+                              ? " (デフォルト)"
+                              : ""}
+                            {p.status === "network" ? " (LAN)" : ""}
+                          </span>
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value={printerData?.default || "unknown"}>
+                        {printerData?.default || "プリンタ未検出"}
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  onClick={handleRefreshPrinters}
+                  disabled={printersRefreshing}
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${
+                      printersRefreshing ? "animate-spin" : ""
+                    }`}
+                  />
+                </Button>
+              </div>
               <Button
                 size="sm"
                 onClick={handlePrintAll}
@@ -533,7 +438,7 @@ export default function PrintPage() {
             </div>
           </div>
 
-          {/* Grouped queue display */}
+          {/* Student-grouped queue */}
           {groupedQueue.length === 0 ? (
             <Card className="border-0 shadow-premium">
               <CardContent className="py-16 text-center">
@@ -553,7 +458,7 @@ export default function PrintPage() {
                     key={group.studentId}
                     className="border-0 shadow-premium overflow-hidden"
                   >
-                    {/* Group header */}
+                    {/* Student header */}
                     <div className="flex items-center bg-muted/30 hover:bg-muted/50 transition-colors">
                       <button
                         type="button"
@@ -573,7 +478,7 @@ export default function PrintPage() {
                           {group.items.length}件
                         </Badge>
                       </button>
-                      <div className="pr-3">
+                      <div className="flex items-center gap-1.5 pr-3">
                         <Button
                           size="sm"
                           variant="outline"
@@ -592,7 +497,7 @@ export default function PrintPage() {
                       </div>
                     </div>
 
-                    {/* Group items */}
+                    {/* Queue items */}
                     {!isCollapsed && (
                       <CardContent className="p-0">
                         <Table>
@@ -603,7 +508,7 @@ export default function PrintPage() {
                               <TableHead className="text-xs w-20">
                                 ステータス
                               </TableHead>
-                              <TableHead className="w-12"></TableHead>
+                              <TableHead className="w-20"></TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -630,14 +535,29 @@ export default function PrintPage() {
                                   </Badge>
                                 </TableCell>
                                 <TableCell>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7 text-destructive"
-                                    onClick={() => handleRemove(item.id)}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
+                                  <div className="flex items-center gap-1">
+                                    {item.node_key && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                        onClick={() =>
+                                          setPreviewNodeKey(item.node_key!)
+                                        }
+                                        title="プレビュー"
+                                      >
+                                        <Eye className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-destructive"
+                                      onClick={() => handleRemove(item.id)}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -652,7 +572,7 @@ export default function PrintPage() {
           )}
         </TabsContent>
 
-        {/* Jobs Tab */}
+        {/* ─── Jobs Tab ─── */}
         <TabsContent value="jobs">
           <Card className="border-0 shadow-premium overflow-hidden">
             <CardContent className="p-0">
@@ -742,7 +662,7 @@ export default function PrintPage() {
           </Card>
         </TabsContent>
 
-        {/* Logs Tab */}
+        {/* ─── Logs Tab ─── */}
         <TabsContent value="logs">
           <Card className="border-0 shadow-premium overflow-hidden">
             <CardContent className="p-0">
@@ -823,6 +743,24 @@ export default function PrintPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ─── PDF Preview Dialog ─── */}
+      <Dialog
+        open={!!previewNodeKey}
+        onOpenChange={(open) => !open && setPreviewNodeKey(null)}
+      >
+        <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>PDF プレビュー</DialogTitle>
+          </DialogHeader>
+          {previewNodeKey && (
+            <iframe
+              src={previewUrl(previewNodeKey)}
+              className="w-full flex-1 rounded border"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
