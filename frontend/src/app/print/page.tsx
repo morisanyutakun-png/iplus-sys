@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useQueue,
   useAddToQueue,
@@ -51,6 +52,7 @@ import {
   ChevronDown,
   ChevronRight,
   User,
+  RefreshCw,
 } from "lucide-react";
 import type { QueueItem } from "@/lib/types";
 
@@ -71,12 +73,13 @@ type StudentGroup = {
 };
 
 export default function PrintPage() {
+  const queryClient = useQueryClient();
   const { data: items, isLoading: queueLoading } = useQueue();
   const { data: students } = useStudents();
   const { data: materials } = useMaterials();
   const { data: jobs } = useJobs();
   const { data: logs } = useLogs();
-  const { data: printerData } = usePrinters();
+  const { data: printerData, isFetching: printersRefreshing } = usePrinters();
   const addMutation = useAddToQueue();
   const removeMutation = useRemoveFromQueue();
   const executeMutation = useExecutePrint();
@@ -87,6 +90,10 @@ export default function PrintPage() {
   const [selectedMaterial, setSelectedMaterial] = useState("");
   const [selectedNode, setSelectedNode] = useState("");
   const [selectedPrinter, setSelectedPrinter] = useState("");
+  const [printMode, setPrintMode] = useState(false);
+  const [printingStudents, setPrintingStudents] = useState<Set<string>>(
+    new Set()
+  );
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set()
   );
@@ -155,23 +162,54 @@ export default function PrintPage() {
     });
   };
 
-  const handlePrint = () => {
-    executeMutation.mutate(effectivePrinter || undefined, {
-      onSuccess: (data) => {
-        const successCount = data.results.filter((r) => r.success).length;
-        const failCount = data.results.filter((r) => !r.success).length;
-        if (failCount === 0) {
-          toast.success(`${successCount}件の印刷を実行しました`);
-        } else if (successCount === 0) {
-          toast.error(`全${failCount}件が失敗しました（キューに残っています）`);
-        } else {
-          toast.warning(
-            `${successCount}件成功 / ${failCount}件失敗（失敗分はキューに残っています）`
-          );
-        }
-      },
-      onError: (err) => toast.error(`印刷エラー: ${err.message}`),
-    });
+  const showPrintResult = (data: { results: { success: boolean }[] }, label?: string) => {
+    const successCount = data.results.filter((r) => r.success).length;
+    const failCount = data.results.filter((r) => !r.success).length;
+    const prefix = label ? `${label}: ` : "";
+    if (failCount === 0) {
+      toast.success(`${prefix}${successCount}件の印刷を実行しました`);
+    } else if (successCount === 0) {
+      toast.error(`${prefix}全${failCount}件が失敗しました（キューに残っています）`);
+    } else {
+      toast.warning(
+        `${prefix}${successCount}件成功 / ${failCount}件失敗（失敗分はキューに残っています）`
+      );
+    }
+  };
+
+  const handlePrintAll = () => {
+    executeMutation.mutate(
+      { printerName: effectivePrinter || undefined },
+      {
+        onSuccess: (data) => showPrintResult(data),
+        onError: (err) => toast.error(`印刷エラー: ${err.message}`),
+      }
+    );
+  };
+
+  const handlePrintStudent = (studentId: string, studentName: string) => {
+    setPrintingStudents((prev) => new Set(prev).add(studentId));
+    executeMutation.mutate(
+      { printerName: effectivePrinter || undefined, studentIds: [studentId] },
+      {
+        onSuccess: (data) => {
+          showPrintResult(data, studentName);
+          setPrintingStudents((prev) => {
+            const next = new Set(prev);
+            next.delete(studentId);
+            return next;
+          });
+        },
+        onError: (err) => {
+          toast.error(`印刷エラー (${studentName}): ${err.message}`);
+          setPrintingStudents((prev) => {
+            const next = new Set(prev);
+            next.delete(studentId);
+            return next;
+          });
+        },
+      }
+    );
   };
 
   const handleAutoQueueAll = () => {
@@ -184,13 +222,182 @@ export default function PrintPage() {
     });
   };
 
+  const handleRefreshPrinters = () => {
+    queryClient.invalidateQueries({ queryKey: ["printers"] });
+  };
+
+  // ─── Printer selector (shared between modes) ───
+  const printerSelector = (
+    <div className="flex items-center gap-1.5">
+      <Printer className="h-4 w-4 text-muted-foreground" />
+      <Select value={effectivePrinter} onValueChange={setSelectedPrinter}>
+        <SelectTrigger className="h-8 w-[280px] text-xs">
+          <SelectValue placeholder="プリンタを選択" />
+        </SelectTrigger>
+        <SelectContent>
+          {printerOptions.length > 0 ? (
+            printerOptions.map((p) => (
+              <SelectItem key={p.name} value={p.name}>
+                <span className="flex items-center gap-2">
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full ${
+                      p.status === "online"
+                        ? "bg-emerald-500"
+                        : p.status === "unknown"
+                        ? "bg-amber-400"
+                        : "bg-gray-400"
+                    }`}
+                  />
+                  {p.name}
+                  {p.name === printerData?.default ? " (デフォルト)" : ""}
+                </span>
+              </SelectItem>
+            ))
+          ) : (
+            <SelectItem value={printerData?.default || "unknown"}>
+              {printerData?.default || "プリンタ未検出"}
+            </SelectItem>
+          )}
+        </SelectContent>
+      </Select>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="h-8 w-8"
+        onClick={handleRefreshPrinters}
+        disabled={printersRefreshing}
+      >
+        <RefreshCw
+          className={`h-3.5 w-3.5 ${printersRefreshing ? "animate-spin" : ""}`}
+        />
+      </Button>
+    </div>
+  );
+
+  // ─── Print Mode ───
+  if (printMode) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">印刷モード</h1>
+            <p className="mt-1 text-muted-foreground">
+              生徒ごとに印刷を実行
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setPrintMode(false)}>
+            通常モードに戻る
+          </Button>
+        </div>
+
+        {/* Printer selector + auto-queue */}
+        <div className="flex items-center gap-2">
+          {printerSelector}
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleAutoQueueAll}
+              disabled={autoQueueMutation.isPending}
+            >
+              <Zap className="mr-2 h-4 w-4" />
+              {autoQueueMutation.isPending
+                ? "処理中..."
+                : "全生徒の次回分を自動追加"}
+            </Button>
+          </div>
+        </div>
+
+        {/* Student cards */}
+        {groupedQueue.length === 0 ? (
+          <Card className="border-0 shadow-premium">
+            <CardContent className="py-16 text-center">
+              <Printer className="mx-auto mb-3 h-10 w-10 text-muted-foreground/20" />
+              <p className="text-sm text-muted-foreground">
+                キューは空です
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4">
+            {groupedQueue.map((group) => {
+              const isPrinting = printingStudents.has(group.studentId);
+              return (
+                <Card
+                  key={group.studentId}
+                  className="border-0 shadow-premium overflow-hidden"
+                >
+                  <div className="flex items-center justify-between px-5 py-4 bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <User className="h-5 w-5 text-primary" />
+                      <span className="text-lg font-bold">
+                        {group.studentName}
+                      </span>
+                      <Badge variant="secondary">
+                        {group.items.length}件
+                      </Badge>
+                    </div>
+                    <Button
+                      onClick={() =>
+                        handlePrintStudent(group.studentId, group.studentName)
+                      }
+                      disabled={isPrinting || executeMutation.isPending}
+                    >
+                      <Printer className="mr-2 h-4 w-4" />
+                      {isPrinting ? "印刷中..." : "印刷実行"}
+                    </Button>
+                  </div>
+                  <CardContent className="px-5 pb-4 pt-2">
+                    <div className="space-y-1.5">
+                      {group.items.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between text-sm"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>{item.material_name || item.material_key}</span>
+                            <span className="text-muted-foreground">
+                              {item.node_name || item.node_key || ""}
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-destructive"
+                            onClick={() => handleRemove(item.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── Normal Mode ───
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">印刷</h1>
-        <p className="mt-1 text-muted-foreground">
-          印刷キュー・ジョブ履歴・ログを管理
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">印刷</h1>
+          <p className="mt-1 text-muted-foreground">
+            印刷キュー・ジョブ履歴・ログを管理
+          </p>
+        </div>
+        <Button
+          variant="default"
+          onClick={() => setPrintMode(true)}
+        >
+          <Printer className="mr-2 h-4 w-4" />
+          印刷モード
+        </Button>
       </div>
 
       <Tabs defaultValue="queue">
@@ -314,44 +521,14 @@ export default function PrintPage() {
             </Dialog>
 
             <div className="ml-auto flex items-center gap-2">
-              <div className="flex items-center gap-1.5">
-                <Printer className="h-4 w-4 text-muted-foreground" />
-                <Select value={effectivePrinter} onValueChange={setSelectedPrinter}>
-                  <SelectTrigger className="h-8 w-[280px] text-xs">
-                    <SelectValue placeholder="プリンタを選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {printerOptions.length > 0 ? (
-                      printerOptions.map((p) => (
-                        <SelectItem key={p.name} value={p.name}>
-                          <span className="flex items-center gap-2">
-                            <span
-                              className={`inline-block h-2 w-2 rounded-full ${
-                                p.status === "online"
-                                  ? "bg-emerald-500"
-                                  : "bg-gray-400"
-                              }`}
-                            />
-                            {p.name}
-                            {p.name === printerData?.default ? " (デフォルト)" : ""}
-                          </span>
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value={printerData?.default || "unknown"}>
-                        {printerData?.default || "プリンタ未検出"}
-                      </SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+              {printerSelector}
               <Button
                 size="sm"
-                onClick={handlePrint}
+                onClick={handlePrintAll}
                 disabled={!items?.length || executeMutation.isPending}
               >
                 <Printer className="mr-2 h-4 w-4" />
-                {executeMutation.isPending ? "実行中..." : "印刷実行"}
+                {executeMutation.isPending ? "実行中..." : "全件印刷"}
               </Button>
             </div>
           </div>
@@ -370,30 +547,50 @@ export default function PrintPage() {
             <div className="space-y-3">
               {groupedQueue.map((group) => {
                 const isCollapsed = collapsedGroups.has(group.studentId);
+                const isPrinting = printingStudents.has(group.studentId);
                 return (
                   <Card
                     key={group.studentId}
                     className="border-0 shadow-premium overflow-hidden"
                   >
                     {/* Group header */}
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
-                      onClick={() => toggleGroup(group.studentId)}
-                    >
-                      {isCollapsed ? (
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                      )}
-                      <User className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-semibold">
-                        {group.studentName}
-                      </span>
-                      <Badge variant="secondary" className="text-xs">
-                        {group.items.length}件
-                      </Badge>
-                    </button>
+                    <div className="flex items-center bg-muted/30 hover:bg-muted/50 transition-colors">
+                      <button
+                        type="button"
+                        className="flex flex-1 items-center gap-3 px-4 py-3 cursor-pointer"
+                        onClick={() => toggleGroup(group.studentId)}
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        )}
+                        <User className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-semibold">
+                          {group.studentName}
+                        </span>
+                        <Badge variant="secondary" className="text-xs">
+                          {group.items.length}件
+                        </Badge>
+                      </button>
+                      <div className="pr-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() =>
+                            handlePrintStudent(
+                              group.studentId,
+                              group.studentName
+                            )
+                          }
+                          disabled={isPrinting || executeMutation.isPending}
+                        >
+                          <Printer className="mr-1 h-3 w-3" />
+                          {isPrinting ? "印刷中..." : "印刷"}
+                        </Button>
+                      </div>
+                    </div>
 
                     {/* Group items */}
                     {!isCollapsed && (

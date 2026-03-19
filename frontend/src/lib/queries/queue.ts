@@ -49,13 +49,21 @@ export function useReorderQueue() {
 
 type PrintResult = { student: string; material: string; node: string; success: boolean; message: string };
 
+type ExecutePrintParams = {
+  printerName?: string;
+  studentIds?: string[];
+};
+
 export function useExecutePrint() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (printerName?: string) =>
+    mutationFn: (params: ExecutePrintParams) =>
       apiFetch<{ job_id: string; results: PrintResult[] }>("/api/jobs/execute", {
         method: "POST",
-        body: JSON.stringify({ printer_name: printerName }),
+        body: JSON.stringify({
+          printer_name: params.printerName,
+          student_ids: params.studentIds,
+        }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["queue"] });

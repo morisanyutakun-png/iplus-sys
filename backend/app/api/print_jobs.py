@@ -7,6 +7,9 @@ from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from pydantic import BaseModel
+from typing import Optional
+
 from app.config import settings
 from app.database import get_db
 from app.models.print_queue import PrintQueue
@@ -21,22 +24,74 @@ router = APIRouter()
 
 @router.get("/printers")
 async def list_printers():
-    """List available printers from CUPS via lpstat."""
+    """List available printers from CUPS via lpstat with fallback strategies."""
     import subprocess
+
+    printers: list[dict] = []
+    system_default: str | None = None
+
+    # Strategy 1: lpstat -p (printer status)
     try:
         result = subprocess.run(
             ["lpstat", "-p"], capture_output=True, text=True, timeout=5
         )
-        printers = []
         for line in result.stdout.splitlines():
             if line.startswith("printer "):
                 name = line.split()[1]
                 low = line.lower()
                 status = "online" if ("idle" in low or "printing" in low) else "offline"
                 printers.append({"name": name, "status": status})
-        return {"printers": printers, "default": settings.printer_name}
     except Exception:
-        return {"printers": [], "default": settings.printer_name}
+        pass
+
+    # Strategy 2: lpstat -a (accepting printers) — fallback if -p returned nothing
+    if not printers:
+        try:
+            result = subprocess.run(
+                ["lpstat", "-a"], capture_output=True, text=True, timeout=5
+            )
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if parts:
+                    name = parts[0]
+                    accepting = "accepting" in line.lower()
+                    printers.append({"name": name, "status": "online" if accepting else "offline"})
+        except Exception:
+            pass
+
+    # Strategy 3: lpstat -v (device URIs) — fallback if -a also returned nothing
+    if not printers:
+        try:
+            result = subprocess.run(
+                ["lpstat", "-v"], capture_output=True, text=True, timeout=5
+            )
+            for line in result.stdout.splitlines():
+                if line.startswith("device for "):
+                    name = line.split("device for ")[1].split(":")[0].strip()
+                    printers.append({"name": name, "status": "unknown"})
+        except Exception:
+            pass
+
+    # Get system default printer
+    try:
+        result = subprocess.run(
+            ["lpstat", "-d"], capture_output=True, text=True, timeout=5
+        )
+        # Output: "system default destination: PrinterName"
+        for line in result.stdout.splitlines():
+            if ":" in line:
+                system_default = line.split(":")[-1].strip()
+    except Exception:
+        pass
+
+    default_printer = system_default or settings.printer_name
+
+    # Ensure configured printer is always in the list
+    known_names = {p["name"] for p in printers}
+    if settings.printer_name and settings.printer_name not in known_names:
+        printers.append({"name": settings.printer_name, "status": "unknown"})
+
+    return {"printers": printers, "default": default_printer}
 
 
 def _resolve_pdf_path(pdf_relpath: str) -> str | None:
@@ -152,12 +207,18 @@ async def prepare_job(db: AsyncSession = Depends(get_db)):
     return {"job_id": job_id, "item_count": len(job_items), "missing": missing_count}
 
 
+class ExecuteRequest(BaseModel):
+    printer_name: Optional[str] = None
+    student_ids: Optional[list[str]] = None
+
+
 @router.post("/execute")
-async def execute_print(body: dict = None, db: AsyncSession = Depends(get_db)):
+async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(get_db)):
     """Execute printing: prepare job if needed, advance pointers, clear queue."""
     import subprocess
 
-    printer = (body or {}).get("printer_name") or settings.printer_name
+    body = body or ExecuteRequest()
+    printer = body.printer_name or settings.printer_name
 
     # Check printer is online before sending
     try:
@@ -175,12 +236,11 @@ async def execute_print(body: dict = None, db: AsyncSession = Depends(get_db)):
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=503, detail="プリンタ状態の確認がタイムアウトしました")
 
-    # Prepare job first
-    result = await db.execute(
-        select(PrintQueue)
-        .where(PrintQueue.status == "pending")
-        .order_by(PrintQueue.sort_order, PrintQueue.id)
-    )
+    # Prepare job — optionally filter by student_ids
+    query = select(PrintQueue).where(PrintQueue.status == "pending")
+    if body.student_ids:
+        query = query.where(PrintQueue.student_id.in_(body.student_ids))
+    result = await db.execute(query.order_by(PrintQueue.sort_order, PrintQueue.id))
     queue_items = result.scalars().all()
     if not queue_items:
         raise HTTPException(status_code=400, detail="Queue is empty")
