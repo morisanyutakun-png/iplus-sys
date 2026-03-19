@@ -17,19 +17,14 @@ from app.models.print_job import PrintJob, PrintJobItem
 from app.models.print_log import PrintLog
 from app.models.student_material import StudentMaterial, ProgressHistory
 from app.models.material import MaterialNode
+from app.models.configured_printer import ConfiguredPrinter
 from app.schemas.job import PrintJobOut, PrintJobListOut
 
 router = APIRouter()
 
 
-@router.get("/printers")
-async def list_printers():
-    """List available printers via CUPS + LAN discovery.
-
-    lpstat output is locale-dependent (Japanese on this system), so we use
-    lpstat -e (locale-independent name list) for discovery and lpstat -p
-    with locale-aware parsing for status.
-    """
+def _detect_local_printers() -> tuple[list[dict], str | None]:
+    """Detect locally connected printers via CUPS + LAN (best-effort)."""
     import subprocess
     import re
 
@@ -37,7 +32,7 @@ async def list_printers():
     printer_status: dict[str, str] = {}
     system_default: str | None = None
 
-    # Step 1: Get printer names via lpstat -e (locale-independent, just names)
+    # lpstat -e (locale-independent name list)
     try:
         result = subprocess.run(
             ["lpstat", "-e"], capture_output=True, text=True, timeout=5
@@ -49,27 +44,21 @@ async def list_printers():
     except Exception:
         pass
 
-    # Step 2: Get status via lpstat -p (handles both English and Japanese)
-    # English: "printer PrinterName is idle."  /  "printer PrinterName disabled ..."
-    # Japanese: "プリンタPrinterNameは待機中です"  /  "プリンタPrinterName使用不可..."
+    # lpstat -p for status (English + Japanese)
     try:
         result = subprocess.run(
             ["lpstat", "-p"], capture_output=True, text=True, timeout=5
         )
         for line in result.stdout.splitlines():
-            # Extract printer name: try English format first, then Japanese
             name = None
             if line.startswith("printer "):
                 name = line.split()[1]
             else:
-                # Japanese: "プリンタ<NAME>は..." or "プリンタ<NAME> ..."
                 m = re.match(r"プリンタ(\S+?)(?:は|使用不可|が)", line)
                 if m:
                     name = m.group(1)
             if not name:
                 continue
-
-            # Determine status from line content
             low = line.lower()
             if "idle" in low or "待機中" in line or "printing" in low or "印刷中" in line:
                 printer_status[name] = "online"
@@ -77,14 +66,12 @@ async def list_printers():
                 printer_status[name] = "offline"
             else:
                 printer_status[name] = "online"
-
-            # If lpstat -e failed, collect names from here
             if name not in printer_names:
                 printer_names.append(name)
     except Exception:
         pass
 
-    # Step 3: Get system default printer
+    # System default
     try:
         result = subprocess.run(
             ["lpstat", "-d"], capture_output=True, text=True, timeout=5
@@ -95,7 +82,7 @@ async def list_printers():
     except Exception:
         pass
 
-    # Step 4: LAN printer discovery via ippfind (flag is -T, not --timeout)
+    # LAN discovery via ippfind
     try:
         from urllib.parse import urlparse
         result = subprocess.run(
@@ -116,15 +103,99 @@ async def list_printers():
     except Exception:
         pass
 
-    # Build response
-    printers = []
-    for name in printer_names:
-        status = printer_status.get(name, "unknown")
-        printers.append({"name": name, "status": status})
+    printers = [{"name": n, "status": printer_status.get(n, "unknown")} for n in printer_names]
+    return printers, system_default
 
-    default_printer = system_default or (printer_names[0] if printer_names else settings.printer_name)
 
-    return {"printers": printers, "default": default_printer}
+@router.get("/printers")
+async def list_printers(db: AsyncSession = Depends(get_db)):
+    """List printers from DB (configured) + local detection (if available)."""
+    # 1. DB-configured printers (primary source — works on cloud)
+    result = await db.execute(
+        select(ConfiguredPrinter).order_by(ConfiguredPrinter.id)
+    )
+    configured = result.scalars().all()
+
+    db_printers = []
+    db_default: str | None = None
+    db_names = set()
+    for cp in configured:
+        db_printers.append({"name": cp.name, "status": "configured"})
+        db_names.add(cp.name)
+        if cp.is_default:
+            db_default = cp.name
+
+    # 2. Local detection (best-effort — may fail on cloud)
+    local_printers, system_default = _detect_local_printers()
+
+    # Merge: DB printers first, then local printers not already in DB
+    for lp in local_printers:
+        if lp["name"] not in db_names:
+            db_printers.append(lp)
+            db_names.add(lp["name"])
+
+    default_printer = db_default or system_default or (db_printers[0]["name"] if db_printers else settings.printer_name)
+
+    return {"printers": db_printers, "default": default_printer}
+
+
+class AddPrinterRequest(BaseModel):
+    name: str
+    is_default: bool = False
+
+
+@router.post("/printers")
+async def add_printer(body: AddPrinterRequest, db: AsyncSession = Depends(get_db)):
+    """Add a printer to the configured list."""
+    # Check duplicate
+    existing = await db.execute(
+        select(ConfiguredPrinter).where(ConfiguredPrinter.name == body.name)
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=409, detail="このプリンタは既に登録されています")
+
+    # If setting as default, clear other defaults
+    if body.is_default:
+        await db.execute(
+            update(ConfiguredPrinter).values(is_default=False)
+        )
+
+    printer = ConfiguredPrinter(name=body.name, is_default=body.is_default)
+    db.add(printer)
+    await db.commit()
+    return {"status": "ok", "name": body.name}
+
+
+@router.delete("/printers/{printer_name}")
+async def remove_printer(printer_name: str, db: AsyncSession = Depends(get_db)):
+    """Remove a printer from the configured list."""
+    result = await db.execute(
+        select(ConfiguredPrinter).where(ConfiguredPrinter.name == printer_name)
+    )
+    printer = result.scalars().first()
+    if not printer:
+        raise HTTPException(status_code=404, detail="プリンタが見つかりません")
+    await db.delete(printer)
+    await db.commit()
+    return {"status": "deleted", "name": printer_name}
+
+
+@router.put("/printers/{printer_name}/default")
+async def set_default_printer(printer_name: str, db: AsyncSession = Depends(get_db)):
+    """Set a printer as the default."""
+    result = await db.execute(
+        select(ConfiguredPrinter).where(ConfiguredPrinter.name == printer_name)
+    )
+    printer = result.scalars().first()
+    if not printer:
+        # Auto-register if not in DB yet
+        printer = ConfiguredPrinter(name=printer_name, is_default=True)
+        db.add(printer)
+    # Clear all defaults, then set this one
+    await db.execute(update(ConfiguredPrinter).values(is_default=False))
+    printer.is_default = True
+    await db.commit()
+    return {"status": "ok", "default": printer_name}
 
 
 @router.get("/preview/{node_key}")

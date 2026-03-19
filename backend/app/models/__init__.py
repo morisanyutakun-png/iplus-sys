@@ -6,6 +6,7 @@ from app.models.print_queue import PrintQueue
 from app.models.print_job import PrintJob, PrintJobItem
 from app.models.print_log import PrintLog
 from app.models.lesson_record import LessonRecord
+from app.models.configured_printer import ConfiguredPrinter
 
 __all__ = [
     "Base",
@@ -20,4 +21,5 @@ __all__ = [
     "PrintJobItem",
     "PrintLog",
     "LessonRecord",
+    "ConfiguredPrinter",
 ]

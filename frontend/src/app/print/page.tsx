@@ -8,6 +8,9 @@ import {
   useRemoveFromQueue,
   useExecutePrint,
   usePrinters,
+  useAddPrinter,
+  useRemovePrinter,
+  useSetDefaultPrinter,
   previewUrl,
 } from "@/lib/queries/queue";
 import { useStudents } from "@/lib/queries/students";
@@ -17,6 +20,7 @@ import { useAutoQueue } from "@/lib/queries/auto-print";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -55,6 +59,8 @@ import {
   User,
   RefreshCw,
   Eye,
+  Settings,
+  Star,
 } from "lucide-react";
 import type { QueueItem } from "@/lib/types";
 
@@ -86,8 +92,13 @@ export default function PrintPage() {
   const removeMutation = useRemoveFromQueue();
   const executeMutation = useExecutePrint();
   const autoQueueMutation = useAutoQueue();
+  const addPrinterMutation = useAddPrinter();
+  const removePrinterMutation = useRemovePrinter();
+  const setDefaultPrinterMutation = useSetDefaultPrinter();
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [printerDialogOpen, setPrinterDialogOpen] = useState(false);
+  const [newPrinterName, setNewPrinterName] = useState("");
   const [selectedStudent, setSelectedStudent] = useState("");
   const [selectedMaterial, setSelectedMaterial] = useState("");
   const [selectedNode, setSelectedNode] = useState("");
@@ -233,9 +244,41 @@ export default function PrintPage() {
     queryClient.invalidateQueries({ queryKey: ["printers"] });
   };
 
+  const handleAddPrinter = () => {
+    const name = newPrinterName.trim();
+    if (!name) return;
+    addPrinterMutation.mutate(
+      { name, is_default: printerOptions.length === 0 },
+      {
+        onSuccess: () => {
+          toast.success(`プリンタ「${name}」を追加しました`);
+          setNewPrinterName("");
+        },
+        onError: (err) => toast.error(err.message),
+      }
+    );
+  };
+
+  const handleRemovePrinter = (name: string) => {
+    removePrinterMutation.mutate(name, {
+      onSuccess: () => {
+        toast.success(`プリンタ「${name}」を削除しました`);
+        if (selectedPrinter === name) setSelectedPrinter("");
+      },
+    });
+  };
+
+  const handleSetDefault = (name: string) => {
+    setDefaultPrinterMutation.mutate(name, {
+      onSuccess: () => toast.success(`デフォルトを「${name}」に変更しました`),
+    });
+  };
+
   const printerStatusColor = (status: string) => {
     switch (status) {
       case "online":
+        return "bg-emerald-500";
+      case "configured":
         return "bg-emerald-500";
       case "network":
         return "bg-blue-500";
@@ -243,6 +286,17 @@ export default function PrintPage() {
         return "bg-amber-400";
       default:
         return "bg-gray-400";
+    }
+  };
+
+  const printerStatusLabel = (status: string) => {
+    switch (status) {
+      case "network":
+        return " (LAN)";
+      case "online":
+        return " (ローカル)";
+      default:
+        return "";
     }
   };
 
@@ -402,13 +456,13 @@ export default function PrintPage() {
                             {p.name === printerData?.default
                               ? " (デフォルト)"
                               : ""}
-                            {p.status === "network" ? " (LAN)" : ""}
+                            {printerStatusLabel(p.status)}
                           </span>
                         </SelectItem>
                       ))
                     ) : (
-                      <SelectItem value={printerData?.default || "unknown"}>
-                        {printerData?.default || "プリンタ未検出"}
+                      <SelectItem value="__none" disabled>
+                        プリンタ未登録
                       </SelectItem>
                     )}
                   </SelectContent>
@@ -419,12 +473,22 @@ export default function PrintPage() {
                   className="h-8 w-8"
                   onClick={handleRefreshPrinters}
                   disabled={printersRefreshing}
+                  title="再検出"
                 >
                   <RefreshCw
                     className={`h-3.5 w-3.5 ${
                       printersRefreshing ? "animate-spin" : ""
                     }`}
                   />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  onClick={() => setPrinterDialogOpen(true)}
+                  title="プリンタ管理"
+                >
+                  <Settings className="h-3.5 w-3.5" />
                 </Button>
               </div>
               <Button
@@ -759,6 +823,91 @@ export default function PrintPage() {
               className="w-full flex-1 rounded border"
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Printer Management Dialog ─── */}
+      <Dialog open={printerDialogOpen} onOpenChange={setPrinterDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>プリンタ管理</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Add printer */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="プリンタ名を入力（例: EPSON_EP_806A）"
+                value={newPrinterName}
+                onChange={(e) => setNewPrinterName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddPrinter()}
+              />
+              <Button
+                onClick={handleAddPrinter}
+                disabled={
+                  !newPrinterName.trim() || addPrinterMutation.isPending
+                }
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                追加
+              </Button>
+            </div>
+
+            {/* Printer list */}
+            {printerOptions.length === 0 ? (
+              <p className="text-center text-sm text-muted-foreground py-6">
+                プリンタが登録されていません
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {printerOptions.map((p) => (
+                  <div
+                    key={p.name}
+                    className="flex items-center gap-3 rounded-lg border px-3 py-2"
+                  >
+                    <span
+                      className={`inline-block h-2.5 w-2.5 rounded-full ${printerStatusColor(
+                        p.status
+                      )}`}
+                    />
+                    <span className="flex-1 text-sm font-medium">
+                      {p.name}
+                    </span>
+                    {p.name === printerData?.default && (
+                      <Badge variant="secondary" className="text-xs">
+                        デフォルト
+                      </Badge>
+                    )}
+                    {p.status === "configured" && p.name !== printerData?.default && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-amber-500"
+                        onClick={() => handleSetDefault(p.name)}
+                        title="デフォルトに設定"
+                      >
+                        <Star className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {p.status === "configured" && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-destructive"
+                        onClick={() => handleRemovePrinter(p.name)}
+                        title="削除"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              使用するプリンタ名を登録してください。ローカル環境では自動検出されたプリンタも表示されます。
+            </p>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -84,6 +84,40 @@ export function usePrinters() {
   });
 }
 
+export function useAddPrinter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; is_default?: boolean }) =>
+      apiFetch("/api/jobs/printers", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["printers"] }),
+  });
+}
+
+export function useRemovePrinter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      apiFetch(`/api/jobs/printers/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["printers"] }),
+  });
+}
+
+export function useSetDefaultPrinter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      apiFetch(`/api/jobs/printers/${encodeURIComponent(name)}/default`, {
+        method: "PUT",
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["printers"] }),
+  });
+}
+
 export function previewUrl(nodeKey: string): string {
   return apiUrl(`/api/jobs/preview/${encodeURIComponent(nodeKey)}`);
 }
