@@ -692,6 +692,7 @@ class ExecuteRequest(BaseModel):
     printer_name: Optional[str] = None
     student_ids: Optional[list[str]] = None
     agent_id: Optional[str] = None  # for logging when using agent mode
+    use_agent: Optional[bool] = None
 
 
 class AgentAckItem(BaseModel):
@@ -714,8 +715,9 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
 
     body = body or ExecuteRequest()
     printer = body.printer_name or settings.printer_name
+    use_agent = body.use_agent if body.use_agent is not None else settings.use_print_agent
 
-    if not settings.use_print_agent:
+    if not use_agent:
         try:
             check = subprocess.run(
                 ["lpstat", "-p", printer], capture_output=True, text=True, timeout=5
@@ -727,7 +729,7 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
                     detail=f"プリンタ '{printer}' はオフラインまたは無効です。オンラインを確認してから再実行してください。",
                 )
         except FileNotFoundError:
-            if not settings.use_print_agent:
+            if not use_agent:
                 raise HTTPException(status_code=503, detail="lpstatコマンドが見つかりません")
         except subprocess.TimeoutExpired:
             raise HTTPException(status_code=503, detail="プリンタ状態の確認がタイムアウトしました")
@@ -787,7 +789,7 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
         ))
         queue_ids.append(qi.id)
 
-    job_status = "queued" if settings.use_print_agent else "created"
+    job_status = "queued" if use_agent else "created"
     job = PrintJob(
         id=job_id,
         status=job_status,
@@ -807,7 +809,7 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
 
     await db.commit()
 
-    if settings.use_print_agent:
+    if use_agent:
         return {"job_id": job_id, "status": "queued", "item_count": len(job_items), "missing": missing_count}
 
     # Legacy direct-print path

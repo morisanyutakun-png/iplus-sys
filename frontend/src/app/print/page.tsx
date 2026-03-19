@@ -186,12 +186,16 @@ export default function PrintPage() {
   };
 
   const showPrintResult = (
-    data: { results: { success: boolean }[] },
+    data: { results?: { success: boolean }[]; status?: string },
     label?: string
   ) => {
+    const prefix = label ? `${label}: ` : "";
+    if (!data.results || data.status === "queued") {
+      toast.info(`${prefix}印刷ジョブをキューに登録しました（LAN内エージェントが処理します）`);
+      return;
+    }
     const successCount = data.results.filter((r) => r.success).length;
     const failCount = data.results.filter((r) => !r.success).length;
-    const prefix = label ? `${label}: ` : "";
     if (failCount === 0) {
       toast.success(`${prefix}${successCount}件の印刷を実行しました`);
     } else if (successCount === 0) {
@@ -207,7 +211,7 @@ export default function PrintPage() {
 
   const handlePrintAll = () => {
     executeMutation.mutate(
-      { printerName: effectivePrinter || undefined },
+      { printerName: effectivePrinter || undefined, useAgent: true },
       {
         onSuccess: (data) => showPrintResult(data),
         onError: (err) => toast.error(`印刷エラー: ${err.message}`),
@@ -218,7 +222,7 @@ export default function PrintPage() {
   const handlePrintStudent = (studentId: string, studentName: string) => {
     setPrintingStudents((prev) => new Set(prev).add(studentId));
     executeMutation.mutate(
-      { printerName: effectivePrinter || undefined, studentIds: [studentId] },
+      { printerName: effectivePrinter || undefined, studentIds: [studentId], useAgent: true },
       {
         onSuccess: (data) => {
           showPrintResult(data, studentName);

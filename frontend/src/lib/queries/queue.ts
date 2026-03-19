@@ -52,17 +52,19 @@ type PrintResult = { student: string; material: string; node: string; success: b
 type ExecutePrintParams = {
   printerName?: string;
   studentIds?: string[];
+  useAgent?: boolean;
 };
 
 export function useExecutePrint() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (params: ExecutePrintParams) =>
-      apiFetch<{ job_id: string; results: PrintResult[] }>("/api/jobs/execute", {
+      apiFetch<{ job_id: string; status?: string; results?: PrintResult[] }>("/api/jobs/execute", {
         method: "POST",
         body: JSON.stringify({
           printer_name: params.printerName,
           student_ids: params.studentIds,
+          use_agent: params.useAgent ?? true,
         }),
       }),
     onSuccess: () => {
