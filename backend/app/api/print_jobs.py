@@ -24,96 +24,105 @@ router = APIRouter()
 
 @router.get("/printers")
 async def list_printers():
-    """List available printers from CUPS via lpstat with fallback strategies."""
-    import subprocess
+    """List available printers via CUPS + LAN discovery.
 
-    printers: list[dict] = []
+    lpstat output is locale-dependent (Japanese on this system), so we use
+    lpstat -e (locale-independent name list) for discovery and lpstat -p
+    with locale-aware parsing for status.
+    """
+    import subprocess
+    import re
+
+    printer_names: list[str] = []
+    printer_status: dict[str, str] = {}
     system_default: str | None = None
 
-    # Strategy 1: lpstat -p (printer status)
+    # Step 1: Get printer names via lpstat -e (locale-independent, just names)
+    try:
+        result = subprocess.run(
+            ["lpstat", "-e"], capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.splitlines():
+            name = line.strip()
+            if name:
+                printer_names.append(name)
+    except Exception:
+        pass
+
+    # Step 2: Get status via lpstat -p (handles both English and Japanese)
+    # English: "printer PrinterName is idle."  /  "printer PrinterName disabled ..."
+    # Japanese: "プリンタPrinterNameは待機中です"  /  "プリンタPrinterName使用不可..."
     try:
         result = subprocess.run(
             ["lpstat", "-p"], capture_output=True, text=True, timeout=5
         )
         for line in result.stdout.splitlines():
+            # Extract printer name: try English format first, then Japanese
+            name = None
             if line.startswith("printer "):
                 name = line.split()[1]
-                low = line.lower()
-                status = "online" if ("idle" in low or "printing" in low) else "offline"
-                printers.append({"name": name, "status": status})
+            else:
+                # Japanese: "プリンタ<NAME>は..." or "プリンタ<NAME> ..."
+                m = re.match(r"プリンタ(\S+?)(?:は|使用不可|が)", line)
+                if m:
+                    name = m.group(1)
+            if not name:
+                continue
+
+            # Determine status from line content
+            low = line.lower()
+            if "idle" in low or "待機中" in line or "printing" in low or "印刷中" in line:
+                printer_status[name] = "online"
+            elif "disabled" in low or "使用不可" in line:
+                printer_status[name] = "offline"
+            else:
+                printer_status[name] = "online"
+
+            # If lpstat -e failed, collect names from here
+            if name not in printer_names:
+                printer_names.append(name)
     except Exception:
         pass
 
-    # Strategy 2: lpstat -a (accepting printers) — fallback if -p returned nothing
-    if not printers:
-        try:
-            result = subprocess.run(
-                ["lpstat", "-a"], capture_output=True, text=True, timeout=5
-            )
-            for line in result.stdout.splitlines():
-                parts = line.split()
-                if parts:
-                    name = parts[0]
-                    accepting = "accepting" in line.lower()
-                    printers.append({"name": name, "status": "online" if accepting else "offline"})
-        except Exception:
-            pass
-
-    # Strategy 3: lpstat -v (device URIs) — fallback if -a also returned nothing
-    if not printers:
-        try:
-            result = subprocess.run(
-                ["lpstat", "-v"], capture_output=True, text=True, timeout=5
-            )
-            for line in result.stdout.splitlines():
-                if line.startswith("device for "):
-                    name = line.split("device for ")[1].split(":")[0].strip()
-                    printers.append({"name": name, "status": "unknown"})
-        except Exception:
-            pass
-
-    # Get system default printer
+    # Step 3: Get system default printer
     try:
         result = subprocess.run(
             ["lpstat", "-d"], capture_output=True, text=True, timeout=5
         )
-        # Output: "system default destination: PrinterName"
         for line in result.stdout.splitlines():
             if ":" in line:
                 system_default = line.split(":")[-1].strip()
     except Exception:
         pass
 
-    default_printer = system_default or settings.printer_name
-
-    # Ensure configured printer is always in the list
-    known_names = {p["name"] for p in printers}
-    if settings.printer_name and settings.printer_name not in known_names:
-        printers.append({"name": settings.printer_name, "status": "unknown"})
-        known_names.add(settings.printer_name)
-
-    # LAN printer discovery via ippfind (macOS/CUPS built-in)
+    # Step 4: LAN printer discovery via ippfind (flag is -T, not --timeout)
     try:
         from urllib.parse import urlparse
         result = subprocess.run(
-            ["ippfind", "--timeout", "3"],
+            ["ippfind", "-T", "3"],
             capture_output=True, text=True, timeout=8
         )
+        known_set = set(printer_names)
         for line in result.stdout.splitlines():
             uri = line.strip()
             if not uri:
                 continue
             parsed = urlparse(uri)
             display_name = parsed.hostname or uri
-            if display_name not in known_names:
-                printers.append({
-                    "name": display_name,
-                    "status": "network",
-                    "uri": uri,
-                })
-                known_names.add(display_name)
+            if display_name not in known_set:
+                printer_names.append(display_name)
+                printer_status[display_name] = "network"
+                known_set.add(display_name)
     except Exception:
         pass
+
+    # Build response
+    printers = []
+    for name in printer_names:
+        status = printer_status.get(name, "unknown")
+        printers.append({"name": name, "status": status})
+
+    default_printer = system_default or (printer_names[0] if printer_names else settings.printer_name)
 
     return {"printers": printers, "default": default_printer}
 
@@ -269,8 +278,8 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
         check = subprocess.run(
             ["lpstat", "-p", printer], capture_output=True, text=True, timeout=5
         )
-        output = check.stdout.lower()
-        if "disabled" in output or check.returncode != 0:
+        output = check.stdout
+        if "disabled" in output.lower() or "使用不可" in output or check.returncode != 0:
             raise HTTPException(
                 status_code=503,
                 detail=f"プリンタ '{printer}' はオフラインまたは無効です。オンラインを確認してから再実行してください。",
