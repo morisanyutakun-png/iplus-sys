@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Literal
 
 from app.config import settings
 from app.database import get_db
@@ -691,32 +691,46 @@ async def prepare_job(db: AsyncSession = Depends(get_db)):
 class ExecuteRequest(BaseModel):
     printer_name: Optional[str] = None
     student_ids: Optional[list[str]] = None
+    agent_id: Optional[str] = None  # for logging when using agent mode
+
+
+class AgentAckItem(BaseModel):
+    item_id: int
+    success: bool
+    message: str = ""
+
+
+class AgentAckRequest(BaseModel):
+    job_id: str
+    status: Literal["done", "failed"]
+    results: list[AgentAckItem]
+    agent_id: Optional[str] = None
 
 
 @router.post("/execute")
 async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(get_db)):
-    """Execute printing: prepare job if needed, advance pointers, clear queue."""
+    """Prepare a print job. If settings.use_print_agent=True, queue for agent pickup; otherwise print immediately."""
     import subprocess
 
     body = body or ExecuteRequest()
     printer = body.printer_name or settings.printer_name
 
-    # Check printer is online before sending (skip if lpstat is unavailable on cloud runtimes)
-    try:
-        check = subprocess.run(
-            ["lpstat", "-p", printer], capture_output=True, text=True, timeout=5
-        )
-        output = check.stdout
-        if "disabled" in output.lower() or "使用不可" in output or check.returncode != 0:
-            raise HTTPException(
-                status_code=503,
-                detail=f"プリンタ '{printer}' はオフラインまたは無効です。オンラインを確認してから再実行してください。",
+    if not settings.use_print_agent:
+        try:
+            check = subprocess.run(
+                ["lpstat", "-p", printer], capture_output=True, text=True, timeout=5
             )
-    except FileNotFoundError:
-        # lpstat not installed (e.g., serverless) — skip availability check
-        pass
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=503, detail="プリンタ状態の確認がタイムアウトしました")
+            output = check.stdout
+            if "disabled" in output.lower() or "使用不可" in output or check.returncode != 0:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"プリンタ '{printer}' はオフラインまたは無効です。オンラインを確認してから再実行してください。",
+                )
+        except FileNotFoundError:
+            if not settings.use_print_agent:
+                raise HTTPException(status_code=503, detail="lpstatコマンドが見つかりません")
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=503, detail="プリンタ状態の確認がタイムアウトしました")
 
     # Prepare job — optionally filter by student_ids
     query = select(PrintQueue).where(PrintQueue.status == "pending")
@@ -730,12 +744,15 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
     now = datetime.now(timezone.utc)
     job_id = now.strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
 
-    results = []
-    success_ids = []
+    job_items: list[PrintJobItem] = []
+    queue_ids: list[int] = []
+    missing_count = 0
+
     for idx, qi in enumerate(queue_items):
         pdf_relpath = ""
         duplex = False
-        node = None
+        range_text = ""
+        start_on = qi.start_on
 
         if qi.node_key:
             node_result = await db.execute(
@@ -745,47 +762,95 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
             if node:
                 pdf_relpath = node.pdf_relpath
                 duplex = node.duplex
+                range_text = node.range_text
 
         resolved = _resolve_pdf_path(pdf_relpath)
-        success = False
-        message = ""
+        is_missing = resolved is None and pdf_relpath != ""
+        if is_missing:
+            missing_count += 1
 
-        if resolved:
-            try:
-                cmd = [settings.printer_command, "-d", printer]
-                if duplex:
-                    cmd += ["-o", "sides=two-sided-long-edge"]
-                cmd.append(resolved)
-                subprocess.run(cmd, check=True, capture_output=True, timeout=30)
-                success = True
-                message = "Sent to printer"
-            except Exception as e:
-                message = str(e)
-        else:
-            message = f"PDF not found: {pdf_relpath}"
-
-        # Log
-        log_entry = PrintLog(
-            type="printed" if success else "failed",
+        job_items.append(PrintJobItem(
             job_id=job_id,
+            sort_order=idx,
             student_id=qi.student_id,
             student_name=qi.student_name,
             material_key=qi.material_key,
             material_name=qi.material_name,
             node_key=qi.node_key,
             node_name=qi.node_name,
+            pdf_relpath=pdf_relpath,
+            pdf_resolved=resolved,
+            missing_pdf=is_missing,
+            range_text=range_text,
+            duplex=duplex,
+            start_on=start_on,
+        ))
+        queue_ids.append(qi.id)
+
+    job_status = "queued" if settings.use_print_agent else "created"
+    job = PrintJob(
+        id=job_id,
+        status=job_status,
+        printer_name=printer,
+        item_count=len(job_items),
+        missing=missing_count,
+    )
+    db.add(job)
+    for item in job_items:
+        db.add(item)
+
+    await db.execute(
+        update(PrintQueue)
+        .where(PrintQueue.id.in_(queue_ids))
+        .values(status="queued", generated_job_id=job_id)
+    )
+
+    await db.commit()
+
+    if settings.use_print_agent:
+        return {"job_id": job_id, "status": "queued", "item_count": len(job_items), "missing": missing_count}
+
+    # Legacy direct-print path
+    results = []
+    success_ids = []
+    for idx, item in enumerate(job_items):
+        success = False
+        message = ""
+
+        if item.pdf_resolved:
+            try:
+                cmd = [settings.printer_command, "-d", printer]
+                if item.duplex:
+                    cmd += ["-o", "sides=two-sided-long-edge"]
+                cmd.append(item.pdf_resolved)
+                subprocess.run(cmd, check=True, capture_output=True, timeout=30)
+                success = True
+                message = "Sent to printer"
+            except Exception as e:
+                message = str(e)
+        else:
+            message = f"PDF not found: {item.pdf_relpath}"
+
+        log_entry = PrintLog(
+            type="printed" if success else "failed",
+            job_id=job_id,
+            student_id=item.student_id,
+            student_name=item.student_name,
+            material_key=item.material_key,
+            material_name=item.material_name,
+            node_key=item.node_key,
+            node_name=item.node_name,
             success=success,
             message=message,
         )
         db.add(log_entry)
 
-        # Advance pointer if success
         if success:
-            success_ids.append(qi.id)
+            success_ids.append(queue_ids[idx])
             sm_result = await db.execute(
                 select(StudentMaterial).where(
-                    StudentMaterial.student_id == qi.student_id,
-                    StudentMaterial.material_key == qi.material_key,
+                    StudentMaterial.student_id == item.student_id,
+                    StudentMaterial.material_key == item.material_key,
                 )
             )
             sm = sm_result.scalars().first()
@@ -793,9 +858,9 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
                 old_pointer = sm.pointer
                 sm.pointer = old_pointer + 1
                 history = ProgressHistory(
-                    student_id=qi.student_id,
-                    material_key=qi.material_key,
-                    node_key=qi.node_key,
+                    student_id=item.student_id,
+                    material_key=item.material_key,
+                    node_key=item.node_key,
                     action="print",
                     old_pointer=old_pointer,
                     new_pointer=old_pointer + 1,
@@ -803,16 +868,120 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
                 db.add(history)
 
         results.append({
-            "student": qi.student_name,
-            "material": qi.material_name,
-            "node": qi.node_name,
+            "student": item.student_name,
+            "material": item.material_name,
+            "node": item.node_name,
             "success": success,
             "message": message,
         })
 
-    # Only remove successfully printed items from queue
     if success_ids:
         await db.execute(delete(PrintQueue).where(PrintQueue.id.in_(success_ids)))
+    job.status = "done"
+    job.executed_at = datetime.now(timezone.utc)
     await db.commit()
 
     return {"job_id": job_id, "results": results}
+
+
+@router.get("/agent/poll")
+async def agent_poll(limit: int = 5, db: AsyncSession = Depends(get_db)):
+    """Agent pulls queued jobs to execute inside LAN."""
+    result = await db.execute(
+        select(PrintJob)
+        .where(PrintJob.status == "queued")
+        .order_by(PrintJob.created_at)
+        .options(selectinload(PrintJob.items))
+        .limit(limit)
+    )
+    jobs = result.scalars().all()
+    payload: list[dict] = []
+    job_ids = [job.id for job in jobs]
+    if job_ids:
+        await db.execute(
+            update(PrintJob).where(PrintJob.id.in_(job_ids)).values(status="processing")
+        )
+        await db.commit()
+    for job in jobs:
+        items = []
+        for item in job.items:
+            items.append({
+                "id": item.id,
+                "sort_order": item.sort_order,
+                "student_name": item.student_name,
+                "material_name": item.material_name,
+                "node_name": item.node_name,
+                "pdf_resolved": item.pdf_resolved,
+                "pdf_relpath": item.pdf_relpath,
+                "duplex": item.duplex,
+                "range_text": item.range_text,
+            })
+        payload.append({
+            "job_id": job.id,
+            "printer_name": job.printer_name or settings.printer_name,
+            "items": items,
+        })
+    return {"jobs": payload}
+
+
+@router.post("/agent/ack")
+async def agent_ack(body: AgentAckRequest, db: AsyncSession = Depends(get_db)):
+    """Agent reports results after printing."""
+    job_result = await db.execute(
+        select(PrintJob)
+        .where(PrintJob.id == body.job_id)
+        .options(selectinload(PrintJob.items))
+    )
+    job = job_result.scalars().first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    items_by_id = {item.id: item for item in job.items}
+
+    for res in body.results:
+        item = items_by_id.get(res.item_id)
+        if not item:
+            continue
+        log_entry = PrintLog(
+            type="printed" if res.success else "failed",
+            job_id=job.id,
+            student_id=item.student_id,
+            student_name=item.student_name,
+            material_key=item.material_key,
+            material_name=item.material_name,
+            node_key=item.node_key,
+            node_name=item.node_name,
+            success=res.success,
+            message=res.message,
+        )
+        db.add(log_entry)
+
+        if res.success:
+            sm_result = await db.execute(
+                select(StudentMaterial).where(
+                    StudentMaterial.student_id == item.student_id,
+                    StudentMaterial.material_key == item.material_key,
+                )
+            )
+            sm = sm_result.scalars().first()
+            if sm:
+                old_pointer = sm.pointer
+                sm.pointer = old_pointer + 1
+                history = ProgressHistory(
+                    student_id=item.student_id,
+                    material_key=item.material_key,
+                    node_key=item.node_key,
+                    action="print",
+                    old_pointer=old_pointer,
+                    new_pointer=old_pointer + 1,
+                )
+                db.add(history)
+
+    await db.execute(
+        delete(PrintQueue).where(PrintQueue.generated_job_id == job.id)
+    )
+
+    job.status = body.status
+    job.executed_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"status": body.status, "job_id": job.id}

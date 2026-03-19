@@ -11,6 +11,7 @@ class PrintJob(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     status: Mapped[str] = mapped_column(String, default="created")
+    printer_name: Mapped[str | None] = mapped_column(String, nullable=True)
     item_count: Mapped[int] = mapped_column(Integer, default=0)
     missing: Mapped[int] = mapped_column(Integer, default=0)
     merged_pdf: Mapped[str | None] = mapped_column(String, nullable=True)
