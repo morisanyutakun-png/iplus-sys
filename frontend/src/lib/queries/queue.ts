@@ -123,6 +123,7 @@ export type DiscoveredPrinter = {
   hostname: string;
   port: number;
   uri: string;
+  cups_name?: string;
   already_in_cups: boolean;
   already_configured: boolean;
 };

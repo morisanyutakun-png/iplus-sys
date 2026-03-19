@@ -300,6 +300,23 @@ export default function PrintPage() {
   };
 
   const handleRegisterPrinter = (printer: DiscoveredPrinter) => {
+    if (printer.already_in_cups && printer.cups_name) {
+      addPrinterMutation.mutate(
+        { name: printer.cups_name, is_default: printerOptions.length === 0 },
+        {
+          onSuccess: () => {
+            toast.success(`プリンタ「${printer.cups_name}」を登録しました`);
+            setDiscoveredPrinters((prev) =>
+              prev.map((p) =>
+                p.uri === printer.uri ? { ...p, already_configured: true } : p
+              )
+            );
+          },
+        }
+      );
+      return;
+    }
+
     const safeName = printer.instance_name.replace(/[^a-zA-Z0-9_-]/g, "_");
     registerMutation.mutate(
       { uri: printer.uri, name: safeName, is_default: printerOptions.length === 0 },

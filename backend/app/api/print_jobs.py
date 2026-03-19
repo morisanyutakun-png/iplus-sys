@@ -23,6 +23,82 @@ from app.schemas.job import PrintJobOut, PrintJobListOut
 router = APIRouter()
 
 
+def _normalize_host(value: str | None) -> str:
+    if not value:
+        return ""
+    return value.strip().rstrip(".").replace(".local", "")
+
+
+def _parse_cups_device_uri_map() -> dict[str, str]:
+    import re
+    import subprocess
+
+    device_map: dict[str, str] = {}
+    try:
+        result = subprocess.run(
+            ["lpstat", "-v"], capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.splitlines():
+            text = line.strip()
+            if not text:
+                continue
+            match = re.match(r"device for\s+(.+?):\s+(.+)$", text)
+            if not match:
+                match = re.match(r"(.+?)\s+のデバイス:\s+(.+)$", text)
+            if match:
+                device_map[match.group(1).strip()] = match.group(2).strip()
+    except Exception:
+        pass
+    return device_map
+
+
+def _upsert_discovered_printer(
+    discovered: dict[str, dict],
+    *,
+    instance_name: str,
+    hostname: str | None,
+    port: int | None,
+    uri: str,
+    cups_name: str | None = None,
+) -> None:
+    from urllib.parse import urlparse
+
+    parsed = urlparse(uri)
+    resolved_hostname = hostname or parsed.hostname
+    if not resolved_hostname:
+        return
+
+    resolved_port = port or parsed.port or (631 if parsed.scheme in ("ipp", "ipps") else 0)
+    key = _normalize_host(resolved_hostname)
+    if not key:
+        return
+
+    entry = discovered.get(key)
+    candidate = {
+        "instance_name": instance_name or resolved_hostname,
+        "hostname": resolved_hostname,
+        "port": resolved_port,
+        "uri": uri,
+    }
+    if cups_name:
+        candidate["cups_name"] = cups_name
+
+    if entry is None:
+        discovered[key] = candidate
+        return
+
+    if len(candidate["instance_name"]) > len(entry.get("instance_name", "")):
+        entry["instance_name"] = candidate["instance_name"]
+    if not entry.get("cups_name") and candidate.get("cups_name"):
+        entry["cups_name"] = candidate["cups_name"]
+    if entry.get("uri", "").startswith("ipp://") and candidate["uri"].startswith("ipps://"):
+        entry["uri"] = candidate["uri"]
+        entry["port"] = candidate["port"]
+    elif not entry.get("uri") and candidate.get("uri"):
+        entry["uri"] = candidate["uri"]
+        entry["port"] = candidate["port"]
+
+
 def _detect_local_printers() -> tuple[list[dict], str | None]:
     """Detect locally connected printers via CUPS + LAN (best-effort)."""
     import subprocess
@@ -128,62 +204,61 @@ def _discover_lan_printers() -> list[dict]:
                 cups_names.add(name)
     except Exception:
         pass
+    cups_device_map = _parse_cups_device_uri_map()
 
-    # 1. dns-sd -B _ipp._tcp (Bonjour/mDNS — finds printers in standby)
-    try:
-        proc = subprocess.Popen(
-            ["dns-sd", "-B", "_ipp._tcp"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        )
-        time.sleep(4)
-        proc.kill()
-        stdout, _ = proc.communicate(timeout=3)
+    # 1. dns-sd browse/resolve (Bonjour/mDNS — finds printers in standby)
+    for service_type, scheme in (("_ipp._tcp", "ipp"), ("_ipps._tcp", "ipps")):
+        try:
+            proc = subprocess.Popen(
+                ["dns-sd", "-B", service_type],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            time.sleep(4)
+            proc.kill()
+            stdout, _ = proc.communicate(timeout=3)
 
-        instance_names: list[str] = []
-        for line in stdout.splitlines():
-            # Typical line: "Timestamp  A/R  Flags  if  Domain  Service Type  Instance Name"
-            # Data lines contain "Add" or "Rmv"
-            parts = line.split()
-            if len(parts) >= 7 and parts[1] in ("Add",):
-                # Instance name is everything after the 6th column
-                instance_name = " ".join(parts[6:])
-                if instance_name and instance_name not in [d.get("instance_name") for d in discovered.values()]:
-                    instance_names.append(instance_name)
+            instance_names: list[str] = []
+            known_instances = {
+                d.get("instance_name") for d in discovered.values() if d.get("instance_name")
+            }
+            for line in stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 7 and parts[1] == "Add":
+                    instance_name = " ".join(parts[6:])
+                    if instance_name and instance_name not in known_instances:
+                        instance_names.append(instance_name)
+                        known_instances.add(instance_name)
 
-        # Resolve each instance to get hostname and port
-        for inst in instance_names:
-            try:
-                rproc = subprocess.Popen(
-                    ["dns-sd", "-L", inst, "_ipp._tcp", "local."],
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                )
-                time.sleep(2)
-                rproc.kill()
-                rstdout, _ = rproc.communicate(timeout=2)
+            for inst in instance_names:
+                try:
+                    rproc = subprocess.Popen(
+                        ["dns-sd", "-L", inst, service_type, "local."],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                    )
+                    time.sleep(2)
+                    rproc.kill()
+                    rstdout, _ = rproc.communicate(timeout=2)
 
-                hostname = None
-                port = 631
-                for rline in rstdout.splitlines():
-                    # "can be reached at hostname.local.:631"
-                    m = re.search(r"can be reached at\s+(\S+?):(\d+)", rline)
-                    if m:
-                        hostname = m.group(1)
-                        port = int(m.group(2))
-                        break
-                if hostname:
-                    uri = f"ipp://{hostname}:{port}/ipp/print"
-                    key = hostname.replace(".local.", "").replace(".local", "")
-                    if key not in discovered:
-                        discovered[key] = {
-                            "instance_name": inst,
-                            "hostname": hostname,
-                            "port": port,
-                            "uri": uri,
-                        }
-            except Exception:
-                continue
-    except Exception:
-        pass
+                    hostname = None
+                    port = 631
+                    for rline in rstdout.splitlines():
+                        m = re.search(r"can be reached at\s+(\S+?):(\d+)", rline)
+                        if m:
+                            hostname = m.group(1)
+                            port = int(m.group(2))
+                            break
+                    if hostname:
+                        _upsert_discovered_printer(
+                            discovered,
+                            instance_name=inst,
+                            hostname=hostname,
+                            port=port,
+                            uri=f"{scheme}://{hostname}:{port}/ipp/print",
+                        )
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
     # 2. ippfind (active IPP printers)
     try:
@@ -199,14 +274,13 @@ def _discover_lan_printers() -> list[dict]:
             hostname = parsed.hostname
             port = parsed.port or 631
             if hostname:
-                key = hostname.replace(".local.", "").replace(".local", "")
-                if key not in discovered:
-                    discovered[key] = {
-                        "instance_name": hostname,
-                        "hostname": hostname,
-                        "port": port,
-                        "uri": uri,
-                    }
+                _upsert_discovered_printer(
+                    discovered,
+                    instance_name=hostname,
+                    hostname=hostname,
+                    port=port,
+                    uri=uri,
+                )
     except Exception:
         pass
 
@@ -226,16 +300,32 @@ def _discover_lan_printers() -> list[dict]:
             hostname = parsed.hostname
             port = parsed.port or 631
             if hostname:
-                key = hostname.replace(".local.", "").replace(".local", "")
-                if key not in discovered:
-                    discovered[key] = {
-                        "instance_name": hostname,
-                        "hostname": hostname,
-                        "port": port,
-                        "uri": uri,
-                    }
+                _upsert_discovered_printer(
+                    discovered,
+                    instance_name=hostname,
+                    hostname=hostname,
+                    port=port,
+                    uri=uri,
+                )
     except Exception:
         pass
+
+    # 4. Existing CUPS network printers (important fallback for printers visible in macOS settings)
+    for cups_name, uri in cups_device_map.items():
+        parsed = urlparse(uri)
+        if parsed.scheme not in ("ipp", "ipps"):
+            continue
+        hostname = parsed.hostname
+        if not hostname:
+            continue
+        _upsert_discovered_printer(
+            discovered,
+            instance_name=cups_name,
+            hostname=hostname,
+            port=parsed.port or 631,
+            uri=uri,
+            cups_name=cups_name,
+        )
 
     return list(discovered.values())
 
@@ -269,13 +359,15 @@ async def discover_printers(db: AsyncSession = Depends(get_db)):
 
     for p in discovered:
         # Check if already in CUPS by matching hostname in any CUPS printer name
-        p["already_in_cups"] = any(
-            p["hostname"].replace(".local.", "").replace(".local", "") in cn
+        normalized_host = _normalize_host(p.get("hostname"))
+        p["already_in_cups"] = bool(p.get("cups_name")) or any(
+            normalized_host and normalized_host in _normalize_host(cn)
             for cn in cups_names
         ) or any(cn in p.get("instance_name", "") for cn in cups_names)
         p["already_configured"] = (
             p.get("uri", "") in configured_uris
             or p.get("instance_name", "") in configured_names
+            or p.get("cups_name", "") in configured_names
         )
 
     return {"discovered": discovered}
