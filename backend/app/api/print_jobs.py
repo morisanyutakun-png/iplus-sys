@@ -448,6 +448,9 @@ async def register_printer(body: RegisterPrinterRequest, db: AsyncSession = Depe
                 status_code=422,
                 detail=f"プリンタは追加されましたが、状態確認に失敗しました: {check.stderr.strip()}",
             )
+    except FileNotFoundError:
+        # lpstat not available in minimal images — allow registration to proceed
+        pass
     except subprocess.TimeoutExpired:
         pass  # Printer added but status check timed out — proceed anyway
 
@@ -698,7 +701,7 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
     body = body or ExecuteRequest()
     printer = body.printer_name or settings.printer_name
 
-    # Check printer is online before sending
+    # Check printer is online before sending (skip if lpstat is unavailable on cloud runtimes)
     try:
         check = subprocess.run(
             ["lpstat", "-p", printer], capture_output=True, text=True, timeout=5
@@ -710,7 +713,8 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
                 detail=f"プリンタ '{printer}' はオフラインまたは無効です。オンラインを確認してから再実行してください。",
             )
     except FileNotFoundError:
-        raise HTTPException(status_code=503, detail="lpstatコマンドが見つかりません")
+        # lpstat not installed (e.g., serverless) — skip availability check
+        pass
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=503, detail="プリンタ状態の確認がタイムアウトしました")
 
