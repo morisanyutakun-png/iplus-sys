@@ -11,6 +11,7 @@ from app.api.pdfs import router as pdfs_router
 from app.api.lesson_records import router as lesson_records_router
 from app.api.auto_print import router as auto_print_router
 from app.api.analytics import router as analytics_router
+from app.api.word_test import router as word_test_router
 
 api_router = APIRouter()
 api_router.include_router(students_router, prefix="/students", tags=["students"])
@@ -24,3 +25,4 @@ api_router.include_router(pdfs_router, prefix="/pdfs", tags=["pdfs"])
 api_router.include_router(lesson_records_router, prefix="/lesson-records", tags=["lesson-records"])
 api_router.include_router(auto_print_router, prefix="/print", tags=["auto-print"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
+api_router.include_router(word_test_router, prefix="/word-test", tags=["word-test"])

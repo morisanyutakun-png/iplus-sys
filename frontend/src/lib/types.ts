@@ -292,3 +292,46 @@ export interface OverviewAnalytics {
     percent: number;
   }[];
 }
+
+// Word Test (単語ミックステスト)
+export interface WordBook {
+  id: number;
+  name: string;
+  description: string;
+  total_words: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Word {
+  id: number;
+  word_book_id: number;
+  word_number: number;
+  question: string;
+  answer: string;
+}
+
+export interface TestRange {
+  start: number;
+  end: number;
+}
+
+export interface WordTestSession {
+  id: number;
+  student_id: string;
+  word_book_id: number;
+  ranges: TestRange[];
+  total_questions: number;
+  correct_count: number;
+  accuracy_rate: number;
+  test_date: string;
+  created_at: string;
+  student_name?: string;
+  word_book_name?: string;
+}
+
+export interface CsvImportResponse {
+  imported: number;
+  updated: number;
+  errors: string[];
+}

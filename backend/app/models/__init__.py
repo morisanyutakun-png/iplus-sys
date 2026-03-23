@@ -7,6 +7,7 @@ from app.models.print_job import PrintJob, PrintJobItem
 from app.models.print_log import PrintLog
 from app.models.lesson_record import LessonRecord
 from app.models.configured_printer import ConfiguredPrinter
+from app.models.word_test import WordBook, Word, WordTestSession
 
 __all__ = [
     "Base",
@@ -22,4 +23,7 @@ __all__ = [
     "PrintLog",
     "LessonRecord",
     "ConfiguredPrinter",
+    "WordBook",
+    "Word",
+    "WordTestSession",
 ]
