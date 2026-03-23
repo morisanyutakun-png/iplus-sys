@@ -220,6 +220,86 @@ export default function DashboardPage() {
         <StatCard title="今週の学習" value={stats?.weekly_actions || 0} subtitle="advance + print アクション" icon={Zap} gradient="bg-gradient-to-br from-red-500 to-red-700" />
       </div>
 
+      {/* Student Material Overview */}
+      {(stats?.student_progress || []).filter(sp => sp.materials.length > 0).length > 0 && (
+        <Card className="border-0 shadow-premium overflow-hidden relative">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-400 via-blue-500 to-indigo-500" />
+          <CardHeader className="pb-3 pt-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm">
+                <BookOpen className="h-4.5 w-4.5 text-white" />
+              </div>
+              <div className="flex-1">
+                <CardTitle className="text-base font-semibold">生徒別 実施教材</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">各生徒が現在取り組んでいる教材と進捗状況</p>
+              </div>
+              <Badge variant="secondary" className="rounded-full text-xs font-semibold">
+                {(stats?.student_progress || []).filter(sp => sp.materials.length > 0).length} 名
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-3">
+              {(stats?.student_progress || [])
+                .filter(sp => sp.materials.length > 0)
+                .sort((a, b) => b.avg_percent - a.avg_percent)
+                .map((sp, idx) => (
+                  <div
+                    key={sp.student_id}
+                    className="stagger-item rounded-xl border border-border/60 bg-card p-4 transition-all hover:shadow-md hover:border-blue-300/60"
+                    style={{ animationDelay: `${idx * 40}ms` }}
+                  >
+                    {/* Student header row */}
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${nameToColor(sp.student_name)} text-white text-sm font-bold shadow-sm`}>
+                        {sp.student_name.charAt(0)}
+                      </div>
+                      <Link href={`/students?student=${sp.student_id}`} className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold hover:underline truncate block">{sp.student_name}</span>
+                      </Link>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs text-muted-foreground">{sp.materials.length} 教材</span>
+                        <span className="text-sm font-bold tabular-nums">{Math.round(sp.avg_percent)}%</span>
+                      </div>
+                    </div>
+                    {/* Material progress bars */}
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {sp.materials.map((mat) => {
+                        const color =
+                          mat.percent >= 90 ? "bg-emerald-500" :
+                          mat.percent >= 50 ? "bg-blue-500" :
+                          mat.percent > 0 ? "bg-amber-500" :
+                          "bg-gray-300";
+                        return (
+                          <div key={mat.material_key} className="flex flex-col gap-1 rounded-lg bg-muted/40 px-3 py-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium truncate">{mat.material_name}</span>
+                              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 ml-2">
+                                {mat.pointer - 1}/{mat.total_nodes}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="h-1.5 w-full rounded-full bg-muted/60">
+                                <div
+                                  className={`h-full rounded-full transition-all ${color}`}
+                                  style={{ width: `${Math.min(mat.percent, 100)}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] font-semibold tabular-nums w-8 text-right">
+                                {Math.round(mat.percent)}%
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Nearly Complete Reminder - Redesigned */}
       {(stats?.nearly_complete || []).length > 0 && (
         <Card className="border-0 shadow-premium overflow-hidden relative">

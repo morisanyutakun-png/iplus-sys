@@ -82,6 +82,9 @@ export function useSpreadsheetKeyboard({
     (e: KeyboardEvent) => {
       if (!enabled || colCount === 0) return;
 
+      // IME変換中はスプレッドシートのキー操作を無効にする
+      if (e.isComposing || e.keyCode === 229) return;
+
       // Ctrl+S / Cmd+S to save
       if (e.key === "s" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
