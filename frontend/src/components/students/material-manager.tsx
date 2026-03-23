@@ -80,6 +80,80 @@ export function MaterialManager({ studentId }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* ── Material Overview Summary ── */}
+      {assigned.length > 0 && (
+        <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-blue-400 via-blue-500 to-indigo-500" />
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                <BookOpen className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <h3 className="text-sm font-semibold">実施教材</h3>
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
+                {assigned.length}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {assigned.map((mat) => {
+                const currentPointer = editedPointers[mat.key] ?? mat.pointer ?? 1;
+                const completed = currentPointer - 1;
+                const total = mat.total_nodes;
+                const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+                const strokeColor = pct >= 90 ? "#10b981" : pct >= 50 ? "#3b82f6" : pct > 0 ? "#f59e0b" : "#d1d5db";
+                const barColor = pct >= 90 ? "bg-emerald-500" : pct >= 50 ? "bg-blue-500" : pct > 0 ? "bg-amber-500" : "bg-gray-300";
+                const size = 48;
+                const sw = 4;
+                const r = (size - sw) / 2;
+                const circ = 2 * Math.PI * r;
+                const offset = circ - (Math.min(pct, 100) / 100) * circ;
+
+                return (
+                  <div
+                    key={mat.key}
+                    className="flex items-center gap-3 rounded-lg bg-muted/30 border border-border/40 px-3 py-2.5 transition-all hover:bg-muted/50"
+                  >
+                    {/* Circular Progress */}
+                    <svg width={size} height={size} className="shrink-0 -rotate-90">
+                      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth={sw} className="text-muted/40" />
+                      <circle
+                        cx={size / 2} cy={size / 2} r={r} fill="none"
+                        stroke={strokeColor} strokeWidth={sw} strokeLinecap="round"
+                        strokeDasharray={circ} strokeDashoffset={offset}
+                        style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.16, 1, 0.3, 1)" }}
+                      />
+                      <text
+                        x={size / 2} y={size / 2}
+                        textAnchor="middle" dominantBaseline="central"
+                        className="fill-foreground rotate-90 origin-center"
+                        fontSize={size * 0.24} fontWeight={600}
+                      >
+                        {pct}%
+                      </text>
+                    </svg>
+                    {/* Material info */}
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-semibold truncate block">{mat.name}</span>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <div className="h-1.5 flex-1 rounded-full bg-muted/60">
+                          <div
+                            className={`h-full rounded-full transition-all ${barColor}`}
+                            style={{ width: `${Math.min(pct, 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                          {completed}/{total}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Nearly Complete Reminder ── */}
       {nearlyComplete.length > 0 && (
         <div className="rounded-xl border border-amber-200/60 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/20 overflow-hidden">
