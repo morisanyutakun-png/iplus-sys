@@ -34,7 +34,7 @@ export function ScoreCell({
   const ref = useRef<HTMLInputElement>(null);
   const [rawText, setRawText] = useState(value !== null ? String(value) : "");
   const [showWarning, setShowWarning] = useState(false);
-  const warningTimer = useRef<ReturnType<typeof setTimeout>>();
+  const warningTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Sync rawText when value changes externally (e.g. reset)
   useEffect(() => {
