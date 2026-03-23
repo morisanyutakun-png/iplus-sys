@@ -72,3 +72,31 @@ export function useUnacknowledgeReminder() {
     },
   });
 }
+
+export function useAcknowledgeLowAccuracy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { student_id: string; material_key: string; node_key: string }) =>
+      apiFetch("/api/progress/acknowledge-low-accuracy", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+export function useUnacknowledgeLowAccuracy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { student_id: string; material_key: string; node_key: string }) =>
+      apiFetch("/api/progress/unacknowledge-low-accuracy", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}

@@ -10,7 +10,9 @@ class LessonRecordOut(BaseModel):
     node_key: str | None = None
     lesson_date: date
     status: str
-    score: int | None = None
+    score: float | None = None
+    max_score: float | None = None
+    accuracy_rate: float | None = None
     notes: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -24,7 +26,8 @@ class LessonRecordUpsert(BaseModel):
     node_key: str | None = None
     lesson_date: date
     status: str = "completed"
-    score: int | None = None
+    score: float | None = None
+    max_score: float | None = None
     notes: str | None = None
 
 
@@ -42,7 +45,8 @@ class MasteryInput(BaseModel):
     node_key: str
     lesson_date: date
     status: str  # "completed" or "retry"
-    score: int | None = None
+    score: float | None = None
+    max_score: float | None = None
     notes: str | None = None
 
 

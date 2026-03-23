@@ -106,6 +106,25 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
   }, [pendingCount, onPendingChange]);
 
   const handleSave = useCallback(() => {
+    // Validation: 得点入力時の整合性チェック
+    for (const col of columns) {
+      if (col.isCompleted) continue;
+      const input = getInput(col.sm.material_key);
+      if (input.score === null) continue;
+      if (input.maxScore === null) {
+        toast.error(`${col.sm.material_name}: 得点を入力した場合は満点も入力してください`);
+        return;
+      }
+      if (input.maxScore <= 0) {
+        toast.error(`${col.sm.material_name}: 満点は0より大きい値を入力してください`);
+        return;
+      }
+      if (input.score > input.maxScore) {
+        toast.error(`${col.sm.material_name}: 得点が満点を超えています`);
+        return;
+      }
+    }
+
     const records: MasteryInput[] = [];
     for (const col of columns) {
       if (col.isCompleted) continue;
@@ -119,6 +138,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
         lesson_date: todayStr,
         status: input.passed ? "completed" : "retry",
         score: input.score ?? undefined,
+        max_score: input.maxScore ?? undefined,
       });
     }
     if (records.length === 0) {

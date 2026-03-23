@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import String, Integer, Date, DateTime, Text, ForeignKey, UniqueConstraint, func
+from sqlalchemy import String, Integer, Float, Date, DateTime, Text, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -25,7 +25,9 @@ class LessonRecord(Base):
     node_key: Mapped[str | None] = mapped_column(String, nullable=True)
     lesson_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="completed")
-    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    accuracy_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

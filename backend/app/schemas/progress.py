@@ -67,10 +67,28 @@ class StudentProgressRow(BaseModel):
     avg_percent: float
 
 
+class LowAccuracyItem(BaseModel):
+    student_id: str
+    student_name: str
+    material_key: str
+    material_name: str
+    node_key: str
+    node_title: str = ""
+    latest_rates: list[float] = []
+    acknowledged: bool = False
+
+
+class AcknowledgeLowAccuracyRequest(BaseModel):
+    student_id: str
+    material_key: str
+    node_key: str
+
+
 class DashboardStats(BaseModel):
     total_students: int
     total_materials: int
     nearly_complete: list[NearlyCompleteItem]
+    low_accuracy: list[LowAccuracyItem] = []
     weekly_actions: int
     weekly_trend: list[WeeklyTrendItem]
     student_progress: list[StudentProgressRow]

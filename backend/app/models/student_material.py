@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, Integer, DateTime, ForeignKey, JSON, func
+from sqlalchemy import String, Integer, DateTime, ForeignKey, JSON, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -57,6 +57,25 @@ class ReminderAcknowledgment(Base):
     material_key: Mapped[str] = mapped_column(
         String, ForeignKey("materials.key", ondelete="CASCADE"), nullable=False
     )
+    acknowledged_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class LowAccuracyAcknowledgment(Base):
+    __tablename__ = "low_accuracy_acknowledgments"
+    __table_args__ = (
+        UniqueConstraint("student_id", "material_key", "node_key", name="uq_low_accuracy_ack"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    student_id: Mapped[str] = mapped_column(
+        String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False
+    )
+    material_key: Mapped[str] = mapped_column(
+        String, ForeignKey("materials.key", ondelete="CASCADE"), nullable=False
+    )
+    node_key: Mapped[str] = mapped_column(String, nullable=False)
     acknowledged_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

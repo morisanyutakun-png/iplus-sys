@@ -1,18 +1,20 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, delete, func as sa_func
+from sqlalchemy import select, delete, text, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.student import Student
 from app.models.material import Material
-from app.models.student_material import StudentMaterial, ProgressHistory, ReminderAcknowledgment
+from app.models.student_material import StudentMaterial, ProgressHistory, ReminderAcknowledgment, LowAccuracyAcknowledgment
 from datetime import datetime, timedelta, timezone
 
 from app.schemas.progress import (
     AcknowledgeReminderRequest,
+    AcknowledgeLowAccuracyRequest,
     DashboardStats,
     NearlyCompleteItem,
+    LowAccuracyItem,
     WeeklyTrendItem,
     StudentMaterialProgress,
     StudentProgressRow,
@@ -132,10 +134,59 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     )
     recent = result.scalars().all()
 
+    # Low accuracy reminders: 2 consecutive scores below 60% for same range
+    low_accuracy_query = text("""
+        WITH ranked AS (
+            SELECT student_id, material_key, node_key, accuracy_rate,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY student_id, material_key, node_key
+                       ORDER BY lesson_date DESC, id DESC
+                   ) AS rn
+            FROM lesson_records
+            WHERE accuracy_rate IS NOT NULL
+        ),
+        consecutive_low AS (
+            SELECT student_id, material_key, node_key,
+                   ARRAY_AGG(accuracy_rate ORDER BY rn) AS rates
+            FROM ranked
+            WHERE rn <= 2
+            GROUP BY student_id, material_key, node_key
+            HAVING COUNT(*) = 2 AND MAX(accuracy_rate) < 0.6
+        )
+        SELECT cl.student_id, s.name AS student_name,
+               cl.material_key, m.name AS material_name,
+               cl.node_key, cl.rates
+        FROM consecutive_low cl
+        JOIN students s ON s.id = cl.student_id
+        JOIN materials m ON m.key = cl.material_key
+    """)
+    low_acc_result = await db.execute(low_accuracy_query)
+    low_acc_rows = low_acc_result.fetchall()
+
+    # Fetch low accuracy acknowledgments
+    la_ack_result = await db.execute(select(LowAccuracyAcknowledgment))
+    la_ack_set = {
+        (a.student_id, a.material_key, a.node_key)
+        for a in la_ack_result.scalars().all()
+    }
+
+    low_accuracy_items: list[LowAccuracyItem] = []
+    for row in low_acc_rows:
+        low_accuracy_items.append(LowAccuracyItem(
+            student_id=row.student_id,
+            student_name=row.student_name,
+            material_key=row.material_key,
+            material_name=row.material_name,
+            node_key=row.node_key,
+            latest_rates=[round(r, 3) for r in row.rates],
+            acknowledged=(row.student_id, row.material_key, row.node_key) in la_ack_set,
+        ))
+
     return DashboardStats(
         total_students=total_students,
         total_materials=total_materials,
         nearly_complete=nearly_complete,
+        low_accuracy=low_accuracy_items,
         weekly_actions=weekly_actions,
         weekly_trend=weekly_trend,
         student_progress=student_progress,
@@ -236,6 +287,40 @@ async def unacknowledge_reminder(body: AcknowledgeReminderRequest, db: AsyncSess
         delete(ReminderAcknowledgment).where(
             ReminderAcknowledgment.student_id == body.student_id,
             ReminderAcknowledgment.material_key == body.material_key,
+        )
+    )
+    await db.commit()
+    return {"status": "unacknowledged"}
+
+
+@router.post("/acknowledge-low-accuracy")
+async def acknowledge_low_accuracy(body: AcknowledgeLowAccuracyRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(LowAccuracyAcknowledgment).where(
+            LowAccuracyAcknowledgment.student_id == body.student_id,
+            LowAccuracyAcknowledgment.material_key == body.material_key,
+            LowAccuracyAcknowledgment.node_key == body.node_key,
+        )
+    )
+    if result.scalars().first():
+        return {"status": "already_acknowledged"}
+
+    db.add(LowAccuracyAcknowledgment(
+        student_id=body.student_id,
+        material_key=body.material_key,
+        node_key=body.node_key,
+    ))
+    await db.commit()
+    return {"status": "acknowledged"}
+
+
+@router.post("/unacknowledge-low-accuracy")
+async def unacknowledge_low_accuracy(body: AcknowledgeLowAccuracyRequest, db: AsyncSession = Depends(get_db)):
+    await db.execute(
+        delete(LowAccuracyAcknowledgment).where(
+            LowAccuracyAcknowledgment.student_id == body.student_id,
+            LowAccuracyAcknowledgment.material_key == body.material_key,
+            LowAccuracyAcknowledgment.node_key == body.node_key,
         )
     )
     await db.commit()

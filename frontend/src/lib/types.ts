@@ -114,10 +114,22 @@ export interface StudentProgressRow {
   avg_percent: number;
 }
 
+export interface LowAccuracyItem {
+  student_id: string;
+  student_name: string;
+  material_key: string;
+  material_name: string;
+  node_key: string;
+  node_title: string;
+  latest_rates: number[];
+  acknowledged: boolean;
+}
+
 export interface DashboardStats {
   total_students: number;
   total_materials: number;
   nearly_complete: NearlyCompleteItem[];
+  low_accuracy: LowAccuracyItem[];
   weekly_actions: number;
   weekly_trend: WeeklyTrendItem[];
   student_progress: StudentProgressRow[];
@@ -163,6 +175,8 @@ export interface LessonRecord {
   lesson_date: string;
   status: string;
   score?: number;
+  max_score?: number;
+  accuracy_rate?: number;
   notes?: string;
   created_at: string;
   updated_at: string;
@@ -175,6 +189,7 @@ export interface LessonRecordUpsert {
   lesson_date: string;
   status: string;
   score?: number;
+  max_score?: number;
   notes?: string;
 }
 
@@ -186,6 +201,7 @@ export interface MasteryInput {
   lesson_date: string;
   status: "completed" | "retry";
   score?: number;
+  max_score?: number;
   notes?: string;
 }
 

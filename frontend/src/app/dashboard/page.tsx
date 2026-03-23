@@ -1,12 +1,12 @@
 "use client";
 
-import { useDashboard, useAcknowledgeReminder, useUnacknowledgeReminder } from "@/lib/queries/progress";
+import { useDashboard, useAcknowledgeReminder, useUnacknowledgeReminder, useAcknowledgeLowAccuracy, useUnacknowledgeLowAccuracy } from "@/lib/queries/progress";
 import { useStudents } from "@/lib/queries/students";
 import { useAutoQueue } from "@/lib/queries/auto-print";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Users, BookOpen, Zap, Printer, AlertTriangle, TrendingUp, ExternalLink, BarChart3, CheckCircle2, Circle } from "lucide-react";
+import { Users, BookOpen, Zap, Printer, AlertTriangle, TrendingUp, TrendingDown, ExternalLink, BarChart3, CheckCircle2, Circle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -146,6 +146,8 @@ export default function DashboardPage() {
   const autoQueueMutation = useAutoQueue();
   const ackMutation = useAcknowledgeReminder();
   const unackMutation = useUnacknowledgeReminder();
+  const laAckMutation = useAcknowledgeLowAccuracy();
+  const laUnackMutation = useUnacknowledgeLowAccuracy();
 
   const handleAutoQueueAll = () => {
     autoQueueMutation.mutate(undefined, {
@@ -300,6 +302,87 @@ export default function DashboardPage() {
                   </div>
                 );
               })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Low Accuracy Reminder */}
+      {(stats?.low_accuracy || []).length > 0 && (
+        <Card className="border-0 shadow-premium overflow-hidden relative">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-400 via-red-500 to-rose-500" />
+          <CardHeader className="pb-3 pt-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-red-400 to-rose-500 shadow-sm">
+                <TrendingDown className="h-4.5 w-4.5 text-white" />
+              </div>
+              <div className="flex-1">
+                <CardTitle className="text-base font-semibold">正答率低下リマインド</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">同じ範囲で2回連続60%未満の生徒です</p>
+              </div>
+              <Badge variant="secondary" className="rounded-full text-xs font-semibold">{stats!.low_accuracy.length} 件</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-2">
+              {stats!.low_accuracy.map((item, idx) => (
+                <div
+                  key={`${item.student_id}-${item.material_key}-${item.node_key}`}
+                  className={cn(
+                    "stagger-item group flex items-center gap-4 rounded-xl border border-border/60 bg-card p-3.5 transition-all hover:shadow-md hover:border-red-300/60",
+                    item.acknowledged && "opacity-50"
+                  )}
+                  style={{ animationDelay: `${idx * 60}ms` }}
+                >
+                  {/* Acknowledge checkbox */}
+                  <button
+                    type="button"
+                    className="shrink-0 transition-colors"
+                    onClick={() => {
+                      if (item.acknowledged) {
+                        laUnackMutation.mutate({ student_id: item.student_id, material_key: item.material_key, node_key: item.node_key });
+                      } else {
+                        laAckMutation.mutate({ student_id: item.student_id, material_key: item.material_key, node_key: item.node_key });
+                      }
+                    }}
+                    title={item.acknowledged ? "対処済みを取消" : "対処済みにする"}
+                  >
+                    {item.acknowledged ? (
+                      <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                    ) : (
+                      <Circle className="h-5 w-5 text-muted-foreground/40 hover:text-muted-foreground" />
+                    )}
+                  </button>
+
+                  {/* Avatar */}
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${nameToColor(item.student_name)} text-white text-sm font-bold shadow-sm`}>
+                    {item.student_name.charAt(0)}
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={cn("text-sm font-semibold truncate", item.acknowledged && "line-through")}>{item.student_name}</span>
+                      <span className="text-xs text-muted-foreground truncate">{item.material_name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="rounded-full bg-red-100 dark:bg-red-900/50 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:text-red-300">
+                        {item.node_key}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground tabular-nums">
+                        直近: {item.latest_rates.map((r) => `${Math.round(r * 100)}%`).join(", ")}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Action */}
+                  <Link href={`/students?student=${item.student_id}&tab=mastery`}>
+                    <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Button>
+                  </Link>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>

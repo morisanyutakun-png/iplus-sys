@@ -59,6 +59,10 @@ async def batch_upsert_lesson_records(
         return LessonRecordBatchResponse(upserted=0)
 
     for rec in body.records:
+        accuracy_rate = None
+        if rec.score is not None and rec.max_score is not None and rec.max_score > 0:
+            accuracy_rate = rec.score / rec.max_score
+
         stmt = pg_insert(LessonRecord).values(
             student_id=rec.student_id,
             material_key=rec.material_key,
@@ -66,6 +70,8 @@ async def batch_upsert_lesson_records(
             lesson_date=rec.lesson_date,
             status=rec.status,
             score=rec.score,
+            max_score=rec.max_score,
+            accuracy_rate=accuracy_rate,
             notes=rec.notes,
         )
         stmt = stmt.on_conflict_do_update(
@@ -73,6 +79,8 @@ async def batch_upsert_lesson_records(
             set_={
                 "status": stmt.excluded.status,
                 "score": stmt.excluded.score,
+                "max_score": stmt.excluded.max_score,
+                "accuracy_rate": stmt.excluded.accuracy_rate,
                 "notes": stmt.excluded.notes,
                 "updated_at": LessonRecord.updated_at.default,
             },
@@ -106,6 +114,10 @@ async def batch_mastery_input(
 
     for rec in body.records:
         # 1. Save lesson record (upsert)
+        accuracy_rate = None
+        if rec.score is not None and rec.max_score is not None and rec.max_score > 0:
+            accuracy_rate = rec.score / rec.max_score
+
         stmt = pg_insert(LessonRecord).values(
             student_id=rec.student_id,
             material_key=rec.material_key,
@@ -113,6 +125,8 @@ async def batch_mastery_input(
             lesson_date=rec.lesson_date,
             status=rec.status,
             score=rec.score,
+            max_score=rec.max_score,
+            accuracy_rate=accuracy_rate,
             notes=rec.notes,
         )
         stmt = stmt.on_conflict_do_update(
@@ -120,6 +134,8 @@ async def batch_mastery_input(
             set_={
                 "status": stmt.excluded.status,
                 "score": stmt.excluded.score,
+                "max_score": stmt.excluded.max_score,
+                "accuracy_rate": stmt.excluded.accuracy_rate,
                 "notes": stmt.excluded.notes,
                 "updated_at": LessonRecord.updated_at.default,
             },
@@ -161,7 +177,7 @@ async def batch_mastery_input(
                 action="advance",
                 old_pointer=old_pointer,
                 new_pointer=sm.pointer,
-                metadata_={"source": "mastery_input", "score": rec.score},
+                metadata_={"source": "mastery_input", "score": rec.score, "max_score": rec.max_score, "accuracy_rate": accuracy_rate},
             ))
         else:
             retried_count += 1
