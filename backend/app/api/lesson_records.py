@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, delete, func as sa_func
+from sqlalchemy import select, delete, func as sa_func, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
@@ -82,7 +82,7 @@ async def batch_upsert_lesson_records(
                 "max_score": stmt.excluded.max_score,
                 "accuracy_rate": stmt.excluded.accuracy_rate,
                 "notes": stmt.excluded.notes,
-                "updated_at": LessonRecord.updated_at.default,
+                "updated_at": func.now(),
             },
         )
         await db.execute(stmt)
@@ -137,7 +137,7 @@ async def batch_mastery_input(
                 "max_score": stmt.excluded.max_score,
                 "accuracy_rate": stmt.excluded.accuracy_rate,
                 "notes": stmt.excluded.notes,
-                "updated_at": LessonRecord.updated_at.default,
+                "updated_at": func.now(),
             },
         )
         await db.execute(stmt)

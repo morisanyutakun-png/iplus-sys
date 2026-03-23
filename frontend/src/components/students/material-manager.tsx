@@ -6,7 +6,13 @@ import {
   useToggleMaterial,
   useSavePointers,
 } from "@/lib/queries/students";
-import { useAcknowledgeReminder, useUnacknowledgeReminder, useDashboard } from "@/lib/queries/progress";
+import {
+  useAcknowledgeReminder,
+  useUnacknowledgeReminder,
+  useAcknowledgeLowAccuracy,
+  useUnacknowledgeLowAccuracy,
+  useDashboard,
+} from "@/lib/queries/progress";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -18,13 +24,12 @@ import {
   Save,
   BookOpen,
   Package,
-  ChevronUp,
-  ChevronDown,
   X,
   Layers,
   AlertTriangle,
   CheckCircle2,
   Circle,
+  TrendingDown,
 } from "lucide-react";
 
 type Props = {
@@ -38,6 +43,8 @@ export function MaterialManager({ studentId }: Props) {
   const saveMutation = useSavePointers(studentId);
   const ackMutation = useAcknowledgeReminder();
   const unackMutation = useUnacknowledgeReminder();
+  const ackLowMutation = useAcknowledgeLowAccuracy();
+  const unackLowMutation = useUnacknowledgeLowAccuracy();
 
   const [editedPointers, setEditedPointers] = useState<
     Record<string, number>
@@ -78,148 +85,21 @@ export function MaterialManager({ studentId }: Props) {
     (item) => item.student_id === studentId
   );
 
+  // Filter low accuracy items for this student
+  const lowAccuracy = (dashboard?.low_accuracy || []).filter(
+    (item) => item.student_id === studentId
+  );
+
   return (
     <div className="space-y-6">
-      {/* ── Material Overview Summary ── */}
-      {assigned.length > 0 && (
-        <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
-          <div className="h-1 bg-gradient-to-r from-blue-400 via-blue-500 to-indigo-500" />
-          <div className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
-                <BookOpen className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <h3 className="text-sm font-semibold">実施教材</h3>
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
-                {assigned.length}
-              </Badge>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {assigned.map((mat) => {
-                const currentPointer = editedPointers[mat.key] ?? mat.pointer ?? 1;
-                const completed = currentPointer - 1;
-                const total = mat.total_nodes;
-                const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-                const strokeColor = pct >= 90 ? "#10b981" : pct >= 50 ? "#3b82f6" : pct > 0 ? "#f59e0b" : "#d1d5db";
-                const barColor = pct >= 90 ? "bg-emerald-500" : pct >= 50 ? "bg-blue-500" : pct > 0 ? "bg-amber-500" : "bg-gray-300";
-                const size = 48;
-                const sw = 4;
-                const r = (size - sw) / 2;
-                const circ = 2 * Math.PI * r;
-                const offset = circ - (Math.min(pct, 100) / 100) * circ;
-
-                return (
-                  <div
-                    key={mat.key}
-                    className="flex items-center gap-3 rounded-lg bg-muted/30 border border-border/40 px-3 py-2.5 transition-all hover:bg-muted/50"
-                  >
-                    {/* Circular Progress */}
-                    <svg width={size} height={size} className="shrink-0 -rotate-90">
-                      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth={sw} className="text-muted/40" />
-                      <circle
-                        cx={size / 2} cy={size / 2} r={r} fill="none"
-                        stroke={strokeColor} strokeWidth={sw} strokeLinecap="round"
-                        strokeDasharray={circ} strokeDashoffset={offset}
-                        style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.16, 1, 0.3, 1)" }}
-                      />
-                      <text
-                        x={size / 2} y={size / 2}
-                        textAnchor="middle" dominantBaseline="central"
-                        className="fill-foreground rotate-90 origin-center"
-                        fontSize={size * 0.24} fontWeight={600}
-                      >
-                        {pct}%
-                      </text>
-                    </svg>
-                    {/* Material info */}
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm font-semibold truncate block">{mat.name}</span>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <div className="h-1.5 flex-1 rounded-full bg-muted/60">
-                          <div
-                            className={`h-full rounded-full transition-all ${barColor}`}
-                            style={{ width: `${Math.min(pct, 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                          {completed}/{total}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Nearly Complete Reminder ── */}
-      {nearlyComplete.length > 0 && (
-        <div className="rounded-xl border border-amber-200/60 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/20 overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-200/40 dark:border-amber-800/30">
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
-            <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
-              完了間近リマインド
-            </span>
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full ml-auto">
-              {nearlyComplete.length} 件
-            </Badge>
-          </div>
-          <div className="p-3 space-y-2">
-            {nearlyComplete.map((item) => (
-              <div
-                key={`${item.student_id}-${item.material_key}`}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 transition-all",
-                  item.acknowledged
-                    ? "bg-amber-100/30 dark:bg-amber-900/10 opacity-50"
-                    : "bg-white/60 dark:bg-white/5 border border-amber-200/40 dark:border-amber-800/30"
-                )}
-              >
-                <button
-                  type="button"
-                  className="shrink-0 transition-colors"
-                  onClick={() => {
-                    if (item.acknowledged) {
-                      unackMutation.mutate({ student_id: item.student_id, material_key: item.material_key });
-                    } else {
-                      ackMutation.mutate({ student_id: item.student_id, material_key: item.material_key });
-                    }
-                  }}
-                  title={item.acknowledged ? "対処済みを取消" : "対処済みにする"}
-                >
-                  {item.acknowledged ? (
-                    <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
-                  ) : (
-                    <Circle className="h-4.5 w-4.5 text-muted-foreground/40 hover:text-amber-500" />
-                  )}
-                </button>
-                <div className="flex-1 min-w-0">
-                  <span className={cn("text-sm font-medium", item.acknowledged && "line-through")}>{item.material_name}</span>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="rounded-full bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
-                      残り {item.remaining}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground tabular-nums">
-                      {item.pointer} / {item.total_nodes}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Assigned Materials ── */}
+      {/* ── Unified Assigned Materials ── */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
-              <BookOpen className="h-3.5 w-3.5 text-primary" />
+            <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+              <BookOpen className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
             </div>
-            <h3 className="text-sm font-semibold">割当済み教材</h3>
+            <h3 className="text-sm font-semibold">教材一覧</h3>
             {assigned.length > 0 && (
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
                 {assigned.length}
@@ -242,11 +122,19 @@ export function MaterialManager({ studentId }: Props) {
         <div className="space-y-2">
           {assigned.map((mat) => {
             const currentPointer = editedPointers[mat.key] ?? mat.pointer ?? 1;
-            const percent =
-              mat.total_nodes > 0
-                ? Math.round(((currentPointer - 1) / mat.total_nodes) * 100)
-                : 0;
+            const completed = currentPointer - 1;
+            const total = mat.total_nodes;
+            const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
             const isEdited = editedPointers[mat.key] !== undefined;
+            const strokeColor = pct >= 90 ? "#10b981" : pct >= 50 ? "#3b82f6" : pct > 0 ? "#f59e0b" : "#d1d5db";
+            const size = 44;
+            const sw = 4;
+            const r = (size - sw) / 2;
+            const circ = 2 * Math.PI * r;
+            const offset = circ - (Math.min(pct, 100) / 100) * circ;
+
+            // Check if this material has a nearly complete reminder
+            const nearlyItem = nearlyComplete.find((nc) => nc.material_key === mat.key);
 
             return (
               <div
@@ -256,75 +144,94 @@ export function MaterialManager({ studentId }: Props) {
                   "bg-card hover:shadow-md",
                   isEdited
                     ? "border-primary/30 bg-primary/[0.02]"
+                    : nearlyItem
+                    ? "border-amber-300/60 dark:border-amber-700/40"
                     : "border-border/60 hover:border-border"
                 )}
               >
-                {/* Left accent */}
-                <div className="absolute left-0 top-2 bottom-2 w-1 rounded-full bg-gradient-to-b from-primary/60 to-primary/20" />
-
-                <div className="pl-4 pr-3 py-3">
-                  {/* Top row: name + actions */}
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold truncate pr-2">{mat.name}</span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className={cn(
-                        "text-xs font-bold tabular-nums",
-                        percent >= 80 ? "text-emerald-600 dark:text-emerald-400" :
-                        percent >= 40 ? "text-amber-600 dark:text-amber-400" :
-                        "text-muted-foreground"
-                      )}>
-                        {percent}%
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                        onClick={() => handleToggle(mat.key, "remove")}
+                <div className="px-3 py-3">
+                  <div className="flex items-center gap-3">
+                    {/* Circular Progress */}
+                    <svg width={size} height={size} className="shrink-0 -rotate-90">
+                      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth={sw} className="text-muted/40" />
+                      <circle
+                        cx={size / 2} cy={size / 2} r={r} fill="none"
+                        stroke={strokeColor} strokeWidth={sw} strokeLinecap="round"
+                        strokeDasharray={circ} strokeDashoffset={offset}
+                        style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.16, 1, 0.3, 1)" }}
+                      />
+                      <text
+                        x={size / 2} y={size / 2}
+                        textAnchor="middle" dominantBaseline="central"
+                        className="fill-foreground rotate-90 origin-center"
+                        fontSize={size * 0.24} fontWeight={600}
                       >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
+                        {pct}%
+                      </text>
+                    </svg>
 
-                  {/* Progress bar */}
-                  <div className="mb-2.5">
-                    <Progress
-                      value={Math.min(percent, 100)}
-                      className="h-1.5"
-                    />
-                  </div>
-
-                  {/* Stepper row */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-muted-foreground">
-                      {mat.total_nodes} 範囲
-                    </span>
-                    <div className="flex items-center gap-0.5">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-6 w-6 rounded-l-md rounded-r-none border-r-0"
-                        onClick={() =>
-                          handlePointerChange(mat.key, currentPointer - 1, mat.total_nodes)
-                        }
-                        disabled={currentPointer <= 1}
-                      >
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                      <div className="flex items-center h-6 px-2 border-y border-border bg-muted/30 text-xs font-mono tabular-nums min-w-[48px] justify-center">
-                        {currentPointer}/{mat.total_nodes}
+                    {/* Material info + stepper */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-sm font-semibold truncate pr-2">{mat.name}</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {nearlyItem && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 rounded-full border-amber-300 text-amber-600 dark:text-amber-400">
+                              残り{nearlyItem.remaining}
+                            </Badge>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                            onClick={() => handleToggle(mat.key, "remove")}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-6 w-6 rounded-r-md rounded-l-none border-l-0"
-                        onClick={() =>
-                          handlePointerChange(mat.key, currentPointer + 1, mat.total_nodes)
-                        }
-                        disabled={currentPointer >= mat.total_nodes}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
+
+                      {/* Progress bar */}
+                      <div className="mb-2">
+                        <Progress
+                          value={Math.min(pct, 100)}
+                          className="h-1.5"
+                        />
+                      </div>
+
+                      {/* Stepper row */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground">
+                          {completed}/{total} 完了
+                        </span>
+                        <div className="flex items-center gap-0.5">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-6 w-6 rounded-l-md rounded-r-none border-r-0"
+                            onClick={() =>
+                              handlePointerChange(mat.key, currentPointer - 1, mat.total_nodes)
+                            }
+                            disabled={currentPointer <= 1}
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <div className="flex items-center h-6 px-2 border-y border-border bg-muted/30 text-xs font-mono tabular-nums min-w-[48px] justify-center">
+                            {currentPointer}/{mat.total_nodes}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-6 w-6 rounded-r-md rounded-l-none border-l-0"
+                            onClick={() =>
+                              handlePointerChange(mat.key, currentPointer + 1, mat.total_nodes)
+                            }
+                            disabled={currentPointer >= mat.total_nodes}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -345,6 +252,140 @@ export function MaterialManager({ studentId }: Props) {
           )}
         </div>
       </div>
+
+      {/* ── Reminders Section ── */}
+      {(nearlyComplete.length > 0 || lowAccuracy.length > 0) && (
+        <div className="space-y-4">
+          {/* Nearly Complete Reminder */}
+          {nearlyComplete.length > 0 && (
+            <div className="rounded-xl border border-amber-200/60 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/20 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber-200/40 dark:border-amber-800/30">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                  完了間近リマインド
+                </span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full ml-auto">
+                  {nearlyComplete.length} 件
+                </Badge>
+              </div>
+              <div className="p-3 space-y-2">
+                {nearlyComplete.map((item) => (
+                  <div
+                    key={`${item.student_id}-${item.material_key}`}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2 transition-all",
+                      item.acknowledged
+                        ? "bg-amber-100/30 dark:bg-amber-900/10 opacity-50"
+                        : "bg-white/60 dark:bg-white/5 border border-amber-200/40 dark:border-amber-800/30"
+                    )}
+                  >
+                    <button
+                      type="button"
+                      className="shrink-0 transition-colors"
+                      onClick={() => {
+                        if (item.acknowledged) {
+                          unackMutation.mutate({ student_id: item.student_id, material_key: item.material_key });
+                        } else {
+                          ackMutation.mutate({ student_id: item.student_id, material_key: item.material_key });
+                        }
+                      }}
+                      title={item.acknowledged ? "対処済みを取消" : "対処済みにする"}
+                    >
+                      {item.acknowledged ? (
+                        <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
+                      ) : (
+                        <Circle className="h-4.5 w-4.5 text-muted-foreground/40 hover:text-amber-500" />
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <span className={cn("text-sm font-medium", item.acknowledged && "line-through")}>{item.material_name}</span>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="rounded-full bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                          残り {item.remaining}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          {item.pointer} / {item.total_nodes}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Low Accuracy Reminder (2 consecutive below 60%) */}
+          {lowAccuracy.length > 0 && (
+            <div className="rounded-xl border border-red-200/60 dark:border-red-800/40 bg-red-50/50 dark:bg-red-950/20 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-red-200/40 dark:border-red-800/30">
+                <TrendingDown className="h-4 w-4 text-red-500" />
+                <span className="text-xs font-semibold text-red-700 dark:text-red-300">
+                  定着度不足リマインド
+                </span>
+                <span className="text-[10px] text-red-500/70 dark:text-red-400/70 ml-1">
+                  2回連続6割未満
+                </span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full ml-auto">
+                  {lowAccuracy.length} 件
+                </Badge>
+              </div>
+              <div className="p-3 space-y-2">
+                {lowAccuracy.map((item) => (
+                  <div
+                    key={`${item.student_id}-${item.material_key}-${item.node_key}`}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2 transition-all",
+                      item.acknowledged
+                        ? "bg-red-100/30 dark:bg-red-900/10 opacity-50"
+                        : "bg-white/60 dark:bg-white/5 border border-red-200/40 dark:border-red-800/30"
+                    )}
+                  >
+                    <button
+                      type="button"
+                      className="shrink-0 transition-colors"
+                      onClick={() => {
+                        if (item.acknowledged) {
+                          unackLowMutation.mutate({
+                            student_id: item.student_id,
+                            material_key: item.material_key,
+                            node_key: item.node_key,
+                          });
+                        } else {
+                          ackLowMutation.mutate({
+                            student_id: item.student_id,
+                            material_key: item.material_key,
+                            node_key: item.node_key,
+                          });
+                        }
+                      }}
+                      title={item.acknowledged ? "対処済みを取消" : "対処済みにする"}
+                    >
+                      {item.acknowledged ? (
+                        <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
+                      ) : (
+                        <Circle className="h-4.5 w-4.5 text-muted-foreground/40 hover:text-red-500" />
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <span className={cn("text-sm font-medium", item.acknowledged && "line-through")}>
+                        {item.material_name}
+                      </span>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="rounded-full bg-red-100 dark:bg-red-900/50 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:text-red-300">
+                          {item.node_title || item.node_key}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          正答率: {item.latest_rates.map((r) => `${Math.round(r * 100)}%`).join(" → ")}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Available Materials ── */}
       {source.length > 0 && (

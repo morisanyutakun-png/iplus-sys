@@ -155,10 +155,12 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
         )
         SELECT cl.student_id, s.name AS student_name,
                cl.material_key, m.name AS material_name,
-               cl.node_key, cl.rates
+               cl.node_key, COALESCE(mn.title, cl.node_key) AS node_title,
+               cl.rates
         FROM consecutive_low cl
         JOIN students s ON s.id = cl.student_id
         JOIN materials m ON m.key = cl.material_key
+        LEFT JOIN material_nodes mn ON mn.material_key = cl.material_key AND mn.key = cl.node_key
     """)
     low_acc_result = await db.execute(low_accuracy_query)
     low_acc_rows = low_acc_result.fetchall()
@@ -178,6 +180,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
             material_key=row.material_key,
             material_name=row.material_name,
             node_key=row.node_key,
+            node_title=row.node_title,
             latest_rates=[round(r, 3) for r in row.rates],
             acknowledged=(row.student_id, row.material_key, row.node_key) in la_ack_set,
         ))

@@ -60,6 +60,7 @@ export function useMasteryBatch() {
       qc.invalidateQueries({ queryKey: ["students"] });
       qc.invalidateQueries({ queryKey: ["queue"] });
       qc.invalidateQueries({ queryKey: ["progress"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 }
