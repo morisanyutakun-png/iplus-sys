@@ -68,7 +68,7 @@ export function ScoreCell({
         inputMode="decimal"
         onKeyDown={(e) => {
           // IME変換中は矢印キーブロックしない（候補選択に使う）
-          if (e.isComposing || e.keyCode === 229) return;
+          if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
           if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
             e.preventDefault();
           }
