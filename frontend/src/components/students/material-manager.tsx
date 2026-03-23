@@ -375,7 +375,8 @@ export function MaterialManager({ studentId }: Props) {
                           {item.node_title || item.node_key}
                         </span>
                         <span className="text-[10px] text-muted-foreground tabular-nums">
-                          正答率: {item.latest_rates.map((r) => `${Math.round(r * 100)}%`).join(" → ")}
+                          {item.streak}回連続6割未満
+                          {item.latest_rates.length > 0 && ` (直近: ${Math.round(item.latest_rates[0] * 100)}%)`}
                         </span>
                       </div>
                     </div>

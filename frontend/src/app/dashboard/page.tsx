@@ -318,7 +318,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex-1">
                 <CardTitle className="text-base font-semibold">正答率低下リマインド</CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">同じ範囲で2回連続60%未満の生徒です</p>
+                <p className="text-xs text-muted-foreground mt-0.5">2回以上連続60%未満の生徒です</p>
               </div>
               <Badge variant="secondary" className="rounded-full text-xs font-semibold">{stats!.low_accuracy.length} 件</Badge>
             </div>
@@ -367,10 +367,11 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="rounded-full bg-red-100 dark:bg-red-900/50 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:text-red-300">
-                        {item.node_key}
+                        {item.node_title || item.node_key}
                       </span>
                       <span className="text-[10px] text-muted-foreground tabular-nums">
-                        直近: {item.latest_rates.map((r) => `${Math.round(r * 100)}%`).join(", ")}
+                        {item.streak}回連続6割未満
+                        {item.latest_rates.length > 0 && ` (直近: ${Math.round(item.latest_rates[0] * 100)}%)`}
                       </span>
                     </div>
                   </div>

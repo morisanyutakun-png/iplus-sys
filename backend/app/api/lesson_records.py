@@ -163,6 +163,14 @@ async def batch_mastery_input(
         total_nodes = len(nodes_sorted)
         did_advance = False
 
+        # 2b. Update low_score_streak counter
+        if accuracy_rate is not None:
+            if accuracy_rate < 0.6:
+                sm.low_score_streak = (sm.low_score_streak or 0) + 1
+            else:
+                sm.low_score_streak = 0
+            sm.last_accuracy = accuracy_rate
+
         # 3. Advance pointer if completed
         if rec.status == "completed" and old_pointer <= total_nodes:
             sm.pointer = old_pointer + 1

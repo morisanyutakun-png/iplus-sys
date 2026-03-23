@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.student import Student
-from app.models.material import Material, MaterialNode
+from app.models.material import Material
 from app.models.student_material import StudentMaterial, ProgressHistory, ReminderAcknowledgment, LowAccuracyAcknowledgment
 from datetime import datetime, timedelta, timezone
 
@@ -134,81 +134,41 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     )
     recent = result.scalars().all()
 
-    # Low accuracy reminders: 2 consecutive scores below 60% per material
-    # Partition by (student_id, material_key) so it works even when
-    # the pointer advances to a different node after each entry.
-    low_accuracy_query = text("""
-        WITH ranked AS (
-            SELECT student_id, material_key, node_key, accuracy_rate,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY student_id, material_key
-                       ORDER BY lesson_date DESC, id DESC
-                   ) AS rn
-            FROM lesson_records
-            WHERE accuracy_rate IS NOT NULL
-        ),
-        consecutive_low AS (
-            SELECT student_id, material_key,
-                   (ARRAY_AGG(node_key ORDER BY rn))[1] AS latest_node_key,
-                   ARRAY_AGG(node_key ORDER BY rn) AS node_keys,
-                   ARRAY_AGG(accuracy_rate ORDER BY rn) AS rates
-            FROM ranked
-            WHERE rn <= 2
-            GROUP BY student_id, material_key
-            HAVING COUNT(*) = 2 AND MAX(accuracy_rate) < 0.6
-        )
-        SELECT cl.student_id, s.name AS student_name,
-               cl.material_key, m.name AS material_name,
-               cl.latest_node_key AS node_key,
-               cl.node_keys,
-               cl.rates
-        FROM consecutive_low cl
-        JOIN students s ON s.id = cl.student_id
-        JOIN materials m ON m.key = cl.material_key
-    """)
-    low_acc_result = await db.execute(low_accuracy_query)
-    low_acc_rows = low_acc_result.fetchall()
-
-    # Build node_key -> title lookup for the relevant materials
-    low_acc_node_keys: set[tuple[str, str]] = set()
-    for row in low_acc_rows:
-        for nk in row.node_keys:
-            low_acc_node_keys.add((row.material_key, nk))
-
-    node_title_map: dict[tuple[str, str], str] = {}
-    if low_acc_node_keys:
-        node_result = await db.execute(select(MaterialNode))
-        for mn in node_result.scalars().all():
-            if (mn.material_key, mn.key) in low_acc_node_keys:
-                node_title_map[(mn.material_key, mn.key)] = mn.title
+    # Low accuracy reminders: uses low_score_streak counter on student_materials
+    # The counter is incremented each time a score < 60% is saved via mastery input,
+    # and reset to 0 when a score >= 60% is saved. This works regardless of
+    # lesson_records upsert behavior (same day/same node = 1 record).
+    low_accuracy_items: list[LowAccuracyItem] = []
 
     # Fetch low accuracy acknowledgments
     la_ack_result = await db.execute(select(LowAccuracyAcknowledgment))
     la_ack_set = {
-        (a.student_id, a.material_key, a.node_key)
+        (a.student_id, a.material_key)
         for a in la_ack_result.scalars().all()
     }
 
-    low_accuracy_items: list[LowAccuracyItem] = []
-    for row in low_acc_rows:
-        # Build node titles string showing which nodes had low scores
-        node_titles = []
-        for nk in row.node_keys:
-            title = node_title_map.get((row.material_key, nk), nk)
-            if title not in node_titles:
-                node_titles.append(title)
-        node_title_str = " / ".join(node_titles)
+    for student in students:
+        for sm in student.materials:
+            if (sm.low_score_streak or 0) >= 2:
+                # Find current node title
+                current_node_title = ""
+                if sm.material and sm.material.nodes:
+                    for n in sm.material.nodes:
+                        if n.sort_order == sm.pointer:
+                            current_node_title = n.title
+                            break
 
-        low_accuracy_items.append(LowAccuracyItem(
-            student_id=row.student_id,
-            student_name=row.student_name,
-            material_key=row.material_key,
-            material_name=row.material_name,
-            node_key=row.node_key,
-            node_title=node_title_str,
-            latest_rates=[round(r, 3) for r in row.rates],
-            acknowledged=(row.student_id, row.material_key, row.node_key) in la_ack_set,
-        ))
+                low_accuracy_items.append(LowAccuracyItem(
+                    student_id=student.id,
+                    student_name=student.name,
+                    material_key=sm.material_key,
+                    material_name=sm.material.name if sm.material else sm.material_key,
+                    node_key=current_node_title or sm.material_key,
+                    node_title=current_node_title or "現在の範囲",
+                    latest_rates=[sm.last_accuracy or 0] * min(sm.low_score_streak or 0, 3),
+                    streak=sm.low_score_streak or 0,
+                    acknowledged=(student.id, sm.material_key) in la_ack_set,
+                ))
 
     return DashboardStats(
         total_students=total_students,

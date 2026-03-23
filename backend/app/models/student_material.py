@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, Integer, DateTime, ForeignKey, JSON, UniqueConstraint, func
+from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, JSON, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -16,6 +16,8 @@ class StudentMaterial(Base):
         String, ForeignKey("materials.key", ondelete="CASCADE"), primary_key=True
     )
     pointer: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    low_score_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_accuracy: Mapped[float | None] = mapped_column(Float, nullable=True)
     assigned_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -75,6 +75,7 @@ class LowAccuracyItem(BaseModel):
     node_key: str
     node_title: str = ""
     latest_rates: list[float] = []
+    streak: int = 0
     acknowledged: bool = False
 
 

@@ -122,6 +122,7 @@ export interface LowAccuracyItem {
   node_key: string;
   node_title: string;
   latest_rates: number[];
+  streak: number;
   acknowledged: boolean;
 }
 
