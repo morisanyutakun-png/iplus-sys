@@ -226,6 +226,12 @@ async def batch_mastery_input(
                 (n for n in nodes_sorted if n.sort_order == new_pointer), None
             )
             if next_node:
+                # For word test materials, use per-student PDF path
+                gen_pdf = None
+                if rec.material_key.startswith("単語:"):
+                    book_name = rec.material_key.removeprefix("単語:")
+                    gen_pdf = f"単語/{book_name}/{rec.student_id}/{next_node.sort_order:03d}.pdf"
+
                 queue_entry = PrintQueue(
                     student_id=rec.student_id,
                     student_name=None,  # will be filled by display
@@ -235,6 +241,7 @@ async def batch_mastery_input(
                     node_name=next_node.title,
                     sort_order=sort_order,
                     status="pending",
+                    generated_pdf=gen_pdf,
                 )
                 db.add(queue_entry)
                 sort_order += 1

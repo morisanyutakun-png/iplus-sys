@@ -647,7 +647,7 @@ async def prepare_job(db: AsyncSession = Depends(get_db)):
             )
             node = result.scalars().first()
             if node:
-                pdf_relpath = node.pdf_relpath
+                pdf_relpath = qi.generated_pdf or node.pdf_relpath
                 duplex = node.duplex
                 range_text = node.range_text
 
@@ -762,7 +762,7 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
             )
             node = node_result.scalars().first()
             if node:
-                pdf_relpath = node.pdf_relpath
+                pdf_relpath = qi.generated_pdf or node.pdf_relpath
                 duplex = node.duplex
                 range_text = node.range_text
 

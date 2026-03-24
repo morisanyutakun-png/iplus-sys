@@ -65,6 +65,7 @@ def generate_word_test_pdf(
     title: str,
     words: list[tuple[int, str, str]],
     shuffle: bool = True,
+    student_name: str | None = None,
 ) -> Path:
     """Generate a 2-page PDF: page 1 = test (blank answers), page 2 = answer key."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -83,11 +84,11 @@ def generate_word_test_pdf(
     c = Canvas(str(output_path), pagesize=A4)
 
     # Page 1: Question sheet (blank answers)
-    _draw_page(c, title, left_words, right_words, show_answers=False)
+    _draw_page(c, title, left_words, right_words, show_answers=False, student_name=student_name)
     c.showPage()
 
     # Page 2: Answer key
-    _draw_page(c, title, left_words, right_words, show_answers=True)
+    _draw_page(c, title, left_words, right_words, show_answers=True, student_name=student_name)
     c.showPage()
 
     c.save()
@@ -100,12 +101,15 @@ def _draw_page(
     left_words: list[tuple[int, str, str]],
     right_words: list[tuple[int, str, str]],
     show_answers: bool,
+    student_name: str | None = None,
 ) -> None:
     """Draw one page of the test sheet."""
 
     # Header
     c.setFont(*FONT_HEADER)
-    header_text = f"【解答】{title}" if show_answers else title
+    prefix = "【解答】" if show_answers else ""
+    name_part = f"{student_name}　" if student_name else ""
+    header_text = f"{prefix}{name_part}{title}"
     c.drawCentredString(PAGE_W / 2, BODY_TOP + 4, header_text)
 
     # Draw left group

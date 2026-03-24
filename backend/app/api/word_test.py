@@ -1,14 +1,12 @@
 import random
 import re
 import unicodedata
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, delete, func as sa_func, or_, and_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.database import get_db
 from app.models.material import Material, MaterialNode
 from app.models.word_test import WordBook, Word, WordTestSession
@@ -20,7 +18,6 @@ from app.schemas.word_test import (
     WordTestSessionCreate, WordTestSessionOut,
     GenerateMaterialRequest, GenerateMaterialResponse,
 )
-from app.services.word_test_pdf import generate_word_test_pdf
 
 router = APIRouter()
 
@@ -344,7 +341,6 @@ async def generate_material(
     for i in range(0, len(all_words), words_per):
         chunks.append(all_words[i:i + words_per])
 
-    pdf_base = Path(settings.pdf_storage_dir) / "単語" / book.name
     nodes_generated = 0
 
     for idx, chunk in enumerate(chunks):
@@ -354,24 +350,13 @@ async def generate_material(
         title = f"{first_num}-{last_num}"
         node_key = f"単語:{book.name}:{chunk_num:03d}"
 
-        # Generate PDF
-        word_tuples = [(w.word_number, w.question, w.answer) for w in chunk]
-        pdf_relpath = f"単語/{book.name}/{chunk_num:03d}.pdf"
-        pdf_path = Path(settings.pdf_storage_dir) / pdf_relpath
-        generate_word_test_pdf(
-            output_path=pdf_path,
-            title=f"{book.name} {title}",
-            words=word_tuples,
-            shuffle=False,
-        )
-
-        # Create MaterialNode
+        # Create MaterialNode (PDF is generated per-student at assignment time)
         db.add(MaterialNode(
             key=node_key,
             material_key=material_key,
             title=title,
             range_text=f"No.{first_num}〜{last_num}",
-            pdf_relpath=pdf_relpath,
+            pdf_relpath="",
             duplex=True,
             sort_order=chunk_num,
         ))

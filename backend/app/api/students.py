@@ -7,7 +7,9 @@ from app.database import get_db
 from app.models.student import Student
 from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
 from app.models.material import Material
+from app.models.print_queue import PrintQueue
 from app.schemas.student import StudentOut, StudentCreate, StudentUpdate, StudentListOut, StudentMaterialInfo
+from app.services.word_test_material import generate_student_pdfs
 
 router = APIRouter()
 
@@ -196,6 +198,35 @@ async def toggle_material(
             )
             db.add(sm)
             db.add(history)
+
+            # Word test material: generate per-student PDFs + queue first node
+            if material_key.startswith("単語:"):
+                student = await db.get(Student, student_id)
+                pdf_list = await generate_student_pdfs(
+                    db, student_id, student.name if student else student_id, material_key
+                )
+                # Queue first node for printing
+                mat = await db.execute(
+                    select(Material).where(Material.key == material_key)
+                )
+                material = mat.scalars().first()
+                if material and material.nodes:
+                    first_node = sorted(material.nodes, key=lambda n: n.sort_order)[0]
+                    first_pdf = next(
+                        (p for k, p in pdf_list if k == first_node.key), ""
+                    )
+                    db.add(PrintQueue(
+                        student_id=student_id,
+                        student_name=student.name if student else None,
+                        material_key=material_key,
+                        material_name=material.name,
+                        node_key=first_node.key,
+                        node_name=first_node.title,
+                        generated_pdf=first_pdf,
+                        sort_order=0,
+                        status="pending",
+                    ))
+
             await db.commit()
             return {"status": "assigned"}
 
