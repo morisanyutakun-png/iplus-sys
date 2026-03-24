@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, delete, func as sa_func, or_, and_
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -91,6 +92,7 @@ async def import_csv(
     updated = 0
     errors: list[str] = []
     auto_number = 1
+    parsed_words: list[dict] = []
 
     start_idx = 1 if mapping and mapping.skip_header else 0
 
@@ -153,33 +155,39 @@ async def import_csv(
             continue
 
         auto_number = word_number + 1
+        parsed_words.append({
+            "word_book_id": book_id,
+            "word_number": word_number,
+            "question": question,
+            "answer": answer,
+        })
 
-        # Upsert
-        existing = await db.execute(
-            select(Word).where(
+    # ── Bulk upsert (INSERT ... ON CONFLICT DO UPDATE) ──
+    if parsed_words:
+        # Single SELECT to find which word_numbers already exist
+        parsed_numbers = [w["word_number"] for w in parsed_words]
+        existing_result = await db.execute(
+            select(Word.word_number).where(
                 Word.word_book_id == book_id,
-                Word.word_number == word_number,
+                Word.word_number.in_(parsed_numbers),
             )
         )
-        existing_word = existing.scalars().first()
-        if existing_word:
-            existing_word.question = question
-            existing_word.answer = answer
-            updated += 1
-        else:
-            db.add(Word(
-                word_book_id=book_id,
-                word_number=word_number,
-                question=question,
-                answer=answer,
-            ))
-            imported += 1
+        existing_numbers = set(existing_result.scalars().all())
+
+        for w in parsed_words:
+            if w["word_number"] in existing_numbers:
+                updated += 1
+            else:
+                imported += 1
+
+        stmt = pg_insert(Word).values(parsed_words)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_word_book_number",
+            set_={"question": stmt.excluded.question, "answer": stmt.excluded.answer},
+        )
+        await db.execute(stmt)
 
     # Update total_words count
-    count_result = await db.execute(
-        select(sa_func.count()).select_from(Word).where(Word.word_book_id == book_id)
-    )
-    # Add the newly imported count (not yet flushed) — flush first
     await db.flush()
     count_result = await db.execute(
         select(sa_func.count()).select_from(Word).where(Word.word_book_id == book_id)
