@@ -1,22 +1,17 @@
-import random
 import re
 import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, delete, func as sa_func, or_, and_
+from sqlalchemy import select, delete, func as sa_func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.material import Material, MaterialNode
-from app.models.word_test import WordBook, Word, WordTestSession
-from app.models.student import Student
+from app.models.word_test import WordBook, Word
 from app.schemas.word_test import (
     WordBookCreate, WordBookOut,
     WordOut, CsvImportRequest, CsvImportResponse,
-    WordTestGenerateRequest, WordTestGenerateResponse,
-    WordTestSessionCreate, WordTestSessionOut,
-    GenerateMaterialRequest, GenerateMaterialResponse,
 )
 
 router = APIRouter()
@@ -49,6 +44,16 @@ async def delete_word_book(book_id: int, db: AsyncSession = Depends(get_db)):
     book = result.scalars().first()
     if not book:
         raise HTTPException(status_code=404, detail="単語帳が見つかりません")
+
+    # Delete associated Material + MaterialNodes (CASCADE)
+    if book.material_key:
+        mat_result = await db.execute(
+            select(Material).where(Material.key == book.material_key)
+        )
+        mat_obj = mat_result.scalars().first()
+        if mat_obj:
+            await db.delete(mat_obj)
+
     await db.delete(book)
     await db.commit()
     return {"ok": True}
@@ -338,192 +343,3 @@ async def detect_columns(body: CsvImportRequest):
         }
 
     return {"columns": columns, "suggested_mapping": suggested}
-
-
-# ── Material Generation ──
-
-@router.post("/{book_id}/generate-material", response_model=GenerateMaterialResponse)
-async def generate_material(
-    book_id: int,
-    body: GenerateMaterialRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    """Generate Material + MaterialNodes + PDFs from a WordBook."""
-    result = await db.execute(select(WordBook).where(WordBook.id == book_id))
-    book = result.scalars().first()
-    if not book:
-        raise HTTPException(status_code=404, detail="単語帳が見つかりません")
-
-    # Get all words ordered by number
-    words_result = await db.execute(
-        select(Word)
-        .where(Word.word_book_id == book_id)
-        .order_by(Word.word_number)
-    )
-    all_words = words_result.scalars().all()
-    if not all_words:
-        raise HTTPException(status_code=400, detail="単語が登録されていません")
-
-    material_key = f"単語:{book.name}"
-    material_name = f"単語テスト:{book.name}"
-
-    # Create or update Material
-    existing_mat = await db.get(Material, material_key)
-    if existing_mat:
-        existing_mat.name = material_name
-        existing_mat.subject = "英語"
-    else:
-        db.add(Material(
-            key=material_key,
-            name=material_name,
-            subject="英語",
-            sort_order=900,
-        ))
-        await db.flush()
-
-    # Delete existing nodes for this material (re-generation)
-    await db.execute(
-        delete(MaterialNode).where(MaterialNode.material_key == material_key)
-    )
-    await db.flush()
-
-    # Chunk words
-    words_per = body.words_per_test
-    chunks: list[list] = []
-    for i in range(0, len(all_words), words_per):
-        chunks.append(all_words[i:i + words_per])
-
-    nodes_generated = 0
-
-    for idx, chunk in enumerate(chunks):
-        chunk_num = idx + 1
-        first_num = chunk[0].word_number
-        last_num = chunk[-1].word_number
-        title = f"{first_num}-{last_num}"
-        node_key = f"単語:{book.name}:{chunk_num:03d}"
-
-        # Create MaterialNode (PDF is generated per-student at assignment time)
-        db.add(MaterialNode(
-            key=node_key,
-            material_key=material_key,
-            title=title,
-            range_text=f"No.{first_num}〜{last_num}",
-            pdf_relpath="",
-            duplex=True,
-            sort_order=chunk_num,
-        ))
-        nodes_generated += 1
-
-    # Update WordBook.material_key
-    book.material_key = material_key
-    await db.commit()
-
-    return GenerateMaterialResponse(
-        material_key=material_key,
-        nodes_generated=nodes_generated,
-    )
-
-
-# ── Test Generation ──
-
-@router.post("/generate", response_model=WordTestGenerateResponse)
-async def generate_test(
-    body: WordTestGenerateRequest, db: AsyncSession = Depends(get_db)
-):
-    if not body.ranges:
-        raise HTTPException(status_code=400, detail="範囲を指定してください")
-
-    # Build OR conditions for ranges
-    conditions = [
-        and_(Word.word_number >= r.start, Word.word_number <= r.end)
-        for r in body.ranges
-    ]
-    stmt = (
-        select(Word)
-        .where(Word.word_book_id == body.word_book_id)
-        .where(or_(*conditions))
-        .order_by(Word.word_number)
-    )
-    result = await db.execute(stmt)
-    words = list(result.scalars().all())
-
-    # Shuffle
-    random.shuffle(words)
-
-    # Limit if count specified
-    if body.count and body.count < len(words):
-        words = words[:body.count]
-
-    return WordTestGenerateResponse(
-        words=[WordOut.model_validate(w) for w in words],
-        total=len(words),
-    )
-
-
-# ── Test Sessions ──
-
-@router.post("/sessions", response_model=WordTestSessionOut)
-async def create_session(
-    body: WordTestSessionCreate, db: AsyncSession = Depends(get_db)
-):
-    accuracy = body.correct_count / body.total_questions if body.total_questions > 0 else 0.0
-
-    session = WordTestSession(
-        student_id=body.student_id,
-        word_book_id=body.word_book_id,
-        ranges=[{"start": r.start, "end": r.end} for r in body.ranges],
-        total_questions=body.total_questions,
-        correct_count=body.correct_count,
-        accuracy_rate=round(accuracy, 4),
-        test_date=body.test_date,
-    )
-    db.add(session)
-    await db.commit()
-    await db.refresh(session)
-
-    # Fetch names for response
-    student = await db.get(Student, body.student_id)
-    book = await db.get(WordBook, body.word_book_id)
-
-    out = WordTestSessionOut.model_validate(session)
-    out.student_name = student.name if student else None
-    out.word_book_name = book.name if book else None
-    return out
-
-
-@router.get("/sessions", response_model=list[WordTestSessionOut])
-async def list_sessions(
-    student_id: str | None = None,
-    word_book_id: int | None = None,
-    db: AsyncSession = Depends(get_db),
-):
-    stmt = select(WordTestSession).order_by(WordTestSession.test_date.desc(), WordTestSession.id.desc())
-    if student_id:
-        stmt = stmt.where(WordTestSession.student_id == student_id)
-    if word_book_id:
-        stmt = stmt.where(WordTestSession.word_book_id == word_book_id)
-
-    result = await db.execute(stmt)
-    sessions = result.scalars().all()
-
-    # Batch fetch student and book names
-    student_ids = {s.student_id for s in sessions}
-    book_ids = {s.word_book_id for s in sessions}
-
-    students_map: dict[str, str] = {}
-    if student_ids:
-        sr = await db.execute(select(Student).where(Student.id.in_(student_ids)))
-        students_map = {s.id: s.name for s in sr.scalars().all()}
-
-    books_map: dict[int, str] = {}
-    if book_ids:
-        br = await db.execute(select(WordBook).where(WordBook.id.in_(book_ids)))
-        books_map = {b.id: b.name for b in br.scalars().all()}
-
-    out = []
-    for s in sessions:
-        item = WordTestSessionOut.model_validate(s)
-        item.student_name = students_map.get(s.student_id)
-        item.word_book_name = books_map.get(s.word_book_id)
-        out.append(item)
-    return out

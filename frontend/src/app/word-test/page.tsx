@@ -1,15 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { BookOpen, Shuffle, ClipboardList, ExternalLink } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { WordBookList } from "@/components/word-test/word-book-list";
-import { TestGenerator } from "@/components/word-test/test-generator";
-import { TestResultForm } from "@/components/word-test/test-result-form";
-import { TestHistory } from "@/components/word-test/test-history";
 import { useWords } from "@/lib/queries/word-test";
 import type { WordBook } from "@/lib/types";
 
@@ -68,93 +63,29 @@ export default function WordTestPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">単語テスト</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          単語帳の管理・ミックステスト生成・結果記録
+          単語帳の管理・CSVインポート
         </p>
       </div>
 
-      <Tabs defaultValue="books" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="books" className="gap-1.5">
-            <BookOpen className="h-3.5 w-3.5" />
-            単語帳管理
-          </TabsTrigger>
-          <TabsTrigger value="generate" className="gap-1.5">
-            <Shuffle className="h-3.5 w-3.5" />
-            テスト作成
-          </TabsTrigger>
-          <TabsTrigger value="results" className="gap-1.5">
-            <ClipboardList className="h-3.5 w-3.5" />
-            結果・履歴
-          </TabsTrigger>
-        </TabsList>
+      {/* 単語帳リスト */}
+      <WordBookList
+        selectedBookId={selectedBook?.id ?? null}
+        onSelectBook={setSelectedBook}
+      />
 
-        {/* Tab 1: 単語帳管理 */}
-        <TabsContent value="books" className="space-y-4">
-          <WordBookList
-            selectedBookId={selectedBook?.id ?? null}
-            onSelectBook={setSelectedBook}
-          />
-
-          {selectedBook && (
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <h3 className="font-medium">{selectedBook.name}</h3>
-                  <Badge variant="secondary">{selectedBook.total_words}語</Badge>
-                  {selectedBook.material_key ? (
-                    <>
-                      <Badge variant="outline" className="text-green-600 border-green-300">
-                        教材連携済
-                      </Badge>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        asChild
-                        className="gap-1.5"
-                      >
-                        <a href="/materials">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          教材管理で表示
-                        </a>
-                      </Button>
-                    </>
-                  ) : (
-                    <Badge variant="outline" className="text-muted-foreground">
-                      CSVインポートで自動連携
-                    </Badge>
-                  )}
-                </div>
-
-                <WordPreview bookId={selectedBook.id} />
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        {/* Tab 2: テスト作成 */}
-        <TabsContent value="generate">
-          <Card>
-            <CardContent className="p-4">
-              <TestGenerator />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab 3: 結果・履歴 */}
-        <TabsContent value="results" className="space-y-6">
-          <Card>
-            <CardContent className="p-4">
-              <TestResultForm />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <TestHistory />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      {/* 選択中の単語帳の単語一覧 */}
+      {selectedBook && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
+              <h3 className="font-medium">{selectedBook.name}</h3>
+              <Badge variant="secondary">{selectedBook.total_words}語</Badge>
+            </div>
+            <WordPreview bookId={selectedBook.id} />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

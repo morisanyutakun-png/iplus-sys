@@ -319,36 +319,12 @@ export interface DetectColumnsResponse {
   suggested_mapping: ColumnMapping | null;
 }
 
-export interface GenerateMaterialResponse {
-  material_key: string;
-  nodes_generated: number;
-}
-
 export interface Word {
   id: number;
   word_book_id: number;
   word_number: number;
   question: string;
   answer: string;
-}
-
-export interface TestRange {
-  start: number;
-  end: number;
-}
-
-export interface WordTestSession {
-  id: number;
-  student_id: string;
-  word_book_id: number;
-  ranges: TestRange[];
-  total_questions: number;
-  correct_count: number;
-  accuracy_rate: number;
-  test_date: string;
-  created_at: string;
-  student_name?: string;
-  word_book_name?: string;
 }
 
 export interface CsvImportResponse {

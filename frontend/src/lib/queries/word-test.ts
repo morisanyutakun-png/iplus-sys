@@ -3,12 +3,9 @@ import { apiFetch } from "@/lib/api";
 import type {
   WordBook,
   Word,
-  TestRange,
-  WordTestSession,
   CsvImportResponse,
   ColumnMapping,
   DetectColumnsResponse,
-  GenerateMaterialResponse,
 } from "@/lib/types";
 
 // ── Word Books ──
@@ -43,6 +40,8 @@ export function useDeleteWordBook() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["word-books"] });
+      qc.invalidateQueries({ queryKey: ["materials"] });
+      qc.invalidateQueries({ queryKey: ["material-zones"] });
     },
   });
 }
@@ -90,6 +89,7 @@ export function useImportCsv() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["words"] });
       qc.invalidateQueries({ queryKey: ["word-books"] });
+      qc.invalidateQueries({ queryKey: ["materials"] });
     },
   });
 }
@@ -104,30 +104,6 @@ export function useDetectColumns() {
   });
 }
 
-export function useGenerateMaterial() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      bookId,
-      wordsPerTest = 100,
-    }: {
-      bookId: number;
-      wordsPerTest?: number;
-    }) =>
-      apiFetch<GenerateMaterialResponse>(
-        `/api/word-test/${bookId}/generate-material`,
-        {
-          method: "POST",
-          body: JSON.stringify({ words_per_test: wordsPerTest }),
-        }
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["word-books"] });
-      qc.invalidateQueries({ queryKey: ["materials"] });
-    },
-  });
-}
-
 export function useDeleteAllWords() {
   const qc = useQueryClient();
   return useMutation({
@@ -139,62 +115,5 @@ export function useDeleteAllWords() {
       qc.invalidateQueries({ queryKey: ["words"] });
       qc.invalidateQueries({ queryKey: ["word-books"] });
     },
-  });
-}
-
-// ── Test Generation ──
-
-export function useGenerateTest() {
-  return useMutation({
-    mutationFn: (body: {
-      word_book_id: number;
-      ranges: TestRange[];
-      count?: number;
-    }) =>
-      apiFetch<{ words: Word[]; total: number }>("/api/word-test/generate", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-  });
-}
-
-// ── Test Sessions ──
-
-export function useSaveTestSession() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: {
-      student_id: string;
-      word_book_id: number;
-      ranges: TestRange[];
-      total_questions: number;
-      correct_count: number;
-      test_date: string;
-    }) =>
-      apiFetch<WordTestSession>("/api/word-test/sessions", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["word-test-sessions"] });
-    },
-  });
-}
-
-export function useWordTestSessions(
-  studentId?: string,
-  wordBookId?: number
-) {
-  const params = new URLSearchParams();
-  if (studentId) params.set("student_id", studentId);
-  if (wordBookId) params.set("word_book_id", String(wordBookId));
-  const qs = params.toString();
-
-  return useQuery({
-    queryKey: ["word-test-sessions", studentId, wordBookId],
-    queryFn: () =>
-      apiFetch<WordTestSession[]>(
-        `/api/word-test/sessions${qs ? `?${qs}` : ""}`
-      ),
   });
 }
