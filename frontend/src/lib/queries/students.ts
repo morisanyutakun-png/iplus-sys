@@ -1,6 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "../api";
+import { apiFetch, apiUrl } from "../api";
 import type { Student, MaterialZones } from "../types";
+
+export interface MaterialNodePreview {
+  key: string;
+  title: string;
+  sort_order: number;
+  range_text: string;
+  has_pdf: boolean;
+  is_current: boolean;
+  is_completed: boolean;
+}
+
+export interface StudentMaterialNodes {
+  student_id: string;
+  material_key: string;
+  pointer: number;
+  max_node: number | null;
+  nodes: MaterialNodePreview[];
+}
 
 export function useStudents() {
   return useQuery({
@@ -103,6 +121,27 @@ export function useAssignWordTest(studentId: string) {
       qc.invalidateQueries({ queryKey: ["material-zones", studentId] });
     },
   });
+}
+
+export function useStudentMaterialNodes(studentId: string, materialKey: string | null) {
+  return useQuery({
+    queryKey: ["student-material-nodes", studentId, materialKey],
+    queryFn: () =>
+      apiFetch<StudentMaterialNodes>(
+        `/api/students/${studentId}/material-nodes/${encodeURIComponent(materialKey!)}`
+      ),
+    enabled: !!studentId && !!materialKey,
+  });
+}
+
+export function studentPdfPreviewUrl(
+  studentId: string,
+  materialKey: string,
+  nodeSortOrder: number
+): string {
+  return apiUrl(
+    `/api/students/${studentId}/preview-pdf/${encodeURIComponent(materialKey)}?node_sort_order=${nodeSortOrder}`
+  );
 }
 
 export function useSavePointers(studentId: string) {

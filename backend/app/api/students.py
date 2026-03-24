@@ -1,8 +1,12 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.database import get_db
 from app.models.student import Student
 from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
@@ -419,3 +423,107 @@ async def assign_word_test(
         "end_node": end_node,
         "pdfs_generated": len(pdf_list),
     }
+
+
+@router.get("/{student_id}/material-nodes/{material_key:path}")
+async def get_student_material_nodes(
+    student_id: str, material_key: str, db: AsyncSession = Depends(get_db)
+):
+    """割り当て済み教材のノード一覧（PDF有無付き）を返す"""
+    # Verify assignment exists
+    sm_result = await db.execute(
+        select(StudentMaterial).where(
+            StudentMaterial.student_id == student_id,
+            StudentMaterial.material_key == material_key,
+        )
+    )
+    sm = sm_result.scalars().first()
+    if not sm:
+        raise HTTPException(status_code=404, detail="この教材は割り当てられていません")
+
+    # Get nodes (filtered by max_node if set)
+    stmt = (
+        select(MaterialNode)
+        .where(MaterialNode.material_key == material_key)
+        .order_by(MaterialNode.sort_order)
+    )
+    if sm.max_node:
+        stmt = stmt.where(MaterialNode.sort_order <= sm.max_node)
+    nodes = (await db.execute(stmt)).scalars().all()
+
+    is_word_test = material_key.startswith("単語:")
+    result = []
+    for node in nodes:
+        has_pdf = False
+        if is_word_test:
+            book_name = material_key.removeprefix("単語:")
+            pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
+            pdf_path = os.path.join(settings.pdf_storage_dir, pdf_relpath)
+            has_pdf = os.path.isfile(pdf_path)
+        elif node.pdf_relpath:
+            pdf_path = os.path.join(settings.pdf_storage_dir, node.pdf_relpath)
+            has_pdf = os.path.isfile(pdf_path)
+            if not has_pdf:
+                for base_dir in settings.materials_base_dirs_list:
+                    if os.path.isfile(os.path.join(base_dir, node.pdf_relpath)):
+                        has_pdf = True
+                        break
+
+        result.append({
+            "key": node.key,
+            "title": node.title,
+            "sort_order": node.sort_order,
+            "range_text": node.range_text,
+            "has_pdf": has_pdf,
+            "is_current": node.sort_order == sm.pointer,
+            "is_completed": node.sort_order < sm.pointer,
+        })
+
+    return {
+        "student_id": student_id,
+        "material_key": material_key,
+        "pointer": sm.pointer,
+        "max_node": sm.max_node,
+        "nodes": result,
+    }
+
+
+@router.get("/{student_id}/preview-pdf/{material_key:path}")
+async def preview_student_pdf(
+    student_id: str, material_key: str,
+    node_sort_order: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    """生徒の割り当てPDFをプレビュー用に返す"""
+    # Look up the node
+    stmt = select(MaterialNode).where(
+        MaterialNode.material_key == material_key,
+        MaterialNode.sort_order == node_sort_order,
+    )
+    node = (await db.execute(stmt)).scalars().first()
+    if not node:
+        raise HTTPException(status_code=404, detail="ノードが見つかりません")
+
+    # Resolve PDF path
+    resolved = None
+    if material_key.startswith("単語:"):
+        book_name = material_key.removeprefix("単語:")
+        pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
+        local = os.path.join(settings.pdf_storage_dir, pdf_relpath)
+        if os.path.isfile(local):
+            resolved = local
+    elif node.pdf_relpath:
+        local = os.path.join(settings.pdf_storage_dir, node.pdf_relpath)
+        if os.path.isfile(local):
+            resolved = local
+        else:
+            for base_dir in settings.materials_base_dirs_list:
+                full = os.path.join(base_dir, node.pdf_relpath)
+                if os.path.isfile(full):
+                    resolved = full
+                    break
+
+    if not resolved:
+        raise HTTPException(status_code=404, detail="PDFファイルが見つかりません")
+
+    return FileResponse(resolved, media_type="application/pdf")

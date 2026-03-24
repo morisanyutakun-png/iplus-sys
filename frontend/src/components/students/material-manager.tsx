@@ -6,6 +6,8 @@ import {
   useToggleMaterial,
   useSavePointers,
   useAssignWordTest,
+  useStudentMaterialNodes,
+  studentPdfPreviewUrl,
 } from "@/lib/queries/students";
 import {
   useAcknowledgeReminder,
@@ -46,7 +48,130 @@ import {
   Circle,
   TrendingDown,
   FileText,
+  Eye,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+
+function NodePreviewPanel({
+  studentId,
+  materialKey,
+}: {
+  studentId: string;
+  materialKey: string;
+}) {
+  const { data, isLoading } = useStudentMaterialNodes(studentId, materialKey);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  if (isLoading) {
+    return (
+      <div className="px-3 pb-3 pt-1">
+        <div className="text-xs text-muted-foreground">読み込み中...</div>
+      </div>
+    );
+  }
+
+  if (!data || data.nodes.length === 0) {
+    return (
+      <div className="px-3 pb-3 pt-1">
+        <div className="text-xs text-muted-foreground">ノードがありません</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-border/40">
+      {/* Node list */}
+      <div className="px-3 py-2 space-y-1 max-h-48 overflow-y-auto">
+        {data.nodes.map((node) => (
+          <div
+            key={node.key}
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors",
+              node.is_current
+                ? "bg-primary/10 font-medium"
+                : node.is_completed
+                ? "text-muted-foreground"
+                : ""
+            )}
+          >
+            {/* Status icon */}
+            <div className="shrink-0">
+              {node.is_completed ? (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              ) : node.is_current ? (
+                <Circle className="h-3.5 w-3.5 text-primary fill-primary/20" />
+              ) : (
+                <Circle className="h-3.5 w-3.5 text-muted-foreground/30" />
+              )}
+            </div>
+
+            {/* Node info */}
+            <span className="flex-1 truncate">
+              {node.title}
+              {node.range_text && (
+                <span className="text-muted-foreground ml-1">({node.range_text})</span>
+              )}
+            </span>
+
+            {/* Preview button */}
+            {node.has_pdf && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0 text-muted-foreground hover:text-primary"
+                onClick={() =>
+                  setPreviewUrl(
+                    studentPdfPreviewUrl(studentId, materialKey, node.sort_order)
+                  )
+                }
+                title="PDFプレビュー"
+              >
+                <Eye className="h-3 w-3" />
+              </Button>
+            )}
+            {!node.has_pdf && (
+              <span className="text-[10px] text-muted-foreground/50 shrink-0">PDF無し</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Inline PDF preview */}
+      {previewUrl && (
+        <div className="border-t border-border/40">
+          <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30">
+            <span className="text-[10px] font-medium text-muted-foreground">PDFプレビュー</span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5"
+                onClick={() => window.open(previewUrl, "_blank")}
+                title="新しいタブで開く"
+              >
+                <FileText className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5"
+                onClick={() => setPreviewUrl(null)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+          <iframe
+            src={previewUrl}
+            className="w-full h-[500px] border-0"
+            title="PDF Preview"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 type Props = {
   studentId: string;
@@ -66,6 +191,9 @@ export function MaterialManager({ studentId }: Props) {
   const [editedPointers, setEditedPointers] = useState<
     Record<string, number>
   >({});
+
+  // Preview expand state
+  const [expandedMaterial, setExpandedMaterial] = useState<string | null>(null);
 
   // Word test assignment dialog state
   const [wordTestDialog, setWordTestDialog] = useState<{
@@ -262,6 +390,23 @@ export function MaterialManager({ studentId }: Props) {
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-primary"
+                            onClick={() =>
+                              setExpandedMaterial(
+                                expandedMaterial === mat.key ? null : mat.key
+                              )
+                            }
+                            title="PDFプレビュー"
+                          >
+                            {expandedMaterial === mat.key ? (
+                              <ChevronUp className="h-3 w-3" />
+                            ) : (
+                              <Eye className="h-3 w-3" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
                             onClick={() => handleToggle(mat.key, "remove")}
                           >
@@ -314,6 +459,11 @@ export function MaterialManager({ studentId }: Props) {
                     </div>
                   </div>
                 </div>
+
+                {/* Expandable Node Preview Panel */}
+                {expandedMaterial === mat.key && (
+                  <NodePreviewPanel studentId={studentId} materialKey={mat.key} />
+                )}
               </div>
             );
           })}
