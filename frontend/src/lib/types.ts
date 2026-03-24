@@ -143,12 +143,15 @@ export interface MaterialZones {
     name: string;
     total_nodes: number;
     pointer?: number;
+    max_node?: number;
     percent?: number;
   }[];
   source: {
     key: string;
     name: string;
     total_nodes: number;
+    word_book_id?: number;
+    total_words?: number;
   }[];
 }
 

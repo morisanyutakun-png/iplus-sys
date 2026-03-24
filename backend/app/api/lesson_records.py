@@ -161,6 +161,7 @@ async def batch_mastery_input(
         old_pointer = sm.pointer
         nodes_sorted = sorted(sm.material.nodes, key=lambda n: n.sort_order)
         total_nodes = len(nodes_sorted)
+        effective_total = sm.max_node if sm.max_node else total_nodes
         did_advance = False
 
         # 2b. Update low_score_streak counter
@@ -172,7 +173,7 @@ async def batch_mastery_input(
             sm.last_accuracy = accuracy_rate
 
         # 3. Advance pointer if completed
-        if rec.status == "completed" and old_pointer <= total_nodes:
+        if rec.status == "completed" and old_pointer <= effective_total:
             sm.pointer = old_pointer + 1
             did_advance = True
             advanced_count += 1
@@ -192,21 +193,21 @@ async def batch_mastery_input(
 
         # 4. Check if material is completed (pointer exceeded total)
         is_completed = False
-        if did_advance and sm.pointer > total_nodes:
+        if did_advance and sm.pointer > effective_total:
             is_completed = True
             completed_count += 1
             # Archive progress before removing assignment
             db.add(ArchivedProgress(
                 student_id=rec.student_id,
                 material_key=rec.material_key,
-                pointer=total_nodes,
+                pointer=effective_total,
             ))
             db.add(ProgressHistory(
                 student_id=rec.student_id,
                 material_key=rec.material_key,
                 action="complete",
-                old_pointer=total_nodes,
-                metadata_={"auto_unassign": True, "total_nodes": total_nodes},
+                old_pointer=effective_total,
+                metadata_={"auto_unassign": True, "total_nodes": total_nodes, "max_node": sm.max_node},
             ))
             await db.execute(
                 delete(StudentMaterial).where(
@@ -220,7 +221,7 @@ async def batch_mastery_input(
         queued_node_key = None
         queued_node_title = None
 
-        if not is_completed and new_pointer <= total_nodes:
+        if not is_completed and new_pointer <= effective_total:
             # Find the node at current pointer
             next_node = next(
                 (n for n in nodes_sorted if n.sort_order == new_pointer), None

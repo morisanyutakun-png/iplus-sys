@@ -16,6 +16,7 @@ class StudentMaterial(Base):
         String, ForeignKey("materials.key", ondelete="CASCADE"), primary_key=True
     )
     pointer: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    max_node: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     low_score_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     last_accuracy: Mapped[float | None] = mapped_column(Float, nullable=True)
     assigned_at: Mapped[datetime] = mapped_column(

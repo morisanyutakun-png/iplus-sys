@@ -6,8 +6,9 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.student import Student
 from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
-from app.models.material import Material
+from app.models.material import Material, MaterialNode
 from app.models.print_queue import PrintQueue
+from app.models.word_test import WordBook, Word
 from app.schemas.student import StudentOut, StudentCreate, StudentUpdate, StudentListOut, StudentMaterialInfo
 from app.services.word_test_material import generate_student_pdfs
 
@@ -19,7 +20,8 @@ def _build_student_out(student: Student) -> StudentOut:
     for sm in student.materials:
         mat = sm.material
         total = len(mat.nodes) if mat else 0
-        pct = ((sm.pointer - 1) / total * 100) if total > 0 else 0
+        effective = sm.max_node if sm.max_node else total
+        pct = ((sm.pointer - 1) / effective * 100) if effective > 0 else 0
         next_title = None
         if mat and sm.pointer <= total:
             for n in mat.nodes:
@@ -121,26 +123,38 @@ async def get_materials_zones(student_id: str, db: AsyncSession = Depends(get_db
     result = await db.execute(select(Material).options(selectinload(Material.nodes)))
     all_materials = result.scalars().unique().all()
 
-    # Get student's assigned materials
+    # Get student's assigned materials (with max_node)
     result = await db.execute(
         select(StudentMaterial).where(StudentMaterial.student_id == student_id)
     )
-    assigned = {sm.material_key: sm.pointer for sm in result.scalars().all()}
+    assigned_map = {sm.material_key: sm for sm in result.scalars().all()}
+
+    # Get word book info for word test materials
+    wb_result = await db.execute(select(WordBook))
+    word_books = {wb.material_key: wb for wb in wb_result.scalars().all() if wb.material_key}
 
     assigned_list = []
     source_list = []
     for mat in all_materials:
         total = len(mat.nodes)
-        info = {
+        info: dict = {
             "key": mat.key,
             "name": mat.name,
             "total_nodes": total,
         }
-        if mat.key in assigned:
-            info["pointer"] = assigned[mat.key]
-            info["percent"] = round((assigned[mat.key] - 1) / total * 100, 1) if total > 0 else 0
+        if mat.key in assigned_map:
+            sm = assigned_map[mat.key]
+            effective = sm.max_node if sm.max_node else total
+            info["pointer"] = sm.pointer
+            info["max_node"] = sm.max_node
+            info["percent"] = round((sm.pointer - 1) / effective * 100, 1) if effective > 0 else 0
             assigned_list.append(info)
         else:
+            # Add word book info for assignment dialog
+            wb = word_books.get(mat.key)
+            if wb:
+                info["word_book_id"] = wb.id
+                info["total_words"] = wb.total_words
             source_list.append(info)
 
     return {"assigned": assigned_list, "source": source_list}
@@ -259,3 +273,149 @@ async def save_pointers(
 
     await db.commit()
     return {"status": "ok"}
+
+
+@router.post("/{student_id}/assign-word-test")
+async def assign_word_test(
+    student_id: str, body: dict, db: AsyncSession = Depends(get_db)
+):
+    """Assign a word test material with range specification and per-student PDF generation."""
+    word_book_id = body.get("word_book_id")
+    start_num = body.get("start_num", 1)
+    end_num = body.get("end_num")
+    words_per_test = body.get("words_per_test", 100)
+
+    # Validate student
+    student = await db.get(Student, student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="生徒が見つかりません")
+
+    # Get WordBook
+    book_result = await db.execute(select(WordBook).where(WordBook.id == word_book_id))
+    book = book_result.scalars().first()
+    if not book or not book.material_key:
+        raise HTTPException(status_code=404, detail="単語帳または教材が見つかりません")
+
+    material_key = book.material_key
+    if end_num is None:
+        end_num = book.total_words
+
+    # Check if already assigned
+    existing = await db.execute(
+        select(StudentMaterial).where(
+            StudentMaterial.student_id == student_id,
+            StudentMaterial.material_key == material_key,
+        )
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=409, detail="既にこの教材が割り当てられています")
+
+    # Ensure nodes exist for the requested chunk size
+    # Regenerate nodes if words_per_test differs from current node structure
+    nodes_result = await db.execute(
+        select(MaterialNode)
+        .where(MaterialNode.material_key == material_key)
+        .order_by(MaterialNode.sort_order)
+    )
+    existing_nodes = nodes_result.scalars().all()
+
+    # Get all words to rebuild nodes if needed
+    words_result = await db.execute(
+        select(Word).where(Word.word_book_id == book.id).order_by(Word.word_number)
+    )
+    all_words = words_result.scalars().all()
+
+    # Rebuild nodes with requested chunk size
+    from sqlalchemy import delete as sa_delete
+    await db.execute(
+        sa_delete(MaterialNode).where(MaterialNode.material_key == material_key)
+    )
+    await db.flush()
+
+    for i in range(0, len(all_words), words_per_test):
+        chunk = all_words[i:i + words_per_test]
+        chunk_num = (i // words_per_test) + 1
+        first_num = chunk[0].word_number
+        last_num = chunk[-1].word_number
+        db.add(MaterialNode(
+            key=f"単語:{book.name}:{chunk_num:03d}",
+            material_key=material_key,
+            title=f"{first_num}-{last_num}",
+            range_text=f"No.{first_num}〜{last_num}",
+            pdf_relpath="",
+            duplex=True,
+            sort_order=chunk_num,
+        ))
+    await db.flush()
+
+    # Find nodes that cover the requested range
+    refreshed = await db.execute(
+        select(MaterialNode)
+        .where(MaterialNode.material_key == material_key)
+        .order_by(MaterialNode.sort_order)
+    )
+    all_nodes = refreshed.scalars().all()
+
+    # Determine start_node and end_node sort_orders based on word range
+    start_node = None
+    end_node = None
+    for node in all_nodes:
+        from app.services.word_test_material import _parse_range
+        ns, ne = _parse_range(node.range_text)
+        if ns is None:
+            continue
+        if ne >= start_num and start_node is None:
+            start_node = node.sort_order
+        if ns <= end_num:
+            end_node = node.sort_order
+
+    if start_node is None or end_node is None:
+        raise HTTPException(status_code=400, detail="指定範囲に該当するノードがありません")
+
+    # Generate per-student PDFs for the range
+    pdf_list = await generate_student_pdfs(
+        db, student_id, student.name, material_key,
+        start_node=start_node, end_node=end_node,
+    )
+
+    # Create StudentMaterial with range limits
+    sm = StudentMaterial(
+        student_id=student_id,
+        material_key=material_key,
+        pointer=start_node,
+        max_node=end_node,
+    )
+    history = ProgressHistory(
+        student_id=student_id,
+        material_key=material_key,
+        action="assign",
+        new_pointer=start_node,
+        metadata_={"start_num": start_num, "end_num": end_num, "words_per_test": words_per_test},
+    )
+    db.add(sm)
+    db.add(history)
+
+    # Queue first node
+    first_node = next((n for n in all_nodes if n.sort_order == start_node), None)
+    if first_node:
+        first_pdf = next((p for k, p in pdf_list if k == first_node.key), "")
+        db.add(PrintQueue(
+            student_id=student_id,
+            student_name=student.name,
+            material_key=material_key,
+            material_name=f"単語テスト:{book.name}",
+            node_key=first_node.key,
+            node_name=first_node.title,
+            generated_pdf=first_pdf,
+            sort_order=0,
+            status="pending",
+        ))
+
+    await db.commit()
+    return {
+        "status": "assigned",
+        "material_key": material_key,
+        "start_node": start_node,
+        "end_node": end_node,
+        "pdfs_generated": len(pdf_list),
+    }

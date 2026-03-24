@@ -191,8 +191,60 @@ async def import_csv(
     )
     book.total_words = count_result.scalar() or 0
 
+    # Auto-generate material from word book
+    if parsed_words and book.total_words > 0:
+        await _auto_generate_material(db, book)
+
     await db.commit()
     return CsvImportResponse(imported=imported, updated=updated, errors=errors)
+
+
+async def _auto_generate_material(db: AsyncSession, book: WordBook) -> None:
+    """Auto-create/update Material + MaterialNodes from a WordBook (100 words per node)."""
+    material_key = f"単語:{book.name}"
+    material_name = f"単語テスト:{book.name}"
+    words_per_test = 100
+
+    # Create or update Material
+    existing_mat = await db.get(Material, material_key)
+    if existing_mat:
+        existing_mat.name = material_name
+        existing_mat.subject = "英語"
+    else:
+        db.add(Material(
+            key=material_key, name=material_name, subject="英語", sort_order=900,
+        ))
+        await db.flush()
+
+    # Delete existing nodes
+    await db.execute(
+        delete(MaterialNode).where(MaterialNode.material_key == material_key)
+    )
+    await db.flush()
+
+    # Get all words ordered
+    words_result = await db.execute(
+        select(Word).where(Word.word_book_id == book.id).order_by(Word.word_number)
+    )
+    all_words = words_result.scalars().all()
+
+    # Create nodes in chunks
+    for i in range(0, len(all_words), words_per_test):
+        chunk = all_words[i:i + words_per_test]
+        chunk_num = (i // words_per_test) + 1
+        first_num = chunk[0].word_number
+        last_num = chunk[-1].word_number
+        db.add(MaterialNode(
+            key=f"単語:{book.name}:{chunk_num:03d}",
+            material_key=material_key,
+            title=f"{first_num}-{last_num}",
+            range_text=f"No.{first_num}〜{last_num}",
+            pdf_relpath="",
+            duplex=True,
+            sort_order=chunk_num,
+        ))
+
+    book.material_key = material_key
 
 
 @router.delete("/{book_id}/words")

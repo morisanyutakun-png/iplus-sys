@@ -1,12 +1,13 @@
-"""Generate per-student randomized word test PDFs for all nodes of a material."""
+"""Generate per-student randomized word test PDFs for material nodes."""
 
+import re
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.material import Material, MaterialNode
+from app.models.material import MaterialNode
 from app.models.word_test import WordBook, Word
 from app.services.word_test_pdf import generate_word_test_pdf
 
@@ -16,12 +17,17 @@ async def generate_student_pdfs(
     student_id: str,
     student_name: str,
     material_key: str,
+    start_node: int | None = None,
+    end_node: int | None = None,
 ) -> list[tuple[str, str]]:
-    """Generate randomized PDFs for all nodes of a word-test material.
+    """Generate randomized PDFs for nodes of a word-test material.
+
+    Args:
+        start_node: sort_order of first node to generate (inclusive). None = all.
+        end_node: sort_order of last node to generate (inclusive). None = all.
 
     Returns list of (node_key, pdf_relpath) tuples.
     """
-    # Extract book name from material_key "単語:{book_name}"
     book_name = material_key.removeprefix("単語:")
 
     # Find WordBook
@@ -42,45 +48,37 @@ async def generate_student_pdfs(
     if not all_words:
         return []
 
-    # Load material nodes
-    mat_result = await db.execute(
-        select(Material).where(Material.key == material_key)
-    )
-    material = mat_result.scalars().first()
-    if not material:
-        return []
-
-    nodes_result = await db.execute(
+    # Load material nodes (with optional range filter)
+    stmt = (
         select(MaterialNode)
         .where(MaterialNode.material_key == material_key)
         .order_by(MaterialNode.sort_order)
     )
-    nodes = nodes_result.scalars().all()
+    if start_node is not None:
+        stmt = stmt.where(MaterialNode.sort_order >= start_node)
+    if end_node is not None:
+        stmt = stmt.where(MaterialNode.sort_order <= end_node)
+
+    nodes = (await db.execute(stmt)).scalars().all()
     if not nodes:
         return []
-
-    # Build word lookup by word_number
-    word_map = {w.word_number: w for w in all_words}
 
     generated: list[tuple[str, str]] = []
 
     for node in nodes:
-        # Parse range from range_text "No.1〜100"
-        range_text = node.range_text  # e.g. "No.1〜100"
-        start_num, end_num = _parse_range(range_text)
-        if start_num is None or end_num is None:
+        range_text = node.range_text
+        s, e = _parse_range(range_text)
+        if s is None or e is None:
             continue
 
-        # Collect words in range
         word_tuples = [
             (w.word_number, w.question, w.answer)
             for w in all_words
-            if start_num <= w.word_number <= end_num
+            if s <= w.word_number <= e
         ]
         if not word_tuples:
             continue
 
-        # Generate per-student PDF
         pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
         pdf_path = Path(settings.pdf_storage_dir) / pdf_relpath
 
@@ -99,7 +97,6 @@ async def generate_student_pdfs(
 
 def _parse_range(range_text: str) -> tuple[int | None, int | None]:
     """Parse 'No.1〜100' into (1, 100)."""
-    import re
     m = re.search(r"(\d+)\s*[〜~\-]\s*(\d+)", range_text)
     if m:
         return int(m.group(1)), int(m.group(2))

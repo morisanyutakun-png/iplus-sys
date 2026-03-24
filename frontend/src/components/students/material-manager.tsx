@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   useMaterialZones,
   useToggleMaterial,
   useSavePointers,
+  useAssignWordTest,
 } from "@/lib/queries/students";
 import {
   useAcknowledgeReminder,
@@ -19,6 +20,20 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Plus,
   Minus,
   Save,
@@ -30,6 +45,7 @@ import {
   CheckCircle2,
   Circle,
   TrendingDown,
+  FileText,
 } from "lucide-react";
 
 type Props = {
@@ -41,6 +57,7 @@ export function MaterialManager({ studentId }: Props) {
   const { data: dashboard } = useDashboard();
   const toggleMutation = useToggleMaterial(studentId);
   const saveMutation = useSavePointers(studentId);
+  const assignWordTest = useAssignWordTest(studentId);
   const ackMutation = useAcknowledgeReminder();
   const unackMutation = useUnacknowledgeReminder();
   const ackLowMutation = useAcknowledgeLowAccuracy();
@@ -49,6 +66,18 @@ export function MaterialManager({ studentId }: Props) {
   const [editedPointers, setEditedPointers] = useState<
     Record<string, number>
   >({});
+
+  // Word test assignment dialog state
+  const [wordTestDialog, setWordTestDialog] = useState<{
+    open: boolean;
+    materialKey: string;
+    materialName: string;
+    wordBookId: number;
+    totalWords: number;
+  } | null>(null);
+  const [wtStartNum, setWtStartNum] = useState(1);
+  const [wtEndNum, setWtEndNum] = useState(100);
+  const [wtWordsPerTest, setWtWordsPerTest] = useState(100);
 
   const handleToggle = (materialKey: string, action: "assign" | "remove") => {
     toggleMutation.mutate(
@@ -61,6 +90,56 @@ export function MaterialManager({ studentId }: Props) {
       }
     );
   };
+
+  const handleSourceClick = (mat: { key: string; name: string; total_nodes: number; word_book_id?: number; total_words?: number }) => {
+    if (mat.word_book_id && mat.total_words) {
+      // Open word test assignment dialog
+      setWordTestDialog({
+        open: true,
+        materialKey: mat.key,
+        materialName: mat.name,
+        wordBookId: mat.word_book_id,
+        totalWords: mat.total_words,
+      });
+      setWtStartNum(1);
+      setWtEndNum(mat.total_words);
+      setWtWordsPerTest(100);
+    } else {
+      handleToggle(mat.key, "assign");
+    }
+  };
+
+  const handleAssignWordTest = () => {
+    if (!wordTestDialog) return;
+    assignWordTest.mutate(
+      {
+        word_book_id: wordTestDialog.wordBookId,
+        start_num: wtStartNum,
+        end_num: wtEndNum,
+        words_per_test: wtWordsPerTest,
+      },
+      {
+        onSuccess: () => {
+          toast.success("単語テスト教材を割り当てました（PDF生成完了）");
+          setWordTestDialog(null);
+        },
+        onError: () => {
+          toast.error("割り当てに失敗しました");
+        },
+      }
+    );
+  };
+
+  // Preview: how many tests will be generated
+  const wtPreviewTests = useMemo(() => {
+    if (!wordTestDialog) return [];
+    const tests: string[] = [];
+    for (let i = wtStartNum; i <= wtEndNum; i += wtWordsPerTest) {
+      const end = Math.min(i + wtWordsPerTest - 1, wtEndNum);
+      tests.push(`${i}-${end}`);
+    }
+    return tests;
+  }, [wordTestDialog, wtStartNum, wtEndNum, wtWordsPerTest]);
 
   const handlePointerChange = (materialKey: string, value: number, max: number) => {
     const clamped = Math.max(1, Math.min(value, max));
@@ -123,7 +202,7 @@ export function MaterialManager({ studentId }: Props) {
           {assigned.map((mat) => {
             const currentPointer = editedPointers[mat.key] ?? mat.pointer ?? 1;
             const completed = currentPointer - 1;
-            const total = mat.total_nodes;
+            const total = mat.max_node || mat.total_nodes;
             const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
             const isEdited = editedPointers[mat.key] !== undefined;
             const strokeColor = pct >= 90 ? "#10b981" : pct >= 50 ? "#3b82f6" : pct > 0 ? "#f59e0b" : "#d1d5db";
@@ -210,23 +289,23 @@ export function MaterialManager({ studentId }: Props) {
                             size="icon"
                             className="h-6 w-6 rounded-l-md rounded-r-none border-r-0"
                             onClick={() =>
-                              handlePointerChange(mat.key, currentPointer - 1, mat.total_nodes)
+                              handlePointerChange(mat.key, currentPointer - 1, total)
                             }
                             disabled={currentPointer <= 1}
                           >
                             <Minus className="h-3 w-3" />
                           </Button>
                           <div className="flex items-center h-6 px-2 border-y border-border bg-muted/30 text-xs font-mono tabular-nums min-w-[48px] justify-center">
-                            {currentPointer}/{mat.total_nodes}
+                            {currentPointer}/{total}
                           </div>
                           <Button
                             variant="outline"
                             size="icon"
                             className="h-6 w-6 rounded-r-md rounded-l-none border-l-0"
                             onClick={() =>
-                              handlePointerChange(mat.key, currentPointer + 1, mat.total_nodes)
+                              handlePointerChange(mat.key, currentPointer + 1, total)
                             }
-                            disabled={currentPointer >= mat.total_nodes}
+                            disabled={currentPointer >= total}
                           >
                             <Plus className="h-3 w-3" />
                           </Button>
@@ -406,8 +485,8 @@ export function MaterialManager({ studentId }: Props) {
               <button
                 key={mat.key}
                 type="button"
-                onClick={() => handleToggle(mat.key, "assign")}
-                disabled={toggleMutation.isPending}
+                onClick={() => handleSourceClick(mat)}
+                disabled={toggleMutation.isPending || assignWordTest.isPending}
                 className={cn(
                   "group/add flex items-center gap-3 rounded-xl border border-border/50 px-3 py-2.5",
                   "bg-card hover:border-primary/40 hover:bg-primary/[0.03] hover:shadow-sm",
@@ -426,8 +505,17 @@ export function MaterialManager({ studentId }: Props) {
                 <div className="min-w-0 flex-1">
                   <span className="text-sm font-medium truncate block">{mat.name}</span>
                   <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                    <Layers className="h-2.5 w-2.5" />
-                    {mat.total_nodes} 範囲
+                    {mat.word_book_id ? (
+                      <>
+                        <FileText className="h-2.5 w-2.5" />
+                        {mat.total_words}語
+                      </>
+                    ) : (
+                      <>
+                        <Layers className="h-2.5 w-2.5" />
+                        {mat.total_nodes} 範囲
+                      </>
+                    )}
                   </span>
                 </div>
               </button>
@@ -435,6 +523,90 @@ export function MaterialManager({ studentId }: Props) {
           </div>
         </div>
       )}
+
+      {/* Word Test Assignment Dialog */}
+      <Dialog
+        open={wordTestDialog?.open ?? false}
+        onOpenChange={(open) => {
+          if (!open) setWordTestDialog(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>単語テスト割り当て</DialogTitle>
+          </DialogHeader>
+          {wordTestDialog && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{wordTestDialog.materialName}</span>
+                <Badge variant="secondary">{wordTestDialog.totalWords}語</Badge>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">開始番号</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={wordTestDialog.totalWords}
+                    value={wtStartNum}
+                    onChange={(e) => setWtStartNum(Math.max(1, parseInt(e.target.value) || 1))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">終了番号</label>
+                  <Input
+                    type="number"
+                    min={wtStartNum}
+                    max={wordTestDialog.totalWords}
+                    value={wtEndNum}
+                    onChange={(e) => setWtEndNum(Math.min(wordTestDialog.totalWords, parseInt(e.target.value) || wordTestDialog.totalWords))}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">テストあたりの語数</label>
+                <Select
+                  value={String(wtWordsPerTest)}
+                  onValueChange={(v) => setWtWordsPerTest(parseInt(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="50">50語</SelectItem>
+                    <SelectItem value="100">100語</SelectItem>
+                    <SelectItem value="200">200語</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Preview */}
+              <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+                <div className="text-xs font-medium mb-1.5">
+                  {wtPreviewTests.length}テスト生成されます
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {wtPreviewTests.map((range) => (
+                    <Badge key={range} variant="outline" className="text-[10px]">
+                      {range}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <Button
+                onClick={handleAssignWordTest}
+                disabled={assignWordTest.isPending || wtStartNum > wtEndNum}
+                className="w-full"
+              >
+                {assignWordTest.isPending ? "生成・割り当て中..." : "割り当て（PDF生成）"}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* All assigned state */}
       {source.length === 0 && assigned.length > 0 && (

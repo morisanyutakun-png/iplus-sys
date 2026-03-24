@@ -85,6 +85,26 @@ export function useDeleteStudent() {
   });
 }
 
+export function useAssignWordTest(studentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      word_book_id: number;
+      start_num: number;
+      end_num: number;
+      words_per_test: number;
+    }) =>
+      apiFetch(`/api/students/${studentId}/assign-word-test`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["students"] });
+      qc.invalidateQueries({ queryKey: ["material-zones", studentId] });
+    },
+  });
+}
+
 export function useSavePointers(studentId: string) {
   const qc = useQueryClient();
   return useMutation({
