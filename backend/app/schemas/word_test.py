@@ -15,6 +15,7 @@ class WordBookOut(BaseModel):
     name: str
     description: str
     total_words: int
+    material_key: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -39,8 +40,16 @@ class WordImportItem(BaseModel):
     answer: str
 
 
+class ColumnMapping(BaseModel):
+    number_col: int | None = None  # None = auto-number
+    word_col: int
+    translation_col: int
+    skip_header: bool = False
+
+
 class CsvImportRequest(BaseModel):
     csv_text: str
+    column_mapping: ColumnMapping | None = None
 
 
 class CsvImportResponse(BaseModel):
@@ -92,3 +101,14 @@ class WordTestSessionOut(BaseModel):
     word_book_name: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+# ── Material Generation ──
+
+class GenerateMaterialRequest(BaseModel):
+    words_per_test: int = 100
+
+
+class GenerateMaterialResponse(BaseModel):
+    material_key: str
+    nodes_generated: int

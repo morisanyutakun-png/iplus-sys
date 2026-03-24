@@ -4,12 +4,14 @@ import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Shuffle, ClipboardList } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { BookOpen, Shuffle, ClipboardList, FileText, RefreshCw, ExternalLink } from "lucide-react";
+import { toast } from "sonner";
 import { WordBookList } from "@/components/word-test/word-book-list";
 import { TestGenerator } from "@/components/word-test/test-generator";
 import { TestResultForm } from "@/components/word-test/test-result-form";
 import { TestHistory } from "@/components/word-test/test-history";
-import { useWords } from "@/lib/queries/word-test";
+import { useWords, useGenerateMaterial } from "@/lib/queries/word-test";
 import type { WordBook, Word } from "@/lib/types";
 
 function WordPreview({ bookId }: { bookId: number }) {
@@ -60,6 +62,22 @@ function WordPreview({ bookId }: { bookId: number }) {
 
 export default function WordTestPage() {
   const [selectedBook, setSelectedBook] = useState<WordBook | null>(null);
+  const generateMaterial = useGenerateMaterial();
+
+  const handleGenerateMaterial = async (book: WordBook) => {
+    try {
+      const result = await generateMaterial.mutateAsync({ bookId: book.id });
+      toast.success(
+        `教材を生成しました: ${result.nodes_generated}ノード作成`
+      );
+      // Update selected book with new material_key
+      setSelectedBook((prev) =>
+        prev ? { ...prev, material_key: result.material_key } : prev
+      );
+    } catch {
+      toast.error("教材の生成に失敗しました");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -100,7 +118,54 @@ export default function WordTestPage() {
                 <div className="flex items-center gap-2 mb-3">
                   <h3 className="font-medium">{selectedBook.name}</h3>
                   <Badge variant="secondary">{selectedBook.total_words}語</Badge>
+                  {selectedBook.material_key && (
+                    <Badge variant="outline" className="text-green-600 border-green-300">
+                      教材連携済
+                    </Badge>
+                  )}
                 </div>
+
+                {/* Material Generation */}
+                {selectedBook.total_words > 0 && (
+                  <div className="flex items-center gap-2 mb-3">
+                    {selectedBook.material_key ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleGenerateMaterial(selectedBook)}
+                          disabled={generateMaterial.isPending}
+                          className="gap-1.5"
+                        >
+                          <RefreshCw className={`h-3.5 w-3.5 ${generateMaterial.isPending ? "animate-spin" : ""}`} />
+                          教材を再生成
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          asChild
+                          className="gap-1.5"
+                        >
+                          <a href="/materials">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            教材管理で表示
+                          </a>
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => handleGenerateMaterial(selectedBook)}
+                        disabled={generateMaterial.isPending}
+                        className="gap-1.5"
+                      >
+                        <FileText className={`h-3.5 w-3.5 ${generateMaterial.isPending ? "animate-spin" : ""}`} />
+                        {generateMaterial.isPending ? "生成中..." : "教材を生成"}
+                      </Button>
+                    )}
+                  </div>
+                )}
+
                 <WordPreview bookId={selectedBook.id} />
               </CardContent>
             </Card>

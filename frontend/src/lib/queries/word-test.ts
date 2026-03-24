@@ -6,6 +6,9 @@ import type {
   TestRange,
   WordTestSession,
   CsvImportResponse,
+  ColumnMapping,
+  DetectColumnsResponse,
+  GenerateMaterialResponse,
 } from "@/lib/types";
 
 // ── Word Books ──
@@ -65,17 +68,62 @@ export function useWords(bookId: number | null, from?: number, to?: number) {
 export function useImportCsv() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ bookId, csvText }: { bookId: number; csvText: string }) =>
+    mutationFn: ({
+      bookId,
+      csvText,
+      columnMapping,
+    }: {
+      bookId: number;
+      csvText: string;
+      columnMapping?: ColumnMapping;
+    }) =>
       apiFetch<CsvImportResponse>(
         `/api/word-test/${bookId}/words/import-csv`,
         {
           method: "POST",
-          body: JSON.stringify({ csv_text: csvText }),
+          body: JSON.stringify({
+            csv_text: csvText,
+            column_mapping: columnMapping ?? null,
+          }),
         }
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["words"] });
       qc.invalidateQueries({ queryKey: ["word-books"] });
+    },
+  });
+}
+
+export function useDetectColumns() {
+  return useMutation({
+    mutationFn: (csvText: string) =>
+      apiFetch<DetectColumnsResponse>("/api/word-test/detect-columns", {
+        method: "POST",
+        body: JSON.stringify({ csv_text: csvText }),
+      }),
+  });
+}
+
+export function useGenerateMaterial() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      bookId,
+      wordsPerTest = 100,
+    }: {
+      bookId: number;
+      wordsPerTest?: number;
+    }) =>
+      apiFetch<GenerateMaterialResponse>(
+        `/api/word-test/${bookId}/generate-material`,
+        {
+          method: "POST",
+          body: JSON.stringify({ words_per_test: wordsPerTest }),
+        }
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["word-books"] });
+      qc.invalidateQueries({ queryKey: ["materials"] });
     },
   });
 }

@@ -3,6 +3,7 @@ from datetime import date, datetime
 from sqlalchemy import (
     String, Integer, Float, Date, DateTime, ForeignKey, UniqueConstraint, func,
 )
+from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,8 +20,16 @@ class WordBook(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    material_key: Mapped[str | None] = mapped_column(
+        String, ForeignKey("materials.key", ondelete="SET NULL"), nullable=True, default=None
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    words: Mapped[list["Word"]] = relationship(
+        "Word", back_populates="word_book", lazy="selectin",
+        order_by="Word.word_number",
     )
 
 
@@ -40,6 +49,8 @@ class Word(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    word_book: Mapped["WordBook"] = relationship("WordBook", back_populates="words")
 
 
 class WordTestSession(Base):

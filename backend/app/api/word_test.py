@@ -1,10 +1,15 @@
 import random
+import re
+import unicodedata
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, delete, func as sa_func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
+from app.models.material import Material, MaterialNode
 from app.models.word_test import WordBook, Word, WordTestSession
 from app.models.student import Student
 from app.schemas.word_test import (
@@ -12,7 +17,9 @@ from app.schemas.word_test import (
     WordOut, CsvImportRequest, CsvImportResponse,
     WordTestGenerateRequest, WordTestGenerateResponse,
     WordTestSessionCreate, WordTestSessionOut,
+    GenerateMaterialRequest, GenerateMaterialResponse,
 )
+from app.services.word_test_pdf import generate_word_test_pdf
 
 router = APIRouter()
 
@@ -79,12 +86,17 @@ async def import_csv(
         raise HTTPException(status_code=404, detail="単語帳が見つかりません")
 
     lines = body.csv_text.strip().split("\n")
+    mapping = body.column_mapping
     imported = 0
     updated = 0
     errors: list[str] = []
     auto_number = 1
 
+    start_idx = 1 if mapping and mapping.skip_header else 0
+
     for i, raw_line in enumerate(lines, start=1):
+        if i - 1 < start_idx:
+            continue
         line = raw_line.strip()
         if not line:
             continue
@@ -97,8 +109,29 @@ async def import_csv(
         question: str = ""
         answer: str = ""
 
-        if len(parts) >= 3:
-            # number, question, answer
+        if mapping:
+            # Use explicit column mapping
+            max_col = max(
+                c for c in [mapping.number_col, mapping.word_col, mapping.translation_col]
+                if c is not None
+            )
+            if len(parts) <= max_col:
+                errors.append(f"行{i}: 列数が不足しています（{len(parts)}列）")
+                continue
+
+            if mapping.number_col is not None:
+                try:
+                    word_number = int(parts[mapping.number_col])
+                except ValueError:
+                    errors.append(f"行{i}: 番号が不正です: {parts[mapping.number_col]}")
+                    continue
+            else:
+                word_number = auto_number
+
+            question = parts[mapping.word_col]
+            answer = parts[mapping.translation_col]
+        elif len(parts) >= 3:
+            # Auto-detect: number, question, answer
             try:
                 word_number = int(parts[0])
             except ValueError:
@@ -167,6 +200,183 @@ async def delete_all_words(book_id: int, db: AsyncSession = Depends(get_db)):
         book.total_words = 0
     await db.commit()
     return {"ok": True}
+
+
+# ── Column Auto-Detection ──
+
+def _is_japanese(text: str) -> bool:
+    """Check if text contains Japanese characters."""
+    for ch in text:
+        cat = unicodedata.category(ch)
+        if cat.startswith("Lo"):  # CJK ideograph, hiragana, katakana
+            name = unicodedata.name(ch, "")
+            if any(k in name for k in ("CJK", "HIRAGANA", "KATAKANA")):
+                return True
+    return False
+
+
+@router.post("/detect-columns")
+async def detect_columns(body: CsvImportRequest):
+    """Auto-detect column roles from sample CSV data."""
+    lines = body.csv_text.strip().split("\n")
+    if not lines:
+        return {"columns": [], "suggested_mapping": None}
+
+    # Parse first line to count columns
+    sample = lines[0]
+    parts = sample.split("\t") if "\t" in sample else sample.split(",")
+    parts = [p.strip() for p in parts]
+    num_cols = len(parts)
+
+    # Analyze multiple lines
+    sample_lines = lines[:min(10, len(lines))]
+    col_scores: list[dict[str, float]] = [
+        {"number": 0, "word": 0, "translation": 0} for _ in range(num_cols)
+    ]
+
+    for raw_line in sample_lines:
+        line_parts = raw_line.split("\t") if "\t" in raw_line else raw_line.split(",")
+        line_parts = [p.strip() for p in line_parts]
+        for j, val in enumerate(line_parts):
+            if j >= num_cols:
+                break
+            if not val:
+                continue
+            # Number detection
+            if re.match(r"^\d+$", val):
+                col_scores[j]["number"] += 1
+            # Japanese detection
+            if _is_japanese(val):
+                col_scores[j]["translation"] += 1
+            # ASCII/Latin word detection
+            elif re.match(r"^[a-zA-Z\s\-\']+$", val):
+                col_scores[j]["word"] += 1
+
+    n_lines = len(sample_lines)
+    columns = []
+    for j in range(num_cols):
+        scores = col_scores[j]
+        if scores["number"] >= n_lines * 0.7:
+            role = "number"
+        elif scores["word"] >= n_lines * 0.5:
+            role = "word"
+        elif scores["translation"] >= n_lines * 0.5:
+            role = "translation"
+        else:
+            role = "ignore"
+        columns.append({"index": j, "sample": parts[j], "suggested_role": role})
+
+    # Build suggested mapping
+    number_col = next((c["index"] for c in columns if c["suggested_role"] == "number"), None)
+    word_col = next((c["index"] for c in columns if c["suggested_role"] == "word"), None)
+    trans_col = next((c["index"] for c in columns if c["suggested_role"] == "translation"), None)
+
+    suggested = None
+    if word_col is not None and trans_col is not None:
+        suggested = {
+            "number_col": number_col,
+            "word_col": word_col,
+            "translation_col": trans_col,
+            "skip_header": False,
+        }
+
+    return {"columns": columns, "suggested_mapping": suggested}
+
+
+# ── Material Generation ──
+
+@router.post("/{book_id}/generate-material", response_model=GenerateMaterialResponse)
+async def generate_material(
+    book_id: int,
+    body: GenerateMaterialRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate Material + MaterialNodes + PDFs from a WordBook."""
+    result = await db.execute(select(WordBook).where(WordBook.id == book_id))
+    book = result.scalars().first()
+    if not book:
+        raise HTTPException(status_code=404, detail="単語帳が見つかりません")
+
+    # Get all words ordered by number
+    words_result = await db.execute(
+        select(Word)
+        .where(Word.word_book_id == book_id)
+        .order_by(Word.word_number)
+    )
+    all_words = words_result.scalars().all()
+    if not all_words:
+        raise HTTPException(status_code=400, detail="単語が登録されていません")
+
+    material_key = f"単語:{book.name}"
+    material_name = f"単語テスト:{book.name}"
+
+    # Create or update Material
+    existing_mat = await db.get(Material, material_key)
+    if existing_mat:
+        existing_mat.name = material_name
+        existing_mat.subject = "英語"
+    else:
+        db.add(Material(
+            key=material_key,
+            name=material_name,
+            subject="英語",
+            sort_order=900,
+        ))
+        await db.flush()
+
+    # Delete existing nodes for this material (re-generation)
+    await db.execute(
+        delete(MaterialNode).where(MaterialNode.material_key == material_key)
+    )
+    await db.flush()
+
+    # Chunk words
+    words_per = body.words_per_test
+    chunks: list[list] = []
+    for i in range(0, len(all_words), words_per):
+        chunks.append(all_words[i:i + words_per])
+
+    pdf_base = Path(settings.pdf_storage_dir) / "単語" / book.name
+    nodes_generated = 0
+
+    for idx, chunk in enumerate(chunks):
+        chunk_num = idx + 1
+        first_num = chunk[0].word_number
+        last_num = chunk[-1].word_number
+        title = f"{first_num}-{last_num}"
+        node_key = f"単語:{book.name}:{chunk_num:03d}"
+
+        # Generate PDF
+        word_tuples = [(w.word_number, w.question, w.answer) for w in chunk]
+        pdf_relpath = f"単語/{book.name}/{chunk_num:03d}.pdf"
+        pdf_path = Path(settings.pdf_storage_dir) / pdf_relpath
+        generate_word_test_pdf(
+            output_path=pdf_path,
+            title=f"{book.name} {title}",
+            words=word_tuples,
+            shuffle=False,
+        )
+
+        # Create MaterialNode
+        db.add(MaterialNode(
+            key=node_key,
+            material_key=material_key,
+            title=title,
+            range_text=f"No.{first_num}〜{last_num}",
+            pdf_relpath=pdf_relpath,
+            duplex=True,
+            sort_order=chunk_num,
+        ))
+        nodes_generated += 1
+
+    # Update WordBook.material_key
+    book.material_key = material_key
+    await db.commit()
+
+    return GenerateMaterialResponse(
+        material_key=material_key,
+        nodes_generated=nodes_generated,
+    )
 
 
 # ── Test Generation ──

@@ -299,8 +299,26 @@ export interface WordBook {
   name: string;
   description: string;
   total_words: number;
+  material_key?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ColumnMapping {
+  number_col: number | null;
+  word_col: number;
+  translation_col: number;
+  skip_header: boolean;
+}
+
+export interface DetectColumnsResponse {
+  columns: { index: number; sample: string; suggested_role: string }[];
+  suggested_mapping: ColumnMapping | null;
+}
+
+export interface GenerateMaterialResponse {
+  material_key: string;
+  nodes_generated: number;
 }
 
 export interface Word {
