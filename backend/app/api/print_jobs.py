@@ -1,4 +1,3 @@
-import os
 import uuid
 from datetime import datetime, timezone
 
@@ -19,6 +18,7 @@ from app.models.student_material import StudentMaterial, ProgressHistory
 from app.models.material import MaterialNode
 from app.models.configured_printer import ConfiguredPrinter
 from app.schemas.job import PrintJobOut, PrintJobListOut
+from app.services.pdf_paths import resolve_pdf_path
 
 router = APIRouter()
 
@@ -566,29 +566,13 @@ async def preview_pdf(node_key: str, db: AsyncSession = Depends(get_db)):
     node = result.scalars().first()
     if not node or not node.pdf_relpath:
         raise HTTPException(status_code=404, detail="PDFが見つかりません")
-    resolved = _resolve_pdf_path(node.pdf_relpath)
+    resolved = resolve_pdf_path(node.pdf_relpath)
     if not resolved:
         raise HTTPException(
             status_code=404,
             detail=f"PDFファイルが存在しません: {node.pdf_relpath}",
         )
     return FileResponse(resolved, media_type="application/pdf")
-
-
-def _resolve_pdf_path(pdf_relpath: str) -> str | None:
-    """Find the actual file path for a PDF across configured base directories and local storage."""
-    if not pdf_relpath:
-        return None
-    # Check local PDF storage first
-    local_path = os.path.join(settings.pdf_storage_dir, pdf_relpath)
-    if os.path.isfile(local_path):
-        return local_path
-    # Check network shares
-    for base_dir in settings.materials_base_dirs_list:
-        full_path = os.path.join(base_dir, pdf_relpath)
-        if os.path.isfile(full_path):
-            return full_path
-    return None
 
 
 @router.get("", response_model=PrintJobListOut)
@@ -651,7 +635,7 @@ async def prepare_job(db: AsyncSession = Depends(get_db)):
                 duplex = node.duplex
                 range_text = node.range_text
 
-        resolved = _resolve_pdf_path(pdf_relpath)
+        resolved = resolve_pdf_path(pdf_relpath)
         is_missing = resolved is None and pdf_relpath != ""
 
         if is_missing:
@@ -766,7 +750,7 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
                 duplex = node.duplex
                 range_text = node.range_text
 
-        resolved = _resolve_pdf_path(pdf_relpath)
+        resolved = resolve_pdf_path(pdf_relpath)
         is_missing = resolved is None and pdf_relpath != ""
         if is_missing:
             missing_count += 1

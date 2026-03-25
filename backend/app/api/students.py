@@ -1,12 +1,9 @@
-import os
-
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import settings
 from app.database import get_db
 from app.models.student import Student
 from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
@@ -14,6 +11,7 @@ from app.models.material import Material, MaterialNode
 from app.models.print_queue import PrintQueue
 from app.models.word_test import WordBook, Word
 from app.schemas.student import StudentOut, StudentCreate, StudentUpdate, StudentListOut, StudentMaterialInfo
+from app.services.pdf_paths import resolve_pdf_path
 from app.services.word_test_material import generate_student_pdfs
 
 router = APIRouter()
@@ -458,16 +456,9 @@ async def get_student_material_nodes(
         if is_word_test:
             book_name = material_key.removeprefix("単語:")
             pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
-            pdf_path = os.path.join(settings.pdf_storage_dir, pdf_relpath)
-            has_pdf = os.path.isfile(pdf_path)
+            has_pdf = resolve_pdf_path(pdf_relpath) is not None
         elif node.pdf_relpath:
-            pdf_path = os.path.join(settings.pdf_storage_dir, node.pdf_relpath)
-            has_pdf = os.path.isfile(pdf_path)
-            if not has_pdf:
-                for base_dir in settings.materials_base_dirs_list:
-                    if os.path.isfile(os.path.join(base_dir, node.pdf_relpath)):
-                        has_pdf = True
-                        break
+            has_pdf = resolve_pdf_path(node.pdf_relpath) is not None
 
         result.append({
             "key": node.key,
@@ -509,19 +500,9 @@ async def preview_student_pdf(
     if material_key.startswith("単語:"):
         book_name = material_key.removeprefix("単語:")
         pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
-        local = os.path.join(settings.pdf_storage_dir, pdf_relpath)
-        if os.path.isfile(local):
-            resolved = local
+        resolved = resolve_pdf_path(pdf_relpath)
     elif node.pdf_relpath:
-        local = os.path.join(settings.pdf_storage_dir, node.pdf_relpath)
-        if os.path.isfile(local):
-            resolved = local
-        else:
-            for base_dir in settings.materials_base_dirs_list:
-                full = os.path.join(base_dir, node.pdf_relpath)
-                if os.path.isfile(full):
-                    resolved = full
-                    break
+        resolved = resolve_pdf_path(node.pdf_relpath)
 
     if not resolved:
         raise HTTPException(status_code=404, detail="PDFファイルが見つかりません")
