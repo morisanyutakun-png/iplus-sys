@@ -11,7 +11,7 @@ from app.models.material import Material, MaterialNode
 from app.models.print_queue import PrintQueue
 from app.models.word_test import WordBook, Word
 from app.schemas.student import StudentOut, StudentCreate, StudentUpdate, StudentListOut, StudentMaterialInfo
-from app.services.pdf_paths import resolve_pdf_path
+from app.services.pdf_store import pdf_exists, resolve_pdf_for_reading
 from app.services.word_test_material import generate_student_pdfs
 
 router = APIRouter()
@@ -456,9 +456,9 @@ async def get_student_material_nodes(
         if is_word_test:
             book_name = material_key.removeprefix("単語:")
             pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
-            has_pdf = resolve_pdf_path(pdf_relpath) is not None
+            has_pdf = await pdf_exists(db, pdf_relpath)
         elif node.pdf_relpath:
-            has_pdf = resolve_pdf_path(node.pdf_relpath) is not None
+            has_pdf = await pdf_exists(db, node.pdf_relpath)
 
         result.append({
             "key": node.key,
@@ -500,9 +500,9 @@ async def preview_student_pdf(
     if material_key.startswith("単語:"):
         book_name = material_key.removeprefix("単語:")
         pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
-        resolved = resolve_pdf_path(pdf_relpath)
+        resolved = await resolve_pdf_for_reading(db, pdf_relpath)
     elif node.pdf_relpath:
-        resolved = resolve_pdf_path(node.pdf_relpath)
+        resolved = await resolve_pdf_for_reading(db, node.pdf_relpath)
 
     if not resolved:
         raise HTTPException(status_code=404, detail="PDFファイルが見つかりません")

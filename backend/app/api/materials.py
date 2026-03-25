@@ -1,4 +1,3 @@
-import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -10,6 +9,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.material import Material, MaterialNode
 from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
+from app.services.pdf_store import upsert_pdf_blob
 from app.schemas.material import MaterialOut, MaterialListOut, MaterialCreate, MaterialCreateSimple, MaterialNodeCreate, MaterialNodeOut, MaterialNodeUpdate
 
 router = APIRouter()
@@ -157,6 +157,7 @@ async def add_node_simple(
     # Handle PDF upload
     pdf_relpath = ""
     if file and file.filename and file.filename.lower().endswith(".pdf"):
+        content = await file.read()
         # Build subfolder from material key (replace : with /)
         subfolder = material_key.replace(":", "/")
         storage_root = Path(settings.pdf_storage_dir)
@@ -165,8 +166,9 @@ async def add_node_simple(
 
         target_file = target_dir / file.filename
         with open(target_file, "wb") as f:
-            shutil.copyfileobj(file.file, f)
+            f.write(content)
         pdf_relpath = str(target_file.relative_to(storage_root))
+        await upsert_pdf_blob(db, pdf_relpath, content, file.content_type or "application/pdf")
 
     node = MaterialNode(
         key=node_key,

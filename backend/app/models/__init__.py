@@ -8,6 +8,7 @@ from app.models.print_log import PrintLog
 from app.models.lesson_record import LessonRecord
 from app.models.configured_printer import ConfiguredPrinter
 from app.models.word_test import WordBook, Word, WordTestSession
+from app.models.pdf_blob import PdfBlob
 
 __all__ = [
     "Base",
@@ -26,4 +27,5 @@ __all__ = [
     "WordBook",
     "Word",
     "WordTestSession",
+    "PdfBlob",
 ]

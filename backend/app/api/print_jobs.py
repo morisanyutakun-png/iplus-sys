@@ -18,7 +18,7 @@ from app.models.student_material import StudentMaterial, ProgressHistory
 from app.models.material import MaterialNode
 from app.models.configured_printer import ConfiguredPrinter
 from app.schemas.job import PrintJobOut, PrintJobListOut
-from app.services.pdf_paths import resolve_pdf_path
+from app.services.pdf_store import pdf_exists, resolve_pdf_for_reading
 
 router = APIRouter()
 
@@ -566,7 +566,7 @@ async def preview_pdf(node_key: str, db: AsyncSession = Depends(get_db)):
     node = result.scalars().first()
     if not node or not node.pdf_relpath:
         raise HTTPException(status_code=404, detail="PDFが見つかりません")
-    resolved = resolve_pdf_path(node.pdf_relpath)
+    resolved = await resolve_pdf_for_reading(db, node.pdf_relpath)
     if not resolved:
         raise HTTPException(
             status_code=404,
@@ -635,8 +635,8 @@ async def prepare_job(db: AsyncSession = Depends(get_db)):
                 duplex = node.duplex
                 range_text = node.range_text
 
-        resolved = resolve_pdf_path(pdf_relpath)
-        is_missing = resolved is None and pdf_relpath != ""
+        resolved = await resolve_pdf_for_reading(db, pdf_relpath)
+        is_missing = (not await pdf_exists(db, pdf_relpath)) if pdf_relpath else False
 
         if is_missing:
             missing_count += 1
@@ -750,8 +750,8 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
                 duplex = node.duplex
                 range_text = node.range_text
 
-        resolved = resolve_pdf_path(pdf_relpath)
-        is_missing = resolved is None and pdf_relpath != ""
+        resolved = await resolve_pdf_for_reading(db, pdf_relpath)
+        is_missing = (not await pdf_exists(db, pdf_relpath)) if pdf_relpath else False
         if is_missing:
             missing_count += 1
 

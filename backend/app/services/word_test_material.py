@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.material import MaterialNode
 from app.models.word_test import WordBook, Word
+from app.services.pdf_store import upsert_pdf_blob
 from app.services.word_test_pdf import generate_word_test_pdf
 
 
@@ -89,6 +90,7 @@ async def generate_student_pdfs(
             shuffle=True,
             student_name=student_name,
         )
+        await upsert_pdf_blob(db, pdf_relpath, pdf_path.read_bytes())
 
         generated.append((node.key, pdf_relpath))
 
