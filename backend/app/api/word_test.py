@@ -2,7 +2,7 @@ import re
 import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, delete, func as sa_func
+from sqlalchemy import select, delete, update, func as sa_func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,21 +40,19 @@ async def create_word_book(body: WordBookCreate, db: AsyncSession = Depends(get_
 
 @router.delete("/{book_id}")
 async def delete_word_book(book_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(WordBook).where(WordBook.id == book_id))
-    book = result.scalars().first()
-    if not book:
+    result = await db.execute(
+        select(WordBook.id, WordBook.material_key).where(WordBook.id == book_id)
+    )
+    row = result.first()
+    if not row:
         raise HTTPException(status_code=404, detail="単語帳が見つかりません")
 
-    # Delete associated Material + MaterialNodes (CASCADE)
-    if book.material_key:
-        mat_result = await db.execute(
-            select(Material).where(Material.key == book.material_key)
-        )
-        mat_obj = mat_result.scalars().first()
-        if mat_obj:
-            await db.delete(mat_obj)
+    material_key = row.material_key
+    # Delete associated Material + MaterialNodes (CASCADE) in set-based SQL
+    if material_key:
+        await db.execute(delete(Material).where(Material.key == material_key))
 
-    await db.delete(book)
+    await db.execute(delete(WordBook).where(WordBook.id == book_id))
     await db.commit()
     return {"ok": True}
 
@@ -167,7 +165,7 @@ async def import_csv(
     # ── Bulk upsert (INSERT ... ON CONFLICT DO UPDATE) ──
     if parsed_words:
         # Single SELECT to find which word_numbers already exist
-        parsed_numbers = [w["word_number"] for w in parsed_words]
+        parsed_numbers = sorted({w["word_number"] for w in parsed_words})
         existing_result = await db.execute(
             select(Word.word_number).where(
                 Word.word_book_id == book_id,
@@ -221,45 +219,105 @@ async def _auto_generate_material(db: AsyncSession, book: WordBook) -> None:
         ))
         await db.flush()
 
-    # Delete existing nodes
-    await db.execute(
-        delete(MaterialNode).where(MaterialNode.material_key == material_key)
-    )
-    await db.flush()
-
-    # Get all words ordered
+    # Get ordered word numbers only (lighter than full rows)
     words_result = await db.execute(
-        select(Word).where(Word.word_book_id == book.id).order_by(Word.word_number)
+        select(Word.word_number).where(Word.word_book_id == book.id).order_by(Word.word_number)
     )
-    all_words = words_result.scalars().all()
+    word_numbers = words_result.scalars().all()
 
-    # Create nodes in chunks
-    for i in range(0, len(all_words), words_per_test):
-        chunk = all_words[i:i + words_per_test]
+    desired_nodes: list[dict] = []
+    for i in range(0, len(word_numbers), words_per_test):
+        chunk = word_numbers[i:i + words_per_test]
         chunk_num = (i // words_per_test) + 1
-        first_num = chunk[0].word_number
-        last_num = chunk[-1].word_number
-        db.add(MaterialNode(
-            key=f"単語:{book.name}:{chunk_num:03d}",
-            material_key=material_key,
-            title=f"{first_num}-{last_num}",
-            range_text=f"No.{first_num}〜{last_num}",
-            pdf_relpath="",
-            duplex=True,
-            sort_order=chunk_num,
-        ))
+        first_num = chunk[0]
+        last_num = chunk[-1]
+        desired_nodes.append({
+            "key": f"単語:{book.name}:{chunk_num:03d}",
+            "material_key": material_key,
+            "title": f"{first_num}-{last_num}",
+            "range_text": f"No.{first_num}〜{last_num}",
+            "pdf_relpath": "",
+            "duplex": True,
+            "sort_order": chunk_num,
+        })
+
+    existing_rows = (
+        await db.execute(
+            select(
+                MaterialNode.key,
+                MaterialNode.title,
+                MaterialNode.range_text,
+                MaterialNode.sort_order,
+                MaterialNode.duplex,
+            )
+            .where(MaterialNode.material_key == material_key)
+            .order_by(MaterialNode.sort_order)
+        )
+    ).all()
+
+    # Fast path: skip write if node layout is unchanged
+    unchanged = len(existing_rows) == len(desired_nodes)
+    if unchanged:
+        for row, desired in zip(existing_rows, desired_nodes):
+            if (
+                row.key != desired["key"]
+                or row.title != desired["title"]
+                or row.range_text != desired["range_text"]
+                or row.sort_order != desired["sort_order"]
+                or row.duplex != desired["duplex"]
+            ):
+                unchanged = False
+                break
+    if unchanged:
+        book.material_key = material_key
+        return
+
+    if desired_nodes:
+        stmt = pg_insert(MaterialNode).values(desired_nodes)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[MaterialNode.key],
+            set_={
+                "material_key": stmt.excluded.material_key,
+                "title": stmt.excluded.title,
+                "range_text": stmt.excluded.range_text,
+                "duplex": stmt.excluded.duplex,
+                "sort_order": stmt.excluded.sort_order,
+            },
+        )
+        await db.execute(stmt)
+
+        desired_keys = [n["key"] for n in desired_nodes]
+        await db.execute(
+            delete(MaterialNode).where(
+                MaterialNode.material_key == material_key,
+                MaterialNode.key.not_in(desired_keys),
+            )
+        )
+    else:
+        await db.execute(
+            delete(MaterialNode).where(MaterialNode.material_key == material_key)
+        )
 
     book.material_key = material_key
 
 
 @router.delete("/{book_id}/words")
 async def delete_all_words(book_id: int, db: AsyncSession = Depends(get_db)):
+    book_result = await db.execute(
+        select(WordBook.material_key).where(WordBook.id == book_id)
+    )
+    material_key = book_result.scalar_one_or_none()
+    if material_key is None:
+        raise HTTPException(status_code=404, detail="単語帳が見つかりません")
+
     await db.execute(delete(Word).where(Word.word_book_id == book_id))
-    # Reset total_words
-    result = await db.execute(select(WordBook).where(WordBook.id == book_id))
-    book = result.scalars().first()
-    if book:
-        book.total_words = 0
+    if material_key:
+        await db.execute(
+            delete(MaterialNode).where(MaterialNode.material_key == material_key)
+        )
+    await db.execute(
+        update(WordBook).where(WordBook.id == book_id).values(total_words=0)
+    )
     await db.commit()
     return {"ok": True}
 
