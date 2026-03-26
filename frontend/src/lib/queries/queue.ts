@@ -35,6 +35,24 @@ export function useRemoveFromQueue() {
   });
 }
 
+export function useClearQueue() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch("/api/queue/all", { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["queue"] }),
+  });
+}
+
+export function useRemoveStudentFromQueue() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (studentId: string) =>
+      apiFetch(`/api/queue/student/${encodeURIComponent(studentId)}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["queue"] }),
+  });
+}
+
 export function useReorderQueue() {
   const qc = useQueryClient();
   return useMutation({

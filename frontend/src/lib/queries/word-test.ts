@@ -31,6 +31,22 @@ export function useCreateWordBook() {
   });
 }
 
+export function useUpdateWordBook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bookId, name, description }: { bookId: number; name?: string; description?: string }) =>
+      apiFetch<WordBook>(`/api/word-test/${bookId}`, {
+        method: "PUT",
+        body: JSON.stringify({ name, description }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["word-books"] });
+      qc.invalidateQueries({ queryKey: ["materials"] });
+      qc.invalidateQueries({ queryKey: ["material-zones"] });
+    },
+  });
+}
+
 export function useDeleteWordBook() {
   const qc = useQueryClient();
   return useMutation({

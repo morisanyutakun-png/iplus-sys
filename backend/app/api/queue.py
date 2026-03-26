@@ -104,6 +104,26 @@ async def update_queue_item(
     return QueueItemOut.model_validate(item)
 
 
+@router.delete("/all")
+async def clear_queue(db: AsyncSession = Depends(get_db)):
+    """Delete all items from the print queue."""
+    result = await db.execute(delete(PrintQueue))
+    await db.commit()
+    return {"status": "cleared", "deleted": result.rowcount}
+
+
+@router.delete("/student/{student_id}")
+async def remove_student_from_queue(student_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete all queue items for a specific student."""
+    result = await db.execute(
+        delete(PrintQueue).where(PrintQueue.student_id == student_id)
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="該当する生徒のキューアイテムがありません")
+    await db.commit()
+    return {"status": "removed", "deleted": result.rowcount}
+
+
 @router.delete("/{item_id}")
 async def remove_from_queue(item_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(

@@ -23,8 +23,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Plus, BookOpen, Trash2 } from "lucide-react";
-import { useWordBooks, useCreateWordBook, useDeleteWordBook } from "@/lib/queries/word-test";
+import { Plus, BookOpen, Trash2, Pencil } from "lucide-react";
+import { useWordBooks, useCreateWordBook, useUpdateWordBook, useDeleteWordBook } from "@/lib/queries/word-test";
 import type { WordBook } from "@/lib/types";
 import { CsvImportDialog } from "./csv-import-dialog";
 
@@ -36,11 +36,14 @@ interface Props {
 export function WordBookList({ selectedBookId, onSelectBook }: Props) {
   const { data: books = [], isLoading } = useWordBooks();
   const createBook = useCreateWordBook();
+  const updateBook = useUpdateWordBook();
   const deleteBook = useDeleteWordBook();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [renameBook, setRenameBook] = useState<WordBook | null>(null);
+  const [renameName, setRenameName] = useState("");
 
   const handleCreate = async () => {
     if (!name.trim()) return;
@@ -53,6 +56,18 @@ export function WordBookList({ selectedBookId, onSelectBook }: Props) {
       onSelectBook(book);
     } catch {
       toast.error("作成に失敗しました");
+    }
+  };
+
+  const handleRename = async () => {
+    if (!renameBook || !renameName.trim()) return;
+    try {
+      const updated = await updateBook.mutateAsync({ bookId: renameBook.id, name: renameName.trim() });
+      toast.success(`「${updated.name}」に名称変更しました`);
+      setRenameBook(null);
+      setRenameName("");
+    } catch {
+      toast.error("名称変更に失敗しました");
     }
   };
 
@@ -136,6 +151,19 @@ export function WordBookList({ selectedBookId, onSelectBook }: Props) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-primary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRenameBook(book);
+                        setRenameName(book.name);
+                      }}
+                      title="名称変更"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
                     <CsvImportDialog bookId={book.id} bookName={book.name} />
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
@@ -175,6 +203,30 @@ export function WordBookList({ selectedBookId, onSelectBook }: Props) {
           ))}
         </div>
       )}
+
+      {/* Rename dialog */}
+      <Dialog open={!!renameBook} onOpenChange={(open) => !open && setRenameBook(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>単語帳の名称変更</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            <Input
+              placeholder="新しい単語帳名"
+              value={renameName}
+              onChange={(e) => setRenameName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleRename()}
+            />
+            <Button
+              onClick={handleRename}
+              disabled={!renameName.trim() || renameName.trim() === renameBook?.name || updateBook.isPending}
+              className="w-full"
+            >
+              {updateBook.isPending ? "変更中..." : "変更"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

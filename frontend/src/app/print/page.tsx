@@ -6,6 +6,8 @@ import {
   useQueue,
   useAddToQueue,
   useRemoveFromQueue,
+  useClearQueue,
+  useRemoveStudentFromQueue,
   useExecutePrint,
   usePrinters,
   useAddPrinter,
@@ -40,6 +42,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -114,6 +127,8 @@ export default function PrintPage() {
   const { data: printerData, isFetching: printersRefreshing } = usePrinters();
   const addMutation = useAddToQueue();
   const removeMutation = useRemoveFromQueue();
+  const clearQueueMutation = useClearQueue();
+  const removeStudentMutation = useRemoveStudentFromQueue();
   const executeMutation = useExecutePrint();
   const autoQueueMutation = useAutoQueue();
   const addPrinterMutation = useAddPrinter();
@@ -245,6 +260,20 @@ export default function PrintPage() {
   const handleRemove = (id: number) => {
     removeMutation.mutate(id, {
       onSuccess: () => toast.success("キューから削除しました"),
+    });
+  };
+
+  const handleClearAll = () => {
+    clearQueueMutation.mutate(undefined, {
+      onSuccess: (data) => toast.success(`${(data as { deleted: number }).deleted}件をキューから削除しました`),
+      onError: () => toast.error("全削除に失敗しました"),
+    });
+  };
+
+  const handleRemoveStudent = (studentId: string, studentName: string) => {
+    removeStudentMutation.mutate(studentId, {
+      onSuccess: (data) => toast.success(`${studentName}の${(data as { deleted: number }).deleted}件を削除しました`),
+      onError: () => toast.error("削除に失敗しました"),
     });
   };
 
@@ -562,6 +591,31 @@ export default function PrintPage() {
                 ? "処理中..."
                 : "全生徒の次回分を自動追加"}
             </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!items?.length || clearQueueMutation.isPending}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  全削除
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>キューを全削除</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    印刷キューのアイテム{items?.length || 0}件をすべて削除しますか？この操作は取り消せません。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearAll}>全削除</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" variant="outline">
@@ -807,6 +861,33 @@ export default function PrintPage() {
                         </Badge>
                       </button>
                       <div className="flex items-center gap-1.5 pr-3">
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs text-destructive hover:text-destructive"
+                              disabled={removeStudentMutation.isPending}
+                            >
+                              <Trash2 className="mr-1 h-3 w-3" />
+                              削除
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>{group.studentName}のキューを削除</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                {group.studentName}のキューアイテム{group.items.length}件をすべて削除しますか？
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleRemoveStudent(group.studentId, group.studentName)}>
+                                削除
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                         <Button
                           size="sm"
                           variant="outline"

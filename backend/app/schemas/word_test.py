@@ -10,6 +10,11 @@ class WordBookCreate(BaseModel):
     description: str = ""
 
 
+class WordBookUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
 class WordBookOut(BaseModel):
     id: int
     name: str

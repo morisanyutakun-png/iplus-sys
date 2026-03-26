@@ -10,7 +10,7 @@ from app.database import get_db
 from app.models.material import Material, MaterialNode
 from app.models.word_test import WordBook, Word
 from app.schemas.word_test import (
-    WordBookCreate, WordBookOut,
+    WordBookCreate, WordBookUpdate, WordBookOut,
     WordOut, CsvImportRequest, CsvImportResponse,
 )
 
@@ -33,6 +33,63 @@ async def create_word_book(body: WordBookCreate, db: AsyncSession = Depends(get_
 
     book = WordBook(name=body.name, description=body.description)
     db.add(book)
+    await db.commit()
+    await db.refresh(book)
+    return WordBookOut.model_validate(book)
+
+
+@router.put("/{book_id}", response_model=WordBookOut)
+async def update_word_book(
+    book_id: int, body: WordBookUpdate, db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(WordBook).where(WordBook.id == book_id))
+    book = result.scalars().first()
+    if not book:
+        raise HTTPException(status_code=404, detail="単語帳が見つかりません")
+
+    if body.name is not None and body.name != book.name:
+        # Check for duplicate name
+        dup = await db.execute(select(WordBook.id).where(WordBook.name == body.name, WordBook.id != book_id))
+        if dup.scalars().first():
+            raise HTTPException(status_code=409, detail="同名の単語帳が既に存在します")
+
+        old_key = book.material_key
+        new_key = f"単語:{body.name}"
+        new_mat_name = f"単語テスト:{body.name}"
+        book.name = body.name
+
+        # Update linked Material key and name
+        if old_key:
+            mat = await db.get(Material, old_key)
+            if mat:
+                # Update nodes first (foreign key references material_key)
+                old_nodes = (await db.execute(
+                    select(MaterialNode).where(MaterialNode.material_key == old_key)
+                )).scalars().all()
+                for node in old_nodes:
+                    # Update node key: 単語:OldName:001 -> 単語:NewName:001
+                    suffix = node.key.split(":")[-1] if ":" in node.key else ""
+                    node.key = f"単語:{body.name}:{suffix}"
+                    node.material_key = new_key
+                await db.flush()
+
+                # Now update the material itself
+                # Create new, delete old (since key is PK)
+                from sqlalchemy.orm import make_transient
+                await db.delete(mat)
+                await db.flush()
+                mat_new = Material(
+                    key=new_key, name=new_mat_name,
+                    subject=mat.subject, sort_order=mat.sort_order,
+                )
+                db.add(mat_new)
+                await db.flush()
+
+            book.material_key = new_key
+
+    if body.description is not None:
+        book.description = body.description
+
     await db.commit()
     await db.refresh(book)
     return WordBookOut.model_validate(book)
