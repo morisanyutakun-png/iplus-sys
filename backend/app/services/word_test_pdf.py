@@ -1,4 +1,7 @@
-"""Generate A4 word test PDF sheets (question page + answer page)."""
+"""Generate A4 word test PDF sheets (question page + answer page).
+
+Layout: left side = new words, right side = review words.
+"""
 
 import random
 from pathlib import Path
@@ -55,6 +58,7 @@ TABLE_HEIGHT = TABLE_TOP - MARGIN_BOTTOM
 ROW_H = TABLE_HEIGHT / ROWS_PER_GROUP
 
 FONT_HEADER = (_FONT_NAME, 11)
+FONT_SECTION_LABEL = (_FONT_NAME, 8)
 FONT_COL_HEADER = (_FONT_NAME, 6.5)
 FONT_CELL = (_FONT_NAME, 7)
 FONT_CELL_SMALL = (_FONT_NAME, 6)
@@ -63,32 +67,58 @@ FONT_CELL_SMALL = (_FONT_NAME, 6)
 def generate_word_test_pdf(
     output_path: Path,
     title: str,
-    words: list[tuple[int, str, str]],
-    shuffle: bool = True,
+    new_words: list[tuple[int, str, str]],
+    review_words: list[tuple[int, str, str]] | None = None,
     student_name: str | None = None,
+    new_range_label: str = "",
+    review_range_label: str = "",
 ) -> Path:
-    """Generate a 2-page PDF: page 1 = test (blank answers), page 2 = answer key."""
+    """Generate a 2-page PDF: page 1 = test (blank answers), page 2 = answer key.
+
+    Args:
+        new_words: Words for the left side (new/current range). Shuffled and sampled to 50.
+        review_words: Words for the right side (review from previous ranges).
+            None or empty means no review (right side drawn as empty grid).
+        new_range_label: Label shown above left group (e.g. "No.101〜200").
+        review_range_label: Label shown above right group (e.g. "復習 No.1〜100").
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    word_list = list(words)
-    if shuffle:
-        random.shuffle(word_list)
+    # Shuffle and sample left side (new words)
+    left_words = list(new_words)
+    random.shuffle(left_words)
+    left_words = left_words[:ROWS_PER_GROUP]
 
-    # Pad to 100 if fewer
-    while len(word_list) < ROWS_PER_GROUP * 2:
-        word_list.append((0, "", ""))
+    # Shuffle and sample right side (review words)
+    if review_words:
+        right_words = list(review_words)
+        random.shuffle(right_words)
+        right_words = right_words[:ROWS_PER_GROUP]
+    else:
+        right_words = []
 
-    left_words = word_list[:ROWS_PER_GROUP]
-    right_words = word_list[ROWS_PER_GROUP : ROWS_PER_GROUP * 2]
+    # Pad both sides to exactly ROWS_PER_GROUP
+    while len(left_words) < ROWS_PER_GROUP:
+        left_words.append((0, "", ""))
+    while len(right_words) < ROWS_PER_GROUP:
+        right_words.append((0, "", ""))
 
     c = Canvas(str(output_path), pagesize=A4)
 
     # Page 1: Question sheet (blank answers)
-    _draw_page(c, title, left_words, right_words, show_answers=False, student_name=student_name)
+    _draw_page(
+        c, title, left_words, right_words,
+        show_answers=False, student_name=student_name,
+        left_label=new_range_label, right_label=review_range_label,
+    )
     c.showPage()
 
     # Page 2: Answer key
-    _draw_page(c, title, left_words, right_words, show_answers=True, student_name=student_name)
+    _draw_page(
+        c, title, left_words, right_words,
+        show_answers=True, student_name=student_name,
+        left_label=new_range_label, right_label=review_range_label,
+    )
     c.showPage()
 
     c.save()
@@ -102,17 +132,33 @@ def _draw_page(
     right_words: list[tuple[int, str, str]],
     show_answers: bool,
     student_name: str | None = None,
+    left_label: str = "",
+    right_label: str = "",
 ) -> None:
     """Draw one page of the test sheet."""
 
-    # Header
+    # Header (right-aligned)
     c.setFont(*FONT_HEADER)
     prefix = "【解答】" if show_answers else ""
     name_part = f"{student_name}　" if student_name else ""
     header_text = f"{prefix}{name_part}{title}"
-    c.drawCentredString(PAGE_W / 2, BODY_TOP + 4, header_text)
+    c.drawRightString(PAGE_W - MARGIN_R, BODY_TOP + 4, header_text)
 
-    # Draw left group
+    # Section labels above each group
+    label_y = TABLE_TOP + 3
+    if left_label:
+        c.setFont(*FONT_SECTION_LABEL)
+        c.setFillColorRGB(0.2, 0.2, 0.2)
+        c.drawString(MARGIN_L + 2, label_y, left_label)
+        c.setFillColorRGB(0, 0, 0)
+    if right_label:
+        c.setFont(*FONT_SECTION_LABEL)
+        c.setFillColorRGB(0.2, 0.2, 0.2)
+        right_x = MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS
+        c.drawString(right_x + 2, label_y, right_label)
+        c.setFillColorRGB(0, 0, 0)
+
+    # Draw left group (new words)
     _draw_group(c, MARGIN_L, left_words, show_answers)
 
     # Draw separator (double line)
@@ -122,7 +168,7 @@ def _draw_page(
     c.line(sep_x - 1.5, TABLE_TOP, sep_x - 1.5, MARGIN_BOTTOM)
     c.line(sep_x + 1.5, TABLE_TOP, sep_x + 1.5, MARGIN_BOTTOM)
 
-    # Draw right group
+    # Draw right group (review words)
     _draw_group(c, MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS, right_words, show_answers)
 
 
@@ -137,7 +183,7 @@ def _draw_group(
     # Column headers
     c.setFont(*FONT_COL_HEADER)
     c.setFillColorRGB(0.4, 0.4, 0.4)
-    col_header_y = TABLE_TOP + 3
+    col_header_y = TABLE_TOP - 8
     c.drawString(x_start + 2, col_header_y, "No.")
     c.drawString(x_start + COL_NO + 2, col_header_y, "英単語")
     c.drawString(x_start + COL_NO + COL_WORD + 2, col_header_y, "訳")

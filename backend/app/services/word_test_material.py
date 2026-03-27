@@ -1,5 +1,10 @@
-"""Generate per-student randomized word test PDFs for material nodes."""
+"""Generate per-student randomized word test PDFs for material nodes.
 
+Each PDF has left side = new words (from current range), right side = review
+words (from all previous ranges).
+"""
+
+import random
 import re
 from pathlib import Path
 
@@ -49,22 +54,18 @@ async def generate_student_pdfs(
     if not all_words:
         return []
 
-    # Load material nodes (with optional range filter)
+    # Load ALL nodes from beginning (needed for review word accumulation)
     stmt = (
         select(MaterialNode)
         .where(MaterialNode.material_key == material_key)
         .order_by(MaterialNode.sort_order)
     )
-    if start_node is not None:
-        stmt = stmt.where(MaterialNode.sort_order >= start_node)
-    if end_node is not None:
-        stmt = stmt.where(MaterialNode.sort_order <= end_node)
-
     nodes = (await db.execute(stmt)).scalars().all()
     if not nodes:
         return []
 
     generated: list[tuple[str, str]] = []
+    previous_words: list[tuple[int, str, str]] = []
 
     for node in nodes:
         range_text = node.range_text
@@ -72,27 +73,53 @@ async def generate_student_pdfs(
         if s is None or e is None:
             continue
 
-        word_tuples = [
+        # Words in the current range
+        current_word_tuples = [
             (w.word_number, w.question, w.answer)
             for w in all_words
             if s <= w.word_number <= e
         ]
-        if not word_tuples:
+        if not current_word_tuples:
+            previous_words.extend(current_word_tuples)
             continue
 
-        pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
-        pdf_path = Path(settings.pdf_storage_dir) / pdf_relpath
+        # Check if this node is in the generation range
+        in_range = True
+        if start_node is not None and node.sort_order < start_node:
+            in_range = False
+        if end_node is not None and node.sort_order > end_node:
+            in_range = False
 
-        generate_word_test_pdf(
-            output_path=pdf_path,
-            title=f"{book_name} {node.title}",
-            words=word_tuples,
-            shuffle=True,
-            student_name=student_name,
-        )
-        await upsert_pdf_blob(db, pdf_relpath, pdf_path.read_bytes())
+        if in_range:
+            # Sample review words from all previous ranges
+            review_words = None
+            review_range_label = ""
+            if previous_words:
+                review_words = random.sample(
+                    previous_words, min(50, len(previous_words))
+                )
+                # Determine review range extent (No.1 ~ last previous end)
+                prev_end = max(w[0] for w in previous_words)
+                review_range_label = f"復習 No.1〜{prev_end}"
 
-        generated.append((node.key, pdf_relpath))
+            pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
+            pdf_path = Path(settings.pdf_storage_dir) / pdf_relpath
+
+            generate_word_test_pdf(
+                output_path=pdf_path,
+                title=f"{book_name} {node.title}",
+                new_words=current_word_tuples,
+                review_words=review_words,
+                student_name=student_name,
+                new_range_label=f"No.{s}〜{e}",
+                review_range_label=review_range_label,
+            )
+            await upsert_pdf_blob(db, pdf_relpath, pdf_path.read_bytes())
+
+            generated.append((node.key, pdf_relpath))
+
+        # Always accumulate for future review (even if not in generation range)
+        previous_words.extend(current_word_tuples)
 
     return generated
 

@@ -716,7 +716,7 @@ export function MaterialManager({ studentId }: Props) {
               </div>
 
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">テストあたりの語数</label>
+                <label className="text-xs text-muted-foreground mb-1 block">範囲サイズ</label>
                 <Select
                   value={String(wtWordsPerTest)}
                   onValueChange={(v) => setWtWordsPerTest(parseInt(v))}
@@ -737,10 +737,13 @@ export function MaterialManager({ studentId }: Props) {
                 <div className="text-xs font-medium mb-1.5">
                   {wtPreviewTests.length}テスト生成されます
                 </div>
+                <div className="text-[10px] text-muted-foreground mb-1.5">
+                  各テスト: 左側＝新出50問（範囲からランダム）、右側＝復習50問（過去範囲からランダム）
+                </div>
                 <div className="flex flex-wrap gap-1">
-                  {wtPreviewTests.map((range) => (
+                  {wtPreviewTests.map((range, idx) => (
                     <Badge key={range} variant="outline" className="text-[10px]">
-                      {range}
+                      {range}{idx === 0 ? "（復習なし）" : ""}
                     </Badge>
                   ))}
                 </div>
