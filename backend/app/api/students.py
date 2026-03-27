@@ -286,6 +286,7 @@ async def assign_word_test(
     start_num = body.get("start_num", 1)
     end_num = body.get("end_num")
     words_per_test = body.get("words_per_test", 100)
+    questions_per_test = body.get("questions_per_test", 50)
 
     # Validate student
     student = await db.get(Student, student_id)
@@ -378,6 +379,7 @@ async def assign_word_test(
     pdf_list = await generate_student_pdfs(
         db, student_id, student.name, material_key,
         start_node=start_node, end_node=end_node,
+        questions_per_test=questions_per_test,
     )
 
     # Create StudentMaterial with range limits
@@ -392,7 +394,7 @@ async def assign_word_test(
         material_key=material_key,
         action="assign",
         new_pointer=start_node,
-        metadata_={"start_num": start_num, "end_num": end_num, "words_per_test": words_per_test},
+        metadata_={"start_num": start_num, "end_num": end_num, "words_per_test": words_per_test, "questions_per_test": questions_per_test},
     )
     db.add(sm)
     db.add(history)

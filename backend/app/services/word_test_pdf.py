@@ -1,6 +1,6 @@
 """Generate A4 word test PDF sheets (question page + answer page).
 
-Layout: left side = new words, right side = review words.
+Layout: left side = review words, right side = new words.
 """
 
 import random
@@ -12,11 +12,10 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
 
 # ── Font setup ──
-# Bundled NotoSansJP for cross-platform Japanese support
 _FONT_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
 _FONT_CANDIDATES = [
     _FONT_DIR / "NotoSansJP.ttf",
-    Path("/Library/Fonts/Arial Unicode.ttf"),  # macOS fallback
+    Path("/Library/Fonts/Arial Unicode.ttf"),
 ]
 
 _FONT_NAME = "NotoSansJP"
@@ -57,11 +56,27 @@ TABLE_TOP = BODY_TOP - HEADER_HEIGHT
 TABLE_HEIGHT = TABLE_TOP - MARGIN_BOTTOM
 ROW_H = TABLE_HEIGHT / ROWS_PER_GROUP
 
+FONT_NAME_LINE = (_FONT_NAME, 9)
 FONT_HEADER = (_FONT_NAME, 11)
 FONT_SECTION_LABEL = (_FONT_NAME, 8)
 FONT_COL_HEADER = (_FONT_NAME, 6.5)
 FONT_CELL = (_FONT_NAME, 7)
 FONT_CELL_SMALL = (_FONT_NAME, 6)
+
+
+def _fit_text(text: str, max_width: float, font_name: str, font_size: float) -> str:
+    """Truncate text with '…' if it exceeds max_width in the given font."""
+    if not text:
+        return text
+    w = pdfmetrics.stringWidth(text, font_name, font_size)
+    if w <= max_width:
+        return text
+    ellipsis_w = pdfmetrics.stringWidth("…", font_name, font_size)
+    while len(text) > 1:
+        text = text[:-1]
+        if pdfmetrics.stringWidth(text, font_name, font_size) + ellipsis_w <= max_width:
+            return text + "…"
+    return "…"
 
 
 def generate_word_test_pdf(
@@ -72,30 +87,34 @@ def generate_word_test_pdf(
     student_name: str | None = None,
     new_range_label: str = "",
     review_range_label: str = "",
+    questions_per_test: int = 50,
 ) -> Path:
     """Generate a 2-page PDF: page 1 = test (blank answers), page 2 = answer key.
 
+    Layout: LEFT = review (復習), RIGHT = new (新出).
+
     Args:
-        new_words: Words for the left side (new/current range). Shuffled and sampled to 50.
-        review_words: Words for the right side (review from previous ranges).
-            None or empty means no review (right side drawn as empty grid).
-        new_range_label: Label shown above left group (e.g. "No.101〜200").
-        review_range_label: Label shown above right group (e.g. "復習 No.1〜100").
+        new_words: Words for the right side (new/current range).
+        review_words: Words for the left side (review from previous ranges).
+            None or empty means no review (left side drawn as empty grid).
+        questions_per_test: Max questions per side (capped at ROWS_PER_GROUP).
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Shuffle and sample left side (new words)
-    left_words = list(new_words)
-    random.shuffle(left_words)
-    left_words = left_words[:ROWS_PER_GROUP]
+    qpt = min(questions_per_test, ROWS_PER_GROUP)
 
-    # Shuffle and sample right side (review words)
+    # RIGHT side = new words (shuffled, sampled to qpt)
+    right_words = list(new_words)
+    random.shuffle(right_words)
+    right_words = right_words[:qpt]
+
+    # LEFT side = review words (shuffled, sampled to qpt)
     if review_words:
-        right_words = list(review_words)
-        random.shuffle(right_words)
-        right_words = right_words[:ROWS_PER_GROUP]
+        left_words = list(review_words)
+        random.shuffle(left_words)
+        left_words = left_words[:qpt]
     else:
-        right_words = []
+        left_words = []
 
     # Pad both sides to exactly ROWS_PER_GROUP
     while len(left_words) < ROWS_PER_GROUP:
@@ -109,7 +128,7 @@ def generate_word_test_pdf(
     _draw_page(
         c, title, left_words, right_words,
         show_answers=False, student_name=student_name,
-        left_label=new_range_label, right_label=review_range_label,
+        left_label=review_range_label, right_label=new_range_label,
     )
     c.showPage()
 
@@ -117,7 +136,7 @@ def generate_word_test_pdf(
     _draw_page(
         c, title, left_words, right_words,
         show_answers=True, student_name=student_name,
-        left_label=new_range_label, right_label=review_range_label,
+        left_label=review_range_label, right_label=new_range_label,
     )
     c.showPage()
 
@@ -137,11 +156,16 @@ def _draw_page(
 ) -> None:
     """Draw one page of the test sheet."""
 
-    # Header (right-aligned)
+    # ── Header area (right-aligned) ──
+    # Line 1: Student name at the very top-right
+    if student_name:
+        c.setFont(*FONT_NAME_LINE)
+        c.drawRightString(PAGE_W - MARGIN_R, PAGE_H - 20, student_name)
+
+    # Line 2: Title (with answer prefix) below the name
     c.setFont(*FONT_HEADER)
     prefix = "【解答】" if show_answers else ""
-    name_part = f"{student_name}　" if student_name else ""
-    header_text = f"{prefix}{name_part}{title}"
+    header_text = f"{prefix}{title}"
     c.drawRightString(PAGE_W - MARGIN_R, BODY_TOP + 4, header_text)
 
     # Section labels above each group
@@ -149,16 +173,18 @@ def _draw_page(
     if left_label:
         c.setFont(*FONT_SECTION_LABEL)
         c.setFillColorRGB(0.2, 0.2, 0.2)
-        c.drawString(MARGIN_L + 2, label_y, left_label)
+        fitted = _fit_text(left_label, GROUP_W - 4, *FONT_SECTION_LABEL)
+        c.drawString(MARGIN_L + 2, label_y, fitted)
         c.setFillColorRGB(0, 0, 0)
     if right_label:
         c.setFont(*FONT_SECTION_LABEL)
         c.setFillColorRGB(0.2, 0.2, 0.2)
         right_x = MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS
-        c.drawString(right_x + 2, label_y, right_label)
+        fitted = _fit_text(right_label, GROUP_W - 4, *FONT_SECTION_LABEL)
+        c.drawString(right_x + 2, label_y, fitted)
         c.setFillColorRGB(0, 0, 0)
 
-    # Draw left group (new words)
+    # Draw left group (review words)
     _draw_group(c, MARGIN_L, left_words, show_answers)
 
     # Draw separator (double line)
@@ -168,7 +194,7 @@ def _draw_page(
     c.line(sep_x - 1.5, TABLE_TOP, sep_x - 1.5, MARGIN_BOTTOM)
     c.line(sep_x + 1.5, TABLE_TOP, sep_x + 1.5, MARGIN_BOTTOM)
 
-    # Draw right group (review words)
+    # Draw right group (new words)
     _draw_group(c, MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS, right_words, show_answers)
 
 
@@ -179,6 +205,9 @@ def _draw_group(
     show_answers: bool,
 ) -> None:
     """Draw one group of 50 rows (No | English | Translation)."""
+
+    word_col_max = COL_WORD - 6
+    answer_col_max = COL_ANSWER - 6
 
     # Column headers
     c.setFont(*FONT_COL_HEADER)
@@ -213,17 +242,17 @@ def _draw_group(
         if num > 0:
             c.drawRightString(x_start + COL_NO - 4, y_text, str(num))
 
-        # English word
+        # English word (fit to column width)
         if word:
             c.setFont(*FONT_CELL)
-            display = word if len(word) <= 22 else word[:21] + "…"
+            display = _fit_text(word, word_col_max, *FONT_CELL)
             c.drawString(x_start + COL_NO + 3, y_text, display)
 
-        # Translation (answer page only)
+        # Translation (answer page only, fit to column width)
         if show_answers and translation:
             font = FONT_CELL_SMALL if len(translation) > 14 else FONT_CELL
             c.setFont(*font)
-            display = translation if len(translation) <= 26 else translation[:25] + "…"
+            display = _fit_text(translation, answer_col_max, *font)
             c.drawString(x_start + COL_NO + COL_WORD + 3, y_text, display)
 
         # Row border

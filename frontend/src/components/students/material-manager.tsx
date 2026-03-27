@@ -29,13 +29,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Plus,
   Minus,
   Save,
@@ -206,6 +199,7 @@ export function MaterialManager({ studentId }: Props) {
   const [wtStartNum, setWtStartNum] = useState(1);
   const [wtEndNum, setWtEndNum] = useState(100);
   const [wtWordsPerTest, setWtWordsPerTest] = useState(100);
+  const [wtQuestionsPerTest, setWtQuestionsPerTest] = useState(50);
 
   const handleToggle = (materialKey: string, action: "assign" | "remove") => {
     toggleMutation.mutate(
@@ -232,6 +226,7 @@ export function MaterialManager({ studentId }: Props) {
       setWtStartNum(1);
       setWtEndNum(mat.total_words);
       setWtWordsPerTest(100);
+      setWtQuestionsPerTest(50);
     } else {
       handleToggle(mat.key, "assign");
     }
@@ -245,6 +240,7 @@ export function MaterialManager({ studentId }: Props) {
         start_num: wtStartNum,
         end_num: wtEndNum,
         words_per_test: wtWordsPerTest,
+        questions_per_test: wtQuestionsPerTest,
       },
       {
         onSuccess: () => {
@@ -715,21 +711,27 @@ export function MaterialManager({ studentId }: Props) {
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">範囲サイズ</label>
-                <Select
-                  value={String(wtWordsPerTest)}
-                  onValueChange={(v) => setWtWordsPerTest(parseInt(v))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="50">50語</SelectItem>
-                    <SelectItem value="100">100語</SelectItem>
-                    <SelectItem value="200">200語</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">範囲サイズ</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={wordTestDialog.totalWords}
+                    value={wtWordsPerTest}
+                    onChange={(e) => setWtWordsPerTest(Math.max(1, parseInt(e.target.value) || 1))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">出題数（各側）</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={wtQuestionsPerTest}
+                    onChange={(e) => setWtQuestionsPerTest(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                  />
+                </div>
               </div>
 
               {/* Preview */}
@@ -738,7 +740,7 @@ export function MaterialManager({ studentId }: Props) {
                   {wtPreviewTests.length}テスト生成されます
                 </div>
                 <div className="text-[10px] text-muted-foreground mb-1.5">
-                  各テスト: 左側＝新出50問（範囲からランダム）、右側＝復習50問（過去範囲からランダム）
+                  各テスト: 左側＝復習{wtQuestionsPerTest}問（過去範囲からランダム）、右側＝新出{wtQuestionsPerTest}問（範囲からランダム）
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {wtPreviewTests.map((range, idx) => (

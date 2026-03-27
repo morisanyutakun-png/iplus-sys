@@ -8,6 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.material import Material, MaterialNode
+from app.models.student_material import (
+    StudentMaterial, ProgressHistory, ReminderAcknowledgment, LowAccuracyAcknowledgment,
+)
+from app.models.lesson_record import LessonRecord
+from app.models.print_queue import PrintQueue
 from app.models.word_test import WordBook, Word
 from app.schemas.word_test import (
     WordBookCreate, WordBookUpdate, WordBookOut,
@@ -62,22 +67,55 @@ async def update_word_book(
         if old_key:
             mat = await db.get(Material, old_key)
             if mat:
-                # Update nodes first (foreign key references material_key)
+                # 1. Update MaterialNode keys and material_key
                 old_nodes = (await db.execute(
                     select(MaterialNode).where(MaterialNode.material_key == old_key)
                 )).scalars().all()
                 for node in old_nodes:
-                    # Update node key: 単語:OldName:001 -> 単語:NewName:001
                     suffix = node.key.split(":")[-1] if ":" in node.key else ""
                     node.key = f"単語:{body.name}:{suffix}"
                     node.material_key = new_key
                 await db.flush()
 
-                # Now update the material itself
-                # Create new, delete old (since key is PK)
-                from sqlalchemy.orm import make_transient
+                # 2. Bulk-update all FK references BEFORE deleting old Material
+                #    to prevent CASCADE DELETE from destroying related data
+                await db.execute(
+                    update(StudentMaterial)
+                    .where(StudentMaterial.material_key == old_key)
+                    .values(material_key=new_key)
+                )
+                await db.execute(
+                    update(ProgressHistory)
+                    .where(ProgressHistory.material_key == old_key)
+                    .values(material_key=new_key)
+                )
+                await db.execute(
+                    update(ReminderAcknowledgment)
+                    .where(ReminderAcknowledgment.material_key == old_key)
+                    .values(material_key=new_key)
+                )
+                await db.execute(
+                    update(LowAccuracyAcknowledgment)
+                    .where(LowAccuracyAcknowledgment.material_key == old_key)
+                    .values(material_key=new_key)
+                )
+                await db.execute(
+                    update(LessonRecord)
+                    .where(LessonRecord.material_key == old_key)
+                    .values(material_key=new_key)
+                )
+                await db.execute(
+                    update(PrintQueue)
+                    .where(PrintQueue.material_key == old_key)
+                    .values(material_key=new_key)
+                )
+                await db.flush()
+
+                # 3. Now safe to delete old Material (no FK refs remain)
                 await db.delete(mat)
                 await db.flush()
+
+                # 4. Create new Material with new key
                 mat_new = Material(
                     key=new_key, name=new_mat_name,
                     subject=mat.subject, sort_order=mat.sort_order,

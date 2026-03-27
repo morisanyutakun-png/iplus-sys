@@ -1,7 +1,7 @@
 """Generate per-student randomized word test PDFs for material nodes.
 
-Each PDF has left side = new words (from current range), right side = review
-words (from all previous ranges).
+Each PDF has left side = review words (from previous ranges), right side = new
+words (from current range).
 """
 
 import random
@@ -25,6 +25,7 @@ async def generate_student_pdfs(
     material_key: str,
     start_node: int | None = None,
     end_node: int | None = None,
+    questions_per_test: int = 50,
 ) -> list[tuple[str, str]]:
     """Generate randomized PDFs for nodes of a word-test material.
 
@@ -96,7 +97,7 @@ async def generate_student_pdfs(
             review_range_label = ""
             if previous_words:
                 review_words = random.sample(
-                    previous_words, min(50, len(previous_words))
+                    previous_words, min(questions_per_test, len(previous_words))
                 )
                 # Determine review range extent (No.1 ~ last previous end)
                 prev_end = max(w[0] for w in previous_words)
@@ -113,6 +114,7 @@ async def generate_student_pdfs(
                 student_name=student_name,
                 new_range_label=f"No.{s}〜{e}",
                 review_range_label=review_range_label,
+                questions_per_test=questions_per_test,
             )
             await upsert_pdf_blob(db, pdf_relpath, pdf_path.read_bytes())
 
