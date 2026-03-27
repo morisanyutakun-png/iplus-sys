@@ -1,6 +1,8 @@
 """Generate A4 word test PDF sheets (question page + answer page).
 
-Layout: left side = review words, right side = new words.
+Layout:
+- With review: left = review, right = new
+- Without review (first range): left = new only, right = empty
 """
 
 import random
@@ -40,7 +42,6 @@ MARGIN_L = 30
 MARGIN_R = 30
 MARGIN_TOP = 50
 MARGIN_BOTTOM = 30
-ROWS_PER_GROUP = 50
 GAP_BETWEEN_GROUPS = 12
 
 BODY_W = PAGE_W - MARGIN_L - MARGIN_R
@@ -54,7 +55,6 @@ BODY_TOP = PAGE_H - MARGIN_TOP
 HEADER_HEIGHT = 22
 TABLE_TOP = BODY_TOP - HEADER_HEIGHT
 TABLE_HEIGHT = TABLE_TOP - MARGIN_BOTTOM
-BASE_ROW_H = TABLE_HEIGHT / ROWS_PER_GROUP
 
 FONT_NAME_LINE = (_FONT_NAME, 9)
 FONT_HEADER = (_FONT_NAME, 11)
@@ -64,7 +64,6 @@ FONT_CELL = (_FONT_NAME, 7)
 FONT_CELL_SMALL = (_FONT_NAME, 6)
 FONT_CELL_TINY = (_FONT_NAME, 5)
 
-# Usable widths inside each column (with padding)
 _WORD_MAX_W = COL_WORD - 6
 _ANSWER_MAX_W = COL_ANSWER - 6
 
@@ -99,10 +98,7 @@ def _wrap_lines(text: str, max_width: float, font_name: str, font_size: float) -
 def _choose_font_and_wrap(
     text: str, max_width: float, fonts: list[tuple[str, float]],
 ) -> tuple[tuple[str, float], list[str]]:
-    """Try each font (largest first). Pick the first that fits in <=2 lines.
-
-    Falls back to the smallest font with as many lines as needed.
-    """
+    """Try each font (largest first). Pick the first that fits in <=2 lines."""
     if not text:
         return fonts[0], []
 
@@ -111,7 +107,6 @@ def _choose_font_and_wrap(
         if len(lines) <= 2:
             return font, lines
 
-    # Last resort: smallest font, allow >2 lines
     return fonts[-1], _wrap_lines(text, max_width, *fonts[-1])
 
 
@@ -126,49 +121,71 @@ def generate_word_test_pdf(
     new_range_label: str = "",
     review_range_label: str = "",
     questions_per_test: int = 50,
+    rows_per_side: int = 50,
 ) -> Path:
     """Generate a 2-page PDF: page 1 = test (blank answers), page 2 = answer key.
 
-    Layout: LEFT = review (復習), RIGHT = new (新出).
+    Layout:
+    - With review: LEFT = review, RIGHT = new
+    - Without review (first range): LEFT = new, RIGHT = empty
+
+    Args:
+        rows_per_side: Number of rows per side (30 or 50).
+        questions_per_test: Max questions per side (capped at rows_per_side).
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    qpt = min(questions_per_test, ROWS_PER_GROUP)
+    rps = max(1, rows_per_side)
+    qpt = min(questions_per_test, rps)
 
-    # RIGHT side = new words
-    right_words = list(new_words)
-    random.shuffle(right_words)
-    right_words = right_words[:qpt]
+    has_review = bool(review_words)
 
-    # LEFT side = review words
-    if review_words:
-        left_words = list(review_words)
-        random.shuffle(left_words)
-        left_words = left_words[:qpt]
+    # Prepare new words (shuffled, sampled to qpt)
+    sampled_new = list(new_words)
+    random.shuffle(sampled_new)
+    sampled_new = sampled_new[:qpt]
+
+    # Prepare review words (shuffled, sampled to qpt)
+    if has_review:
+        sampled_review = list(review_words)
+        random.shuffle(sampled_review)
+        sampled_review = sampled_review[:qpt]
     else:
-        left_words = []
+        sampled_review = []
 
-    # Pad both sides to exactly ROWS_PER_GROUP
-    while len(left_words) < ROWS_PER_GROUP:
+    # Assign sides: with review → left=review, right=new; without → left=new, right=empty
+    if has_review:
+        left_words = sampled_review
+        right_words = sampled_new
+        left_label = review_range_label
+        right_label = new_range_label
+    else:
+        left_words = sampled_new
+        right_words = []
+        left_label = new_range_label
+        right_label = ""
+
+    # Pad both sides to exactly rps
+    while len(left_words) < rps:
         left_words.append((0, "", ""))
-    while len(right_words) < ROWS_PER_GROUP:
+    while len(right_words) < rps:
         right_words.append((0, "", ""))
 
     c = Canvas(str(output_path), pagesize=A4)
 
-    # Page 1: Question sheet (blank answers)
     _draw_page(
         c, title, left_words, right_words,
         show_answers=False, student_name=student_name,
-        left_label=review_range_label, right_label=new_range_label,
+        left_label=left_label, right_label=right_label,
+        rows_per_side=rps,
     )
     c.showPage()
 
-    # Page 2: Answer key
     _draw_page(
         c, title, left_words, right_words,
         show_answers=True, student_name=student_name,
-        left_label=review_range_label, right_label=new_range_label,
+        left_label=left_label, right_label=right_label,
+        rows_per_side=rps,
     )
     c.showPage()
 
@@ -187,6 +204,7 @@ def _draw_page(
     student_name: str | None = None,
     left_label: str = "",
     right_label: str = "",
+    rows_per_side: int = 50,
 ) -> None:
     """Draw one page of the test sheet."""
 
@@ -215,8 +233,8 @@ def _draw_page(
         c.drawString(right_x + 2, label_y, right_label)
         c.setFillColorRGB(0, 0, 0)
 
-    # Draw left group (review words)
-    _draw_group(c, MARGIN_L, left_words, show_answers)
+    # Draw left group
+    _draw_group(c, MARGIN_L, left_words, show_answers, rows_per_side)
 
     # Separator (double line)
     sep_x = MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS / 2
@@ -225,23 +243,19 @@ def _draw_page(
     c.line(sep_x - 1.5, TABLE_TOP, sep_x - 1.5, MARGIN_BOTTOM)
     c.line(sep_x + 1.5, TABLE_TOP, sep_x + 1.5, MARGIN_BOTTOM)
 
-    # Draw right group (new words)
-    _draw_group(c, MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS, right_words, show_answers)
+    # Draw right group
+    _draw_group(c, MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS, right_words, show_answers, rows_per_side)
 
 
 def _compute_row_heights(
-    words: list[tuple[int, str, str]], show_answers: bool,
+    words: list[tuple[int, str, str]], show_answers: bool, rows: int,
 ) -> list[tuple[float, list[str], tuple[str, float], list[str], tuple[str, float]]]:
-    """Pre-compute row heights and wrapped text for all rows.
-
-    Returns list of (row_height, word_lines, word_font, trans_lines, trans_font).
-    The row_height is in "units" (1 = single-line row, 2 = double-line, etc.).
-    """
+    """Pre-compute row heights and wrapped text for all rows."""
     word_fonts = [FONT_CELL, FONT_CELL_SMALL, FONT_CELL_TINY]
     answer_fonts = [FONT_CELL, FONT_CELL_SMALL, FONT_CELL_TINY]
 
-    rows = []
-    for i in range(ROWS_PER_GROUP):
+    result = []
+    for i in range(rows):
         _, word, translation = words[i] if i < len(words) else (0, "", "")
 
         word_font, word_lines = _choose_font_and_wrap(word, _WORD_MAX_W, word_fonts)
@@ -252,9 +266,9 @@ def _compute_row_heights(
             trans_font, trans_lines = FONT_CELL, []
 
         line_count = max(len(word_lines), len(trans_lines), 1)
-        rows.append((line_count, word_lines, word_font, trans_lines, trans_font))
+        result.append((line_count, word_lines, word_font, trans_lines, trans_font))
 
-    return rows
+    return result
 
 
 def _draw_group(
@@ -262,16 +276,14 @@ def _draw_group(
     x_start: float,
     words: list[tuple[int, str, str]],
     show_answers: bool,
+    rows_per_side: int = 50,
 ) -> None:
-    """Draw one group of 50 rows with variable row heights for wrapping."""
+    """Draw one group of rows with variable row heights for wrapping."""
 
-    # 1) Pre-compute how many lines each row needs
-    row_info = _compute_row_heights(words, show_answers)
+    row_info = _compute_row_heights(words, show_answers, rows_per_side)
 
-    # 2) Calculate actual row heights to fit within TABLE_HEIGHT
     total_units = sum(info[0] for info in row_info)
-    unit_h = TABLE_HEIGHT / max(total_units, ROWS_PER_GROUP)
-    # Ensure minimum row height
+    unit_h = TABLE_HEIGHT / max(total_units, rows_per_side)
     unit_h = max(unit_h, 6.0)
 
     # Column headers
@@ -289,7 +301,7 @@ def _draw_group(
     c.line(x_start, TABLE_TOP, x_start + GROUP_W, TABLE_TOP)
 
     y_top = TABLE_TOP
-    for i in range(ROWS_PER_GROUP):
+    for i in range(rows_per_side):
         line_count, word_lines, word_font, trans_lines, trans_font = row_info[i]
         row_h = unit_h * line_count
         y_bottom = y_top - row_h
@@ -303,17 +315,16 @@ def _draw_group(
 
         c.setFillColorRGB(0, 0, 0)
 
-        # Number (vertically centered in the row)
+        # Number
         if num > 0:
             c.setFont(*FONT_CELL)
             num_y = y_bottom + (row_h - 6.5) / 2 + 1
             c.drawRightString(x_start + COL_NO - 4, num_y, str(num))
 
-        # English word lines (stacked from top of cell)
+        # English word lines
         if word_lines:
             c.setFont(*word_font)
             line_h = word_font[1] + 1.5
-            # Vertically center the text block within the row
             block_h = line_h * len(word_lines)
             text_start_y = y_bottom + (row_h + block_h) / 2 - word_font[1]
             for li, line in enumerate(word_lines):

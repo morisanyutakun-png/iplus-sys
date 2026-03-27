@@ -26,6 +26,7 @@ async def generate_student_pdfs(
     start_node: int | None = None,
     end_node: int | None = None,
     questions_per_test: int = 50,
+    rows_per_side: int = 50,
 ) -> list[tuple[str, str]]:
     """Generate randomized PDFs for nodes of a word-test material.
 
@@ -115,6 +116,7 @@ async def generate_student_pdfs(
                 new_range_label=f"No.{s}〜{e}",
                 review_range_label=review_range_label,
                 questions_per_test=questions_per_test,
+                rows_per_side=rows_per_side,
             )
             await upsert_pdf_blob(db, pdf_relpath, pdf_path.read_bytes())
 

@@ -287,6 +287,7 @@ async def assign_word_test(
     end_num = body.get("end_num")
     words_per_test = body.get("words_per_test", 100)
     questions_per_test = body.get("questions_per_test", 50)
+    rows_per_side = body.get("rows_per_side", 50)
 
     # Validate student
     student = await db.get(Student, student_id)
@@ -380,6 +381,7 @@ async def assign_word_test(
         db, student_id, student.name, material_key,
         start_node=start_node, end_node=end_node,
         questions_per_test=questions_per_test,
+        rows_per_side=rows_per_side,
     )
 
     # Create StudentMaterial with range limits
@@ -394,7 +396,7 @@ async def assign_word_test(
         material_key=material_key,
         action="assign",
         new_pointer=start_node,
-        metadata_={"start_num": start_num, "end_num": end_num, "words_per_test": words_per_test, "questions_per_test": questions_per_test},
+        metadata_={"start_num": start_num, "end_num": end_num, "words_per_test": words_per_test, "questions_per_test": questions_per_test, "rows_per_side": rows_per_side},
     )
     db.add(sm)
     db.add(history)

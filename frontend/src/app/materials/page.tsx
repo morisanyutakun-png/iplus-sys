@@ -784,8 +784,29 @@ function MaterialCard({
           </div>
         </div>
 
-        {/* Node summary dots + manage button */}
-        {mat.nodes.length > 0 ? (
+        {/* Node summary dots + manage button (skip for word test materials — ranges managed at assignment) */}
+        {mat.key.startsWith("単語:") ? (
+          mat.nodes.length > 0 && (
+            <div className="flex items-center gap-1">
+              <div className="flex flex-wrap gap-1 flex-1">
+                {sortedNodes.slice(0, 20).map((node) => (
+                  <span
+                    key={node.key}
+                    className={cn(
+                      "h-2 w-2 rounded-full shrink-0",
+                      node.pdf_relpath ? "bg-emerald-500" : "bg-muted-foreground/25"
+                    )}
+                    title={`${node.sort_order}. ${node.title}`}
+                  />
+                ))}
+                {sortedNodes.length > 20 && (
+                  <span className="text-[10px] text-muted-foreground ml-0.5">+{sortedNodes.length - 20}</span>
+                )}
+              </div>
+              <span className="text-[10px] text-muted-foreground">{sortedNodes.length}範囲（割り当て時に設定）</span>
+            </div>
+          )
+        ) : mat.nodes.length > 0 ? (
           <div className="space-y-2">
             {/* Compact dot summary */}
             <div className="flex items-center gap-1">

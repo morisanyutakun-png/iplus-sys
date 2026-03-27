@@ -200,6 +200,7 @@ export function MaterialManager({ studentId }: Props) {
   const [wtEndNum, setWtEndNum] = useState(100);
   const [wtWordsPerTest, setWtWordsPerTest] = useState(100);
   const [wtQuestionsPerTest, setWtQuestionsPerTest] = useState(50);
+  const [wtRowsPerSide, setWtRowsPerSide] = useState<30 | 50>(50);
 
   const handleToggle = (materialKey: string, action: "assign" | "remove") => {
     toggleMutation.mutate(
@@ -227,6 +228,7 @@ export function MaterialManager({ studentId }: Props) {
       setWtEndNum(mat.total_words);
       setWtWordsPerTest(100);
       setWtQuestionsPerTest(50);
+      setWtRowsPerSide(50);
     } else {
       handleToggle(mat.key, "assign");
     }
@@ -241,6 +243,7 @@ export function MaterialManager({ studentId }: Props) {
         end_num: wtEndNum,
         words_per_test: wtWordsPerTest,
         questions_per_test: wtQuestionsPerTest,
+        rows_per_side: wtRowsPerSide,
       },
       {
         onSuccess: () => {
@@ -727,10 +730,34 @@ export function MaterialManager({ studentId }: Props) {
                   <Input
                     type="number"
                     min={1}
-                    max={50}
+                    max={wtRowsPerSide}
                     value={wtQuestionsPerTest}
-                    onChange={(e) => setWtQuestionsPerTest(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                    onChange={(e) => setWtQuestionsPerTest(Math.max(1, Math.min(wtRowsPerSide, parseInt(e.target.value) || 1)))}
                   />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">行数（各側）</label>
+                <div className="flex gap-2">
+                  {([30, 50] as const).map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => {
+                        setWtRowsPerSide(n);
+                        if (wtQuestionsPerTest > n) setWtQuestionsPerTest(n);
+                      }}
+                      className={cn(
+                        "flex-1 py-1.5 rounded-md text-sm font-medium border transition-colors",
+                        wtRowsPerSide === n
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"
+                      )}
+                    >
+                      {n}行
+                    </button>
+                  ))}
                 </div>
               </div>
 

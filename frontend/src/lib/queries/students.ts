@@ -112,6 +112,7 @@ export function useAssignWordTest(studentId: string) {
       end_num: number;
       words_per_test: number;
       questions_per_test: number;
+      rows_per_side: number;
     }) =>
       apiFetch(`/api/students/${studentId}/assign-word-test`, {
         method: "POST",
