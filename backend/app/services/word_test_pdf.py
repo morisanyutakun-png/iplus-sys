@@ -54,7 +54,7 @@ BODY_TOP = PAGE_H - MARGIN_TOP
 HEADER_HEIGHT = 22
 TABLE_TOP = BODY_TOP - HEADER_HEIGHT
 TABLE_HEIGHT = TABLE_TOP - MARGIN_BOTTOM
-ROW_H = TABLE_HEIGHT / ROWS_PER_GROUP
+BASE_ROW_H = TABLE_HEIGHT / ROWS_PER_GROUP
 
 FONT_NAME_LINE = (_FONT_NAME, 9)
 FONT_HEADER = (_FONT_NAME, 11)
@@ -62,22 +62,60 @@ FONT_SECTION_LABEL = (_FONT_NAME, 8)
 FONT_COL_HEADER = (_FONT_NAME, 6.5)
 FONT_CELL = (_FONT_NAME, 7)
 FONT_CELL_SMALL = (_FONT_NAME, 6)
+FONT_CELL_TINY = (_FONT_NAME, 5)
+
+# Usable widths inside each column (with padding)
+_WORD_MAX_W = COL_WORD - 6
+_ANSWER_MAX_W = COL_ANSWER - 6
 
 
-def _fit_text(text: str, max_width: float, font_name: str, font_size: float) -> str:
-    """Truncate text with '…' if it exceeds max_width in the given font."""
+# ── Text helpers ──
+
+def _text_width(text: str, font_name: str, font_size: float) -> float:
+    return pdfmetrics.stringWidth(text, font_name, font_size)
+
+
+def _wrap_lines(text: str, max_width: float, font_name: str, font_size: float) -> list[str]:
+    """Split text into lines that each fit within max_width."""
     if not text:
-        return text
-    w = pdfmetrics.stringWidth(text, font_name, font_size)
-    if w <= max_width:
-        return text
-    ellipsis_w = pdfmetrics.stringWidth("…", font_name, font_size)
-    while len(text) > 1:
-        text = text[:-1]
-        if pdfmetrics.stringWidth(text, font_name, font_size) + ellipsis_w <= max_width:
-            return text + "…"
-    return "…"
+        return []
+    if _text_width(text, font_name, font_size) <= max_width:
+        return [text]
 
+    lines: list[str] = []
+    current = ""
+    for ch in text:
+        test = current + ch
+        if _text_width(test, font_name, font_size) > max_width and current:
+            lines.append(current)
+            current = ch
+        else:
+            current = test
+    if current:
+        lines.append(current)
+    return lines or [text]
+
+
+def _choose_font_and_wrap(
+    text: str, max_width: float, fonts: list[tuple[str, float]],
+) -> tuple[tuple[str, float], list[str]]:
+    """Try each font (largest first). Pick the first that fits in <=2 lines.
+
+    Falls back to the smallest font with as many lines as needed.
+    """
+    if not text:
+        return fonts[0], []
+
+    for font in fonts:
+        lines = _wrap_lines(text, max_width, *font)
+        if len(lines) <= 2:
+            return font, lines
+
+    # Last resort: smallest font, allow >2 lines
+    return fonts[-1], _wrap_lines(text, max_width, *fonts[-1])
+
+
+# ── Public API ──
 
 def generate_word_test_pdf(
     output_path: Path,
@@ -92,23 +130,17 @@ def generate_word_test_pdf(
     """Generate a 2-page PDF: page 1 = test (blank answers), page 2 = answer key.
 
     Layout: LEFT = review (復習), RIGHT = new (新出).
-
-    Args:
-        new_words: Words for the right side (new/current range).
-        review_words: Words for the left side (review from previous ranges).
-            None or empty means no review (left side drawn as empty grid).
-        questions_per_test: Max questions per side (capped at ROWS_PER_GROUP).
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     qpt = min(questions_per_test, ROWS_PER_GROUP)
 
-    # RIGHT side = new words (shuffled, sampled to qpt)
+    # RIGHT side = new words
     right_words = list(new_words)
     random.shuffle(right_words)
     right_words = right_words[:qpt]
 
-    # LEFT side = review words (shuffled, sampled to qpt)
+    # LEFT side = review words
     if review_words:
         left_words = list(review_words)
         random.shuffle(left_words)
@@ -144,6 +176,8 @@ def generate_word_test_pdf(
     return output_path
 
 
+# ── Internal drawing ──
+
 def _draw_page(
     c: Canvas,
     title: str,
@@ -156,13 +190,12 @@ def _draw_page(
 ) -> None:
     """Draw one page of the test sheet."""
 
-    # ── Header area (right-aligned) ──
-    # Line 1: Student name at the very top-right
+    # Header: student name at the very top-right
     if student_name:
         c.setFont(*FONT_NAME_LINE)
         c.drawRightString(PAGE_W - MARGIN_R, PAGE_H - 20, student_name)
 
-    # Line 2: Title (with answer prefix) below the name
+    # Title below the name
     c.setFont(*FONT_HEADER)
     prefix = "【解答】" if show_answers else ""
     header_text = f"{prefix}{title}"
@@ -173,21 +206,19 @@ def _draw_page(
     if left_label:
         c.setFont(*FONT_SECTION_LABEL)
         c.setFillColorRGB(0.2, 0.2, 0.2)
-        fitted = _fit_text(left_label, GROUP_W - 4, *FONT_SECTION_LABEL)
-        c.drawString(MARGIN_L + 2, label_y, fitted)
+        c.drawString(MARGIN_L + 2, label_y, left_label)
         c.setFillColorRGB(0, 0, 0)
     if right_label:
         c.setFont(*FONT_SECTION_LABEL)
         c.setFillColorRGB(0.2, 0.2, 0.2)
         right_x = MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS
-        fitted = _fit_text(right_label, GROUP_W - 4, *FONT_SECTION_LABEL)
-        c.drawString(right_x + 2, label_y, fitted)
+        c.drawString(right_x + 2, label_y, right_label)
         c.setFillColorRGB(0, 0, 0)
 
     # Draw left group (review words)
     _draw_group(c, MARGIN_L, left_words, show_answers)
 
-    # Draw separator (double line)
+    # Separator (double line)
     sep_x = MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS / 2
     c.setStrokeColorRGB(0.3, 0.3, 0.3)
     c.setLineWidth(0.5)
@@ -198,16 +229,50 @@ def _draw_page(
     _draw_group(c, MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS, right_words, show_answers)
 
 
+def _compute_row_heights(
+    words: list[tuple[int, str, str]], show_answers: bool,
+) -> list[tuple[float, list[str], tuple[str, float], list[str], tuple[str, float]]]:
+    """Pre-compute row heights and wrapped text for all rows.
+
+    Returns list of (row_height, word_lines, word_font, trans_lines, trans_font).
+    The row_height is in "units" (1 = single-line row, 2 = double-line, etc.).
+    """
+    word_fonts = [FONT_CELL, FONT_CELL_SMALL, FONT_CELL_TINY]
+    answer_fonts = [FONT_CELL, FONT_CELL_SMALL, FONT_CELL_TINY]
+
+    rows = []
+    for i in range(ROWS_PER_GROUP):
+        _, word, translation = words[i] if i < len(words) else (0, "", "")
+
+        word_font, word_lines = _choose_font_and_wrap(word, _WORD_MAX_W, word_fonts)
+
+        if show_answers and translation:
+            trans_font, trans_lines = _choose_font_and_wrap(translation, _ANSWER_MAX_W, answer_fonts)
+        else:
+            trans_font, trans_lines = FONT_CELL, []
+
+        line_count = max(len(word_lines), len(trans_lines), 1)
+        rows.append((line_count, word_lines, word_font, trans_lines, trans_font))
+
+    return rows
+
+
 def _draw_group(
     c: Canvas,
     x_start: float,
     words: list[tuple[int, str, str]],
     show_answers: bool,
 ) -> None:
-    """Draw one group of 50 rows (No | English | Translation)."""
+    """Draw one group of 50 rows with variable row heights for wrapping."""
 
-    word_col_max = COL_WORD - 6
-    answer_col_max = COL_ANSWER - 6
+    # 1) Pre-compute how many lines each row needs
+    row_info = _compute_row_heights(words, show_answers)
+
+    # 2) Calculate actual row heights to fit within TABLE_HEIGHT
+    total_units = sum(info[0] for info in row_info)
+    unit_h = TABLE_HEIGHT / max(total_units, ROWS_PER_GROUP)
+    # Ensure minimum row height
+    unit_h = max(unit_h, 6.0)
 
     # Column headers
     c.setFont(*FONT_COL_HEADER)
@@ -223,45 +288,55 @@ def _draw_group(
     c.setLineWidth(0.8)
     c.line(x_start, TABLE_TOP, x_start + GROUP_W, TABLE_TOP)
 
+    y_top = TABLE_TOP
     for i in range(ROWS_PER_GROUP):
-        y_top = TABLE_TOP - i * ROW_H
-        y_bottom = y_top - ROW_H
-        y_text = y_bottom + (ROW_H - 6.5) / 2 + 1
+        line_count, word_lines, word_font, trans_lines, trans_font = row_info[i]
+        row_h = unit_h * line_count
+        y_bottom = y_top - row_h
 
-        num, word, translation = words[i] if i < len(words) else (0, "", "")
+        num = words[i][0] if i < len(words) else 0
 
         # Alternate row background
         if i % 2 == 0:
             c.setFillColorRGB(0.96, 0.96, 0.96)
-            c.rect(x_start, y_bottom, GROUP_W, ROW_H, fill=True, stroke=False)
+            c.rect(x_start, y_bottom, GROUP_W, row_h, fill=True, stroke=False)
 
         c.setFillColorRGB(0, 0, 0)
 
-        # Number
-        c.setFont(*FONT_CELL)
+        # Number (vertically centered in the row)
         if num > 0:
-            c.drawRightString(x_start + COL_NO - 4, y_text, str(num))
-
-        # English word (fit to column width)
-        if word:
             c.setFont(*FONT_CELL)
-            display = _fit_text(word, word_col_max, *FONT_CELL)
-            c.drawString(x_start + COL_NO + 3, y_text, display)
+            num_y = y_bottom + (row_h - 6.5) / 2 + 1
+            c.drawRightString(x_start + COL_NO - 4, num_y, str(num))
 
-        # Translation (answer page only, fit to column width)
-        if show_answers and translation:
-            font = FONT_CELL_SMALL if len(translation) > 14 else FONT_CELL
-            c.setFont(*font)
-            display = _fit_text(translation, answer_col_max, *font)
-            c.drawString(x_start + COL_NO + COL_WORD + 3, y_text, display)
+        # English word lines (stacked from top of cell)
+        if word_lines:
+            c.setFont(*word_font)
+            line_h = word_font[1] + 1.5
+            # Vertically center the text block within the row
+            block_h = line_h * len(word_lines)
+            text_start_y = y_bottom + (row_h + block_h) / 2 - word_font[1]
+            for li, line in enumerate(word_lines):
+                c.drawString(x_start + COL_NO + 3, text_start_y - li * line_h, line)
+
+        # Translation lines (answer page only)
+        if trans_lines:
+            c.setFont(*trans_font)
+            line_h = trans_font[1] + 1.5
+            block_h = line_h * len(trans_lines)
+            text_start_y = y_bottom + (row_h + block_h) / 2 - trans_font[1]
+            for li, line in enumerate(trans_lines):
+                c.drawString(x_start + COL_NO + COL_WORD + 3, text_start_y - li * line_h, line)
 
         # Row border
         c.setStrokeColorRGB(0.75, 0.75, 0.75)
         c.setLineWidth(0.3)
         c.line(x_start, y_bottom, x_start + GROUP_W, y_bottom)
 
+        y_top = y_bottom
+
     # Bottom border
-    final_y = TABLE_TOP - ROWS_PER_GROUP * ROW_H
+    final_y = y_top
     c.setStrokeColorRGB(0, 0, 0)
     c.setLineWidth(0.8)
     c.line(x_start, final_y, x_start + GROUP_W, final_y)
