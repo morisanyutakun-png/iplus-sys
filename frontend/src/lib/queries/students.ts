@@ -65,7 +65,7 @@ export function useToggleMaterial(studentId: string) {
 export function useCreateStudent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { id: string; name: string }) =>
+    mutationFn: (data: { id: string; name: string; grade?: string }) =>
       apiFetch("/api/students", {
         method: "POST",
         body: JSON.stringify(data),
@@ -79,10 +79,13 @@ export function useCreateStudent() {
 export function useUpdateStudent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { id: string; name: string }) =>
+    mutationFn: (data: { id: string; name?: string; grade?: string }) =>
       apiFetch(`/api/students/${data.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ name: data.name }),
+        body: JSON.stringify({
+          ...(data.name !== undefined && { name: data.name }),
+          ...(data.grade !== undefined && { grade: data.grade }),
+        }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["students"] });

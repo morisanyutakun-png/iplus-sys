@@ -122,6 +122,7 @@ const ANSWER_PDF_TYPES = ["answer", "recheck_answer"];
 type StudentGroup = {
   studentId: string;
   studentName: string;
+  studentGrade?: string;
   questionItems: QueueItem[];
   answerItems: QueueItem[];
 };
@@ -293,6 +294,7 @@ export default function PrintPage() {
         map.set(key, {
           studentId: key,
           studentName: item.student_name || key,
+          studentGrade: item.student_grade,
           questionItems: [],
           answerItems: [],
         });
@@ -978,6 +980,9 @@ export default function PrintPage() {
                         <span className="text-sm font-semibold">
                           {group.studentName}
                         </span>
+                        {group.studentGrade && (
+                          <Badge variant="outline" className="text-[10px]">{group.studentGrade}</Badge>
+                        )}
                         <Badge variant="outline" className="text-[10px]">問{group.questionItems.length}</Badge>
                         <Badge variant="secondary" className="text-[10px]">解{group.answerItems.length}</Badge>
                       </button>

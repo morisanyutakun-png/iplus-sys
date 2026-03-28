@@ -156,6 +156,7 @@ def generate_word_test_pdf(
     new_words: list[tuple[int, str, str]],
     review_words: list[tuple[int, str, str]] | None = None,
     student_name: str | None = None,
+    student_grade: str | None = None,
     new_range_label: str = "",
     review_range_label: str = "",
     questions_per_test: int = 50,
@@ -181,6 +182,7 @@ def generate_word_test_pdf(
     _draw_page(
         c, title, left_words, right_words,
         show_answers=False, student_name=student_name,
+        student_grade=student_grade,
         left_label=left_label, right_label=right_label,
         rows_per_side=rps,
     )
@@ -189,6 +191,7 @@ def generate_word_test_pdf(
     _draw_page(
         c, title, left_words, right_words,
         show_answers=True, student_name=student_name,
+        student_grade=student_grade,
         left_label=left_label, right_label=right_label,
         rows_per_side=rps,
     )
@@ -205,6 +208,7 @@ def generate_word_test_pdfs(
     new_words: list[tuple[int, str, str]],
     review_words: list[tuple[int, str, str]] | None = None,
     student_name: str | None = None,
+    student_grade: str | None = None,
     new_range_label: str = "",
     review_range_label: str = "",
     questions_per_test: int = 50,
@@ -229,6 +233,7 @@ def generate_word_test_pdfs(
     _draw_page(
         cq, title, left_words, right_words,
         show_answers=False, student_name=student_name,
+        student_grade=student_grade,
         left_label=left_label, right_label=right_label,
         rows_per_side=rps,
     )
@@ -240,6 +245,7 @@ def generate_word_test_pdfs(
     _draw_page(
         ca, title, left_words, right_words,
         show_answers=True, student_name=student_name,
+        student_grade=student_grade,
         left_label=left_label, right_label=right_label,
         rows_per_side=rps,
     )
@@ -258,16 +264,22 @@ def _draw_page(
     right_words: list[tuple[int, str, str]],
     show_answers: bool,
     student_name: str | None = None,
+    student_grade: str | None = None,
     left_label: str = "",
     right_label: str = "",
     rows_per_side: int = 50,
 ) -> None:
     """Draw one page of the test sheet."""
 
-    # Header: student name at the very top-right
-    if student_name:
+    # Header: student grade + name at the very top-right
+    name_line = ""
+    if student_grade and student_name:
+        name_line = f"{student_grade}  {student_name}"
+    elif student_name:
+        name_line = student_name
+    if name_line:
         c.setFont(*FONT_NAME_LINE)
-        c.drawRightString(PAGE_W - MARGIN_R, PAGE_H - 20, student_name)
+        c.drawRightString(PAGE_W - MARGIN_R, PAGE_H - 20, name_line)
 
     # Title below the name
     c.setFont(*FONT_HEADER)

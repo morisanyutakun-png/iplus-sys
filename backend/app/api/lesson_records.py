@@ -229,6 +229,14 @@ async def batch_mastery_input(
                 (n for n in nodes_sorted if n.sort_order == new_pointer), None
             )
             if next_node:
+                # Resolve student name and grade for queue display
+                student_result = await db.execute(
+                    select(Student.name, Student.grade).where(Student.id == rec.student_id)
+                )
+                student_row = student_result.first()
+                student_name = (student_row[0] if student_row else rec.student_id)
+                student_grade = (student_row[1] if student_row else None)
+
                 # For word test materials, use per-student PDF paths (question + answer)
                 gen_q_pdf = None
                 gen_a_pdf = None
@@ -236,14 +244,10 @@ async def batch_mastery_input(
                 is_word_test_recheck = is_word_test and not did_advance
 
                 if is_word_test_recheck:
-                    # Dynamically regenerate PDFs with new random questions for retry
-                    student_result = await db.execute(
-                        select(Student.name).where(Student.id == rec.student_id)
-                    )
-                    student_name = (student_result.scalar() or rec.student_id)
                     regen = await regenerate_node_pdfs(
                         db, rec.student_id, student_name,
                         rec.material_key, next_node,
+                        student_grade=student_grade,
                     )
                     if regen:
                         gen_q_pdf, gen_a_pdf = regen
@@ -260,7 +264,8 @@ async def batch_mastery_input(
                 # Question entry
                 queue_entry = PrintQueue(
                     student_id=rec.student_id,
-                    student_name=None,
+                    student_name=student_name,
+                    student_grade=student_grade,
                     material_key=rec.material_key,
                     material_name=sm.material.name,
                     node_key=next_node.key,
@@ -282,7 +287,8 @@ async def batch_mastery_input(
                 if has_answer:
                     answer_entry = PrintQueue(
                         student_id=rec.student_id,
-                        student_name=None,
+                        student_name=student_name,
+                        student_grade=student_grade,
                         material_key=rec.material_key,
                         material_name=sm.material.name,
                         node_key=next_node.key,

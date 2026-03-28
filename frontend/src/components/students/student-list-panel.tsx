@@ -126,7 +126,14 @@ export function StudentListPanel({
                 }}
               >
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{student.name}</div>
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="font-medium">{student.name}</span>
+                    {student.grade && (
+                      <span className={cn("text-[10px] shrink-0", isSelected ? "text-primary-foreground/70" : "text-muted-foreground")}>
+                        {student.grade}
+                      </span>
+                    )}
+                  </div>
                   <div
                     className={cn(
                       "text-xs",

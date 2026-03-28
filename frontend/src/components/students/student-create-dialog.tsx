@@ -19,17 +19,19 @@ export function StudentCreateDialog() {
   const [open, setOpen] = useState(false);
   const [newId, setNewId] = useState("");
   const [newName, setNewName] = useState("");
+  const [newGrade, setNewGrade] = useState("");
 
   const handleCreate = () => {
     if (!newId.trim() || !newName.trim()) return;
     createMutation.mutate(
-      { id: newId.trim(), name: newName.trim() },
+      { id: newId.trim(), name: newName.trim(), grade: newGrade.trim() || undefined },
       {
         onSuccess: () => {
           toast.success("生徒を登録しました");
           setOpen(false);
           setNewId("");
           setNewName("");
+          setNewGrade("");
         },
         onError: (err) => {
           toast.error(`登録に失敗しました: ${err.message}`);
@@ -69,6 +71,16 @@ export function StudentCreateDialog() {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="例: 山田太郎"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">
+              学年
+            </label>
+            <Input
+              value={newGrade}
+              onChange={(e) => setNewGrade(e.target.value)}
+              placeholder="例: 高3、既卒生"
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleCreate();
               }}

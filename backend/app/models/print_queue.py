@@ -14,6 +14,7 @@ class PrintQueue(Base):
         String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False
     )
     student_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    student_grade: Mapped[str | None] = mapped_column(String, nullable=True)
     material_key: Mapped[str] = mapped_column(String, nullable=False)
     material_name: Mapped[str | None] = mapped_column(String, nullable=True)
     material_valid: Mapped[bool] = mapped_column(Boolean, default=True)

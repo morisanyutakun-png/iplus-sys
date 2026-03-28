@@ -10,6 +10,7 @@ export interface StudentMaterialInfo {
 export interface Student {
   id: string;
   name: string;
+  grade?: string;
   created_at: string;
   materials: StudentMaterialInfo[];
 }
@@ -41,6 +42,7 @@ export interface QueueItem {
   id: number;
   student_id: string;
   student_name?: string;
+  student_grade?: string;
   material_key: string;
   material_name?: string;
   node_key?: string;
@@ -240,6 +242,7 @@ export interface MasteryBatchResponse {
 export interface NextPrintItem {
   student_id: string;
   student_name: string;
+  student_grade?: string;
   material_key: string;
   material_name: string;
   node_key: string;

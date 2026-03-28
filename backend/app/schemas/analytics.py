@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class NextPrintItem(BaseModel):
     student_id: str
     student_name: str
+    student_grade: str | None = None
     material_key: str
     material_name: str
     node_key: str

@@ -7,6 +7,7 @@ class QueueItemOut(BaseModel):
     id: int
     student_id: str
     student_name: str | None = None
+    student_grade: str | None = None
     material_key: str
     material_name: str | None = None
     node_key: str | None = None

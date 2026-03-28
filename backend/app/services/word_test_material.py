@@ -27,6 +27,7 @@ async def generate_student_pdfs(
     end_node: int | None = None,
     questions_per_test: int = 50,
     rows_per_side: int = 50,
+    student_grade: str | None = None,
 ) -> list[tuple[str, str, str]]:
     """Generate randomized PDFs for nodes of a word-test material.
 
@@ -115,6 +116,7 @@ async def generate_student_pdfs(
                 new_words=current_word_tuples,
                 review_words=review_words,
                 student_name=student_name,
+                student_grade=student_grade,
                 new_range_label=f"No.{s}〜{e}",
                 review_range_label=review_range_label,
                 questions_per_test=questions_per_test,
@@ -139,6 +141,7 @@ async def regenerate_node_pdfs(
     target_node: "MaterialNode",
     questions_per_test: int = 50,
     rows_per_side: int = 50,
+    student_grade: str | None = None,
 ) -> tuple[str, str] | None:
     """Regenerate randomized PDFs for a single node (recheck / retry).
 
@@ -215,6 +218,7 @@ async def regenerate_node_pdfs(
         new_words=current_word_tuples,
         review_words=review_words,
         student_name=student_name,
+        student_grade=student_grade,
         new_range_label=f"No.{s}〜{e}" if s and e else "",
         review_range_label=review_range_label,
         questions_per_test=questions_per_test,

@@ -31,6 +31,7 @@ def _find_next_nodes(student: Student) -> list[NextPrintItem]:
                 items.append(NextPrintItem(
                     student_id=student.id,
                     student_name=student.name,
+                    student_grade=student.grade,
                     material_key=mat.key,
                     material_name=mat.name,
                     node_key=node.key,
@@ -119,6 +120,7 @@ async def auto_queue(
                     entries_to_add.append(PrintQueue(
                         student_id=item.student_id,
                         student_name=item.student_name,
+                        student_grade=item.student_grade,
                         material_key=item.material_key,
                         material_name=item.material_name,
                         node_key=item.node_key,
@@ -135,6 +137,7 @@ async def auto_queue(
                     entries_to_add.append(PrintQueue(
                         student_id=item.student_id,
                         student_name=item.student_name,
+                        student_grade=item.student_grade,
                         material_key=item.material_key,
                         material_name=item.material_name,
                         node_key=item.node_key,

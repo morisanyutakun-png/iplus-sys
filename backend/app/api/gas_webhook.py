@@ -66,10 +66,11 @@ async def gas_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     today = payload.get("today", {})
     due = payload.get("due", {})
 
-    # Resolve student name
-    result = await db.execute(select(Student.name).where(Student.id == student_id))
+    # Resolve student name and grade
+    result = await db.execute(select(Student.name, Student.grade).where(Student.id == student_id))
     row = result.first()
     student_name = row[0] if row else ""
+    student_grade = row[1] if row else None
 
     # Get all materials with nodes for matching
     result = await db.execute(
@@ -203,6 +204,7 @@ async def gas_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                     item = PrintQueue(
                         student_id=student_id,
                         student_name=student_name,
+                        student_grade=student_grade,
                         material_key=mat_key,
                         material_name=mat_name,
                         node_key=current_node.key,
@@ -253,6 +255,7 @@ async def gas_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             item = PrintQueue(
                 student_id=student_id,
                 student_name=student_name,
+                student_grade=student_grade,
                 material_key=mat_key,
                 material_name=mat_name,
                 node_key="",

@@ -43,6 +43,7 @@ def _build_student_out(student: Student) -> StudentOut:
     return StudentOut(
         id=student.id,
         name=student.name,
+        grade=student.grade,
         created_at=student.created_at,
         materials=material_infos,
     )
@@ -76,11 +77,11 @@ async def get_student(student_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=StudentOut)
 async def create_student(body: StudentCreate, db: AsyncSession = Depends(get_db)):
-    student = Student(id=body.id, name=body.name)
+    student = Student(id=body.id, name=body.name, grade=body.grade)
     db.add(student)
     await db.commit()
     await db.refresh(student)
-    return StudentOut(id=student.id, name=student.name, created_at=student.created_at, materials=[])
+    return StudentOut(id=student.id, name=student.name, grade=student.grade, created_at=student.created_at, materials=[])
 
 
 @router.patch("/{student_id}", response_model=StudentOut)
@@ -95,7 +96,10 @@ async def update_student(student_id: str, body: StudentUpdate, db: AsyncSession 
     student = result.scalars().first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
-    student.name = body.name.strip()
+    if body.name is not None:
+        student.name = body.name.strip()
+    if body.grade is not None:
+        student.grade = body.grade.strip() or None
     await db.commit()
     await db.refresh(student)
     return _build_student_out(student)
@@ -237,6 +241,7 @@ async def toggle_material(
                     db.add(PrintQueue(
                         student_id=student_id,
                         student_name=student.name if student else None,
+                        student_grade=student.grade if student else None,
                         material_key=material_key,
                         material_name=material.name,
                         node_key=first_node.key,
@@ -250,6 +255,7 @@ async def toggle_material(
                         db.add(PrintQueue(
                             student_id=student_id,
                             student_name=student.name if student else None,
+                            student_grade=student.grade if student else None,
                             material_key=material_key,
                             material_name=material.name,
                             node_key=first_node.key,
@@ -399,6 +405,7 @@ async def assign_word_test(
         start_node=start_node, end_node=end_node,
         questions_per_test=questions_per_test,
         rows_per_side=rows_per_side,
+        student_grade=student.grade,
     )
 
     # Create StudentMaterial with range limits
@@ -426,6 +433,7 @@ async def assign_word_test(
         db.add(PrintQueue(
             student_id=student_id,
             student_name=student.name,
+            student_grade=student.grade,
             material_key=material_key,
             material_name=f"単語テスト:{book.name}",
             node_key=first_node.key,
@@ -439,6 +447,7 @@ async def assign_word_test(
             db.add(PrintQueue(
                 student_id=student_id,
                 student_name=student.name,
+                student_grade=student.grade,
                 material_key=material_key,
                 material_name=f"単語テスト:{book.name}",
                 node_key=first_node.key,

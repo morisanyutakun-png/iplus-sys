@@ -14,13 +14,15 @@ router = APIRouter()
 async def _resolve_names(db: AsyncSession, student_id: str, material_key: str, node_key: str | None):
     """Resolve display names for student, material, and node."""
     student_name = None
+    student_grade = None
     material_name = None
     node_name = None
 
-    result = await db.execute(select(Student.name).where(Student.id == student_id))
+    result = await db.execute(select(Student.name, Student.grade).where(Student.id == student_id))
     row = result.first()
     if row:
         student_name = row[0]
+        student_grade = row[1]
 
     result = await db.execute(select(Material.name).where(Material.key == material_key))
     row = result.first()
@@ -33,7 +35,7 @@ async def _resolve_names(db: AsyncSession, student_id: str, material_key: str, n
         if row:
             node_name = row[0]
 
-    return student_name, material_name, node_name
+    return student_name, student_grade, material_name, node_name
 
 
 @router.get("", response_model=QueueListOut)
@@ -47,7 +49,7 @@ async def list_queue(db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=QueueItemOut)
 async def add_to_queue(body: QueueItemCreate, db: AsyncSession = Depends(get_db)):
-    student_name, material_name, node_name = await _resolve_names(
+    student_name, student_grade, material_name, node_name = await _resolve_names(
         db, body.student_id, body.material_key, body.node_key
     )
 
@@ -60,6 +62,7 @@ async def add_to_queue(body: QueueItemCreate, db: AsyncSession = Depends(get_db)
     item = PrintQueue(
         student_id=body.student_id,
         student_name=student_name,
+        student_grade=student_grade,
         material_key=body.material_key,
         material_name=material_name,
         node_key=body.node_key,
@@ -84,9 +87,10 @@ async def update_queue_item(
 
     if body.student_id is not None:
         item.student_id = body.student_id
-        result = await db.execute(select(Student.name).where(Student.id == body.student_id))
+        result = await db.execute(select(Student.name, Student.grade).where(Student.id == body.student_id))
         row = result.first()
         item.student_name = row[0] if row else None
+        item.student_grade = row[1] if row else None
 
     if body.material_key is not None:
         item.material_key = body.material_key
@@ -177,13 +181,14 @@ async def upload_csv_to_queue(
         if not student_id or not material_key:
             continue
 
-        student_name, material_name, node_name = await _resolve_names(
+        student_name, student_grade, material_name, node_name = await _resolve_names(
             db, student_id, material_key, node_key
         )
         max_order += 1
         item = PrintQueue(
             student_id=student_id,
             student_name=student_name,
+            student_grade=student_grade,
             material_key=material_key,
             material_name=material_name,
             node_key=node_key,

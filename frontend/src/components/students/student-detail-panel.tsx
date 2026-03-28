@@ -108,6 +108,7 @@ export function StudentDetailPanel({
   const deleteMutation = useDeleteStudent();
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState("");
+  const [editGrade, setEditGrade] = useState("");
 
   if (isLoading) {
     return (
@@ -138,20 +139,32 @@ export function StudentDetailPanel({
 
   const handleStartEdit = () => {
     setEditName(student.name);
+    setEditGrade(student.grade || "");
     setIsEditingName(true);
   };
 
   const handleSaveName = () => {
-    const trimmed = editName.trim();
-    if (!trimmed || trimmed === student.name) {
+    const trimmedName = editName.trim();
+    const trimmedGrade = editGrade.trim();
+    if (!trimmedName) {
+      setIsEditingName(false);
+      return;
+    }
+    const nameChanged = trimmedName !== student.name;
+    const gradeChanged = trimmedGrade !== (student.grade || "");
+    if (!nameChanged && !gradeChanged) {
       setIsEditingName(false);
       return;
     }
     updateMutation.mutate(
-      { id: student.id, name: trimmed },
+      {
+        id: student.id,
+        ...(nameChanged && { name: trimmedName }),
+        ...(gradeChanged && { grade: trimmedGrade }),
+      },
       {
         onSuccess: () => {
-          toast.success("生徒名を更新しました");
+          toast.success("生徒情報を更新しました");
           setIsEditingName(false);
         },
         onError: () => toast.error("更新に失敗しました"),
@@ -184,7 +197,18 @@ export function StudentDetailPanel({
                   if (e.key === "Escape") setIsEditingName(false);
                 }}
                 className="h-8 w-48 text-lg font-bold"
+                placeholder="生徒名"
                 autoFocus
+              />
+              <Input
+                value={editGrade}
+                onChange={(e) => setEditGrade(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveName();
+                  if (e.key === "Escape") setIsEditingName(false);
+                }}
+                className="h-8 w-24 text-sm"
+                placeholder="学年"
               />
               <Button
                 size="icon"
@@ -207,6 +231,9 @@ export function StudentDetailPanel({
           ) : (
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold">{student.name}</h2>
+              {student.grade && (
+                <Badge variant="outline" className="text-xs">{student.grade}</Badge>
+              )}
               <Button
                 size="icon"
                 variant="ghost"

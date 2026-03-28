@@ -15,6 +15,7 @@ class StudentMaterialInfo(BaseModel):
 class StudentOut(BaseModel):
     id: str
     name: str
+    grade: str | None = None
     created_at: datetime
     materials: list[StudentMaterialInfo] = []
 
@@ -24,10 +25,12 @@ class StudentOut(BaseModel):
 class StudentCreate(BaseModel):
     id: str
     name: str
+    grade: str | None = None
 
 
 class StudentUpdate(BaseModel):
-    name: str
+    name: str | None = None
+    grade: str | None = None
 
 
 class StudentListOut(BaseModel):
