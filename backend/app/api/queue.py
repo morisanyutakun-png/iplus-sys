@@ -114,11 +114,18 @@ async def clear_queue(db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/student/{student_id}")
-async def remove_student_from_queue(student_id: str, db: AsyncSession = Depends(get_db)):
-    """Delete all queue items for a specific student."""
-    result = await db.execute(
-        delete(PrintQueue).where(PrintQueue.student_id == student_id)
-    )
+async def remove_student_from_queue(
+    student_id: str,
+    pdf_types: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete queue items for a specific student. Optionally filter by pdf_types (comma-separated)."""
+    query = delete(PrintQueue).where(PrintQueue.student_id == student_id)
+    if pdf_types:
+        types_list = [t.strip() for t in pdf_types.split(",") if t.strip()]
+        if types_list:
+            query = query.where(PrintQueue.pdf_type.in_(types_list))
+    result = await db.execute(query)
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="該当する生徒のキューアイテムがありません")
     await db.commit()

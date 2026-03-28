@@ -694,6 +694,7 @@ async def prepare_job(db: AsyncSession = Depends(get_db)):
 class ExecuteRequest(BaseModel):
     printer_name: Optional[str] = None
     student_ids: Optional[list[str]] = None
+    pdf_types: Optional[list[str]] = None  # e.g. ["question","recheck_question"] or ["answer","recheck_answer"]
     agent_id: Optional[str] = None  # for logging when using agent mode
     use_agent: Optional[bool] = None
 
@@ -737,10 +738,12 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
         except subprocess.TimeoutExpired:
             raise HTTPException(status_code=503, detail="プリンタ状態の確認がタイムアウトしました")
 
-    # Prepare job — optionally filter by student_ids
+    # Prepare job — optionally filter by student_ids and pdf_types
     query = select(PrintQueue).where(PrintQueue.status == "pending")
     if body.student_ids:
         query = query.where(PrintQueue.student_id.in_(body.student_ids))
+    if body.pdf_types:
+        query = query.where(PrintQueue.pdf_type.in_(body.pdf_types))
     result = await db.execute(query.order_by(PrintQueue.sort_order, PrintQueue.id))
     queue_items = result.scalars().all()
     if not queue_items:

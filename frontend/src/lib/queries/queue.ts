@@ -48,8 +48,10 @@ export function useClearQueue() {
 export function useRemoveStudentFromQueue() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (studentId: string) =>
-      apiFetch(`/api/queue/student/${encodeURIComponent(studentId)}`, { method: "DELETE" }),
+    mutationFn: ({ studentId, pdfTypes }: { studentId: string; pdfTypes?: string[] }) => {
+      const params = pdfTypes?.length ? `?pdf_types=${pdfTypes.join(",")}` : "";
+      return apiFetch(`/api/queue/student/${encodeURIComponent(studentId)}${params}`, { method: "DELETE" });
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["queue"] }),
   });
 }
@@ -71,6 +73,7 @@ type PrintResult = { student: string; material: string; node: string; success: b
 type ExecutePrintParams = {
   printerName?: string;
   studentIds?: string[];
+  pdfTypes?: string[];
   useAgent?: boolean;
 };
 
@@ -83,6 +86,7 @@ export function useExecutePrint() {
         body: JSON.stringify({
           printer_name: params.printerName,
           student_ids: params.studentIds,
+          pdf_types: params.pdfTypes,
           use_agent: params.useAgent ?? true,
         }),
       }),

@@ -115,6 +115,9 @@ function pdfTypeBadgeVariant(pdfType: string): "default" | "outline" | "secondar
   return "outline";
 }
 
+const QUESTION_PDF_TYPES = ["question", "recheck_question"];
+const ANSWER_PDF_TYPES = ["answer", "recheck_answer"];
+
 type StudentGroup = {
   studentId: string;
   studentName: string;
@@ -344,11 +347,15 @@ export default function PrintPage() {
     });
   };
 
-  const handleRemoveStudent = (studentId: string, studentName: string) => {
-    removeStudentMutation.mutate(studentId, {
-      onSuccess: (data) => toast.success(`${studentName}の${(data as { deleted: number }).deleted}件を削除しました`),
-      onError: () => toast.error("削除に失敗しました"),
-    });
+  const handleRemoveStudent = (studentId: string, studentName: string, pdfTypes?: string[]) => {
+    const label = pdfTypes ? (pdfTypes.some(t => t.includes("answer")) ? "解答" : "問題") : "";
+    removeStudentMutation.mutate(
+      { studentId, pdfTypes },
+      {
+        onSuccess: (data) => toast.success(`${studentName}の${label}${(data as { deleted: number }).deleted}件を削除しました`),
+        onError: () => toast.error("削除に失敗しました"),
+      }
+    );
   };
 
   const showPrintResult = (
@@ -389,26 +396,30 @@ export default function PrintPage() {
       .catch((err: Error) => toast.error(`印刷エラー: ${err.message}`));
   };
 
-  const handlePrintStudent = (studentId: string, studentName: string) => {
-    setPrintingStudents((prev) => new Set(prev).add(studentId));
+  const handlePrintStudent = (studentId: string, studentName: string, pdfTypes?: string[]) => {
+    const key = pdfTypes ? `${studentId}:${pdfTypes.join(",")}` : studentId;
+    setPrintingStudents((prev) => new Set(prev).add(key));
+    const label = pdfTypes
+      ? `${studentName}（${pdfTypes.some(t => t.includes("answer")) ? "解答" : "問題"}）`
+      : studentName;
     ensureSelectedPrinterReady()
       .then((printerName) => {
         executeMutation.mutate(
-          { printerName: printerName || undefined, studentIds: [studentId], useAgent: true },
+          { printerName: printerName || undefined, studentIds: [studentId], pdfTypes, useAgent: true },
           {
             onSuccess: (data) => {
-              showPrintResult(data, studentName);
+              showPrintResult(data, label);
               setPrintingStudents((prev) => {
                 const next = new Set(prev);
-                next.delete(studentId);
+                next.delete(key);
                 return next;
               });
             },
             onError: (err) => {
-              toast.error(`印刷エラー (${studentName}): ${err.message}`);
+              toast.error(`印刷エラー (${label}): ${err.message}`);
               setPrintingStudents((prev) => {
                 const next = new Set(prev);
-                next.delete(studentId);
+                next.delete(key);
                 return next;
               });
             },
@@ -416,10 +427,10 @@ export default function PrintPage() {
         );
       })
       .catch((err: Error) => {
-        toast.error(`印刷エラー (${studentName}): ${err.message}`);
+        toast.error(`印刷エラー (${label}): ${err.message}`);
         setPrintingStudents((prev) => {
           const next = new Set(prev);
-          next.delete(studentId);
+          next.delete(key);
           return next;
         });
       });
@@ -941,7 +952,9 @@ export default function PrintPage() {
             <div className="space-y-3">
               {groupedQueue.map((group) => {
                 const isCollapsed = collapsedGroups.has(group.studentId);
-                const isPrinting = printingStudents.has(group.studentId);
+                const isPrinting = printingStudents.has(group.studentId) ||
+                  printingStudents.has(`${group.studentId}:${QUESTION_PDF_TYPES.join(",")}`) ||
+                  printingStudents.has(`${group.studentId}:${ANSWER_PDF_TYPES.join(",")}`);
                 return (
                   <Card
                     key={group.studentId}
@@ -963,9 +976,8 @@ export default function PrintPage() {
                         <span className="text-sm font-semibold">
                           {group.studentName}
                         </span>
-                        <Badge variant="secondary" className="text-xs">
-                          {group.questionItems.length + group.answerItems.length}件
-                        </Badge>
+                        <Badge variant="outline" className="text-[10px]">問{group.questionItems.length}</Badge>
+                        <Badge variant="secondary" className="text-[10px]">解{group.answerItems.length}</Badge>
                       </button>
                       <div className="flex items-center gap-1.5 pr-3">
                         <AlertDialog>
@@ -977,12 +989,12 @@ export default function PrintPage() {
                               disabled={removeStudentMutation.isPending}
                             >
                               <Trash2 className="mr-1 h-3 w-3" />
-                              削除
+                              全削除
                             </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>{group.studentName}のキューを削除</AlertDialogTitle>
+                              <AlertDialogTitle>{group.studentName}のキューを全削除</AlertDialogTitle>
                               <AlertDialogDescription>
                                 {group.studentName}のキューアイテム{group.questionItems.length + group.answerItems.length}件をすべて削除しますか？
                               </AlertDialogDescription>
@@ -990,7 +1002,7 @@ export default function PrintPage() {
                             <AlertDialogFooter>
                               <AlertDialogCancel>キャンセル</AlertDialogCancel>
                               <AlertDialogAction onClick={() => handleRemoveStudent(group.studentId, group.studentName)}>
-                                削除
+                                全削除
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
@@ -999,12 +1011,7 @@ export default function PrintPage() {
                           size="sm"
                           variant="outline"
                           className="h-7 text-xs"
-                          onClick={() =>
-                            handlePrintStudent(
-                              group.studentId,
-                              group.studentName
-                            )
-                          }
+                          onClick={() => handlePrintStudent(group.studentId, group.studentName)}
                           disabled={
                             isPrinting ||
                             executeMutation.isPending ||
@@ -1013,7 +1020,7 @@ export default function PrintPage() {
                           }
                         >
                           <Printer className="mr-1 h-3 w-3" />
-                          {isPrinting ? "印刷中..." : "印刷"}
+                          {isPrinting ? "印刷中..." : "全印刷"}
                         </Button>
                       </div>
                     </div>
@@ -1026,6 +1033,25 @@ export default function PrintPage() {
                             <div className="flex items-center gap-2 px-4 py-2 bg-blue-50/50 dark:bg-blue-950/20 border-b border-border/30">
                               <Badge variant="outline" className="text-[10px] font-semibold">問題</Badge>
                               <span className="text-xs text-muted-foreground">{group.questionItems.length}件</span>
+                              <div className="ml-auto flex items-center gap-1">
+                                <Button
+                                  size="sm" variant="ghost"
+                                  className="h-6 px-2 text-[10px] text-destructive hover:text-destructive"
+                                  disabled={removeStudentMutation.isPending}
+                                  onClick={() => handleRemoveStudent(group.studentId, group.studentName, QUESTION_PDF_TYPES)}
+                                >
+                                  <Trash2 className="mr-1 h-3 w-3" />削除
+                                </Button>
+                                <Button
+                                  size="sm" variant="ghost"
+                                  className="h-6 px-2 text-[10px]"
+                                  disabled={executeMutation.isPending || printingStudents.has(`${group.studentId}:${QUESTION_PDF_TYPES.join(",")}`)}
+                                  onClick={() => handlePrintStudent(group.studentId, group.studentName, QUESTION_PDF_TYPES)}
+                                >
+                                  <Printer className="mr-1 h-3 w-3" />
+                                  {printingStudents.has(`${group.studentId}:${QUESTION_PDF_TYPES.join(",")}`) ? "印刷中..." : "印刷"}
+                                </Button>
+                              </div>
                             </div>
                             <Table>
                               <TableBody>
@@ -1041,6 +1067,25 @@ export default function PrintPage() {
                             <div className="flex items-center gap-2 px-4 py-2 bg-amber-50/50 dark:bg-amber-950/20 border-b border-border/30">
                               <Badge variant="secondary" className="text-[10px] font-semibold">解答</Badge>
                               <span className="text-xs text-muted-foreground">{group.answerItems.length}件</span>
+                              <div className="ml-auto flex items-center gap-1">
+                                <Button
+                                  size="sm" variant="ghost"
+                                  className="h-6 px-2 text-[10px] text-destructive hover:text-destructive"
+                                  disabled={removeStudentMutation.isPending}
+                                  onClick={() => handleRemoveStudent(group.studentId, group.studentName, ANSWER_PDF_TYPES)}
+                                >
+                                  <Trash2 className="mr-1 h-3 w-3" />削除
+                                </Button>
+                                <Button
+                                  size="sm" variant="ghost"
+                                  className="h-6 px-2 text-[10px]"
+                                  disabled={executeMutation.isPending || printingStudents.has(`${group.studentId}:${ANSWER_PDF_TYPES.join(",")}`)}
+                                  onClick={() => handlePrintStudent(group.studentId, group.studentName, ANSWER_PDF_TYPES)}
+                                >
+                                  <Printer className="mr-1 h-3 w-3" />
+                                  {printingStudents.has(`${group.studentId}:${ANSWER_PDF_TYPES.join(",")}`) ? "印刷中..." : "印刷"}
+                                </Button>
+                              </div>
                             </div>
                             <Table>
                               <TableBody>
