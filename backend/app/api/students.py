@@ -414,6 +414,8 @@ async def assign_word_test(
         material_key=material_key,
         pointer=start_node,
         max_node=end_node,
+        questions_per_test=questions_per_test,
+        rows_per_side=rows_per_side,
     )
     history = ProgressHistory(
         student_id=student_id,

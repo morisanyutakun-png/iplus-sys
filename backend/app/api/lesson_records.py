@@ -247,6 +247,8 @@ async def batch_mastery_input(
                     regen = await regenerate_node_pdfs(
                         db, rec.student_id, student_name,
                         rec.material_key, next_node,
+                        questions_per_test=sm.questions_per_test or 50,
+                        rows_per_side=sm.rows_per_side or 50,
                         student_grade=student_grade,
                     )
                     if regen:
