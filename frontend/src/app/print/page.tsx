@@ -96,10 +96,30 @@ const JOB_STATUS_MAP: Record<
   failed: { label: "失敗", variant: "destructive" },
 };
 
+function isAnswerType(pdfType: string) {
+  return pdfType === "answer" || pdfType === "recheck_answer";
+}
+
+function pdfTypeLabel(pdfType: string) {
+  switch (pdfType) {
+    case "answer": return "解答";
+    case "recheck_question": return "リチェック";
+    case "recheck_answer": return "リチェック解答";
+    default: return "問題";
+  }
+}
+
+function pdfTypeBadgeVariant(pdfType: string): "default" | "outline" | "secondary" {
+  if (isAnswerType(pdfType)) return "secondary";
+  if (pdfType === "recheck_question") return "default";
+  return "outline";
+}
+
 type StudentGroup = {
   studentId: string;
   studentName: string;
-  items: QueueItem[];
+  questionItems: QueueItem[];
+  answerItems: QueueItem[];
 };
 
 type PrinterSelectOption = {
@@ -116,6 +136,51 @@ const configuredPrinterValue = (name: string) => `configured:${name}`;
 const discoveredPrinterValue = (uri: string) => `discovered:${uri}`;
 const sanitizePrinterName = (name: string) =>
   name.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+function QueueItemRow({ item, onRemove, onPreview }: {
+  item: QueueItem;
+  onRemove: (id: number) => void;
+  onPreview: (nodeKey: string, pdfType: string) => void;
+}) {
+  return (
+    <TableRow>
+      <TableCell className="text-sm">
+        {item.material_name || item.material_key}
+      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {item.node_name || item.node_key || "-"}
+      </TableCell>
+      <TableCell>
+        <Badge variant={pdfTypeBadgeVariant(item.pdf_type)} className="text-xs">
+          {pdfTypeLabel(item.pdf_type)}
+        </Badge>
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-1">
+          {item.node_key && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-primary"
+              onClick={() => onPreview(item.node_key!, item.pdf_type || "question")}
+              title="プレビュー"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive"
+            onClick={() => onRemove(item.id)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
 
 export default function PrintPage() {
   const queryClient = useQueryClient();
@@ -211,7 +276,9 @@ export default function PrintPage() {
   const effectivePrinter =
     selectedPrinterOption?.printerName || printerData?.default || "";
 
-  // Group queue items by student
+  const [queueFilter, setQueueFilter] = useState<"all" | "questions" | "answers">("all");
+
+  // Group queue items by student, split into question/answer groups
   const groupedQueue = useMemo<StudentGroup[]>(() => {
     if (!items || items.length === 0) return [];
     const map = new Map<string, StudentGroup>();
@@ -221,10 +288,16 @@ export default function PrintPage() {
         map.set(key, {
           studentId: key,
           studentName: item.student_name || key,
-          items: [],
+          questionItems: [],
+          answerItems: [],
         });
       }
-      map.get(key)!.items.push(item);
+      const group = map.get(key)!;
+      if (isAnswerType(item.pdf_type)) {
+        group.answerItems.push(item);
+      } else {
+        group.questionItems.push(item);
+      }
     }
     return Array.from(map.values());
   }, [items]);
@@ -634,6 +707,22 @@ export default function PrintPage() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            <div className="flex items-center gap-1 border rounded-lg p-0.5">
+              {(["all", "questions", "answers"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setQueueFilter(mode)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    queueFilter === mode
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {mode === "all" ? "全て" : mode === "questions" ? "問題" : "解答"}
+                </button>
+              ))}
+            </div>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" variant="outline">
@@ -875,7 +964,7 @@ export default function PrintPage() {
                           {group.studentName}
                         </span>
                         <Badge variant="secondary" className="text-xs">
-                          {group.items.length}件
+                          {group.questionItems.length + group.answerItems.length}件
                         </Badge>
                       </button>
                       <div className="flex items-center gap-1.5 pr-3">
@@ -895,7 +984,7 @@ export default function PrintPage() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>{group.studentName}のキューを削除</AlertDialogTitle>
                               <AlertDialogDescription>
-                                {group.studentName}のキューアイテム{group.items.length}件をすべて削除しますか？
+                                {group.studentName}のキューアイテム{group.questionItems.length + group.answerItems.length}件をすべて削除しますか？
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -929,82 +1018,45 @@ export default function PrintPage() {
                       </div>
                     </div>
 
-                    {/* Queue items */}
+                    {/* Queue items - split into question/answer groups */}
                     {!isCollapsed && (
-                      <CardContent className="p-0">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-muted/10">
-                              <TableHead className="text-xs">教材</TableHead>
-                              <TableHead className="text-xs">範囲</TableHead>
-                              <TableHead className="text-xs w-16">種別</TableHead>
-                              <TableHead className="text-xs w-20">
-                                ステータス
-                              </TableHead>
-                              <TableHead className="w-20"></TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {group.items.map((item) => (
-                              <TableRow key={item.id}>
-                                <TableCell className="text-sm">
-                                  {item.material_name || item.material_key}
-                                </TableCell>
-                                <TableCell className="text-sm text-muted-foreground">
-                                  {item.node_name || item.node_key || "-"}
-                                </TableCell>
-                                <TableCell>
-                                  <Badge
-                                    variant={item.pdf_type === "answer" ? "secondary" : "outline"}
-                                    className="text-xs"
-                                  >
-                                    {item.pdf_type === "answer" ? "解答" : "問題"}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>
-                                  <Badge
-                                    variant={
-                                      item.status === "pending"
-                                        ? "outline"
-                                        : "default"
-                                    }
-                                    className="text-xs"
-                                  >
-                                    {item.status === "pending"
-                                      ? "待機中"
-                                      : item.status}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center gap-1">
-                                    {item.node_key && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                        onClick={() => {
-                                          setPreviewNodeKey(item.node_key!);
-                                          setPreviewPdfType(item.pdf_type || "question");
-                                        }}
-                                        title="プレビュー"
-                                      >
-                                        <Eye className="h-3.5 w-3.5" />
-                                      </Button>
-                                    )}
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7 text-destructive"
-                                      onClick={() => handleRemove(item.id)}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                      <CardContent className="p-0 divide-y divide-border/40">
+                        {(queueFilter === "all" || queueFilter === "questions") && group.questionItems.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 px-4 py-2 bg-blue-50/50 dark:bg-blue-950/20 border-b border-border/30">
+                              <Badge variant="outline" className="text-[10px] font-semibold">問題</Badge>
+                              <span className="text-xs text-muted-foreground">{group.questionItems.length}件</span>
+                            </div>
+                            <Table>
+                              <TableBody>
+                                {group.questionItems.map((item) => (
+                                  <QueueItemRow key={item.id} item={item} onRemove={handleRemove} onPreview={(nodeKey, pdfType) => { setPreviewNodeKey(nodeKey); setPreviewPdfType(pdfType); }} />
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                        {(queueFilter === "all" || queueFilter === "answers") && group.answerItems.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50/50 dark:bg-amber-950/20 border-b border-border/30">
+                              <Badge variant="secondary" className="text-[10px] font-semibold">解答</Badge>
+                              <span className="text-xs text-muted-foreground">{group.answerItems.length}件</span>
+                            </div>
+                            <Table>
+                              <TableBody>
+                                {group.answerItems.map((item) => (
+                                  <QueueItemRow key={item.id} item={item} onRemove={handleRemove} onPreview={(nodeKey, pdfType) => { setPreviewNodeKey(nodeKey); setPreviewPdfType(pdfType); }} />
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                        {((queueFilter === "questions" && group.questionItems.length === 0) ||
+                          (queueFilter === "answers" && group.answerItems.length === 0)) && (
+                          <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                            該当するアイテムがありません
+                          </div>
+                        )}
                       </CardContent>
                     )}
                   </Card>
