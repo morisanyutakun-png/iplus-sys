@@ -227,26 +227,50 @@ async def batch_mastery_input(
                 (n for n in nodes_sorted if n.sort_order == new_pointer), None
             )
             if next_node:
-                # For word test materials, use per-student PDF path
-                gen_pdf = None
+                # For word test materials, use per-student PDF paths (question + answer)
+                gen_q_pdf = None
+                gen_a_pdf = None
                 if rec.material_key.startswith("単語:"):
                     book_name = rec.material_key.removeprefix("単語:")
-                    gen_pdf = f"単語/{book_name}/{rec.student_id}/{next_node.sort_order:03d}.pdf"
+                    gen_q_pdf = f"単語/{book_name}/{rec.student_id}/{next_node.sort_order:03d}_q.pdf"
+                    gen_a_pdf = f"単語/{book_name}/{rec.student_id}/{next_node.sort_order:03d}_a.pdf"
 
+                # Question entry
                 queue_entry = PrintQueue(
                     student_id=rec.student_id,
-                    student_name=None,  # will be filled by display
+                    student_name=None,
                     material_key=rec.material_key,
                     material_name=sm.material.name,
                     node_key=next_node.key,
                     node_name=next_node.title,
                     sort_order=sort_order,
                     status="pending",
-                    generated_pdf=gen_pdf,
+                    generated_pdf=gen_q_pdf,
+                    pdf_type="question",
                 )
                 db.add(queue_entry)
                 sort_order += 1
                 queued_count += 1
+
+                # Answer entry (for word tests or nodes with answer PDF)
+                has_answer = bool(gen_a_pdf) or bool(next_node.answer_pdf_relpath)
+                if has_answer:
+                    answer_entry = PrintQueue(
+                        student_id=rec.student_id,
+                        student_name=None,
+                        material_key=rec.material_key,
+                        material_name=sm.material.name,
+                        node_key=next_node.key,
+                        node_name=next_node.title,
+                        sort_order=sort_order,
+                        status="pending",
+                        generated_pdf=gen_a_pdf,
+                        pdf_type="answer",
+                    )
+                    db.add(answer_entry)
+                    sort_order += 1
+                    queued_count += 1
+
                 queued_node_key = next_node.key
                 queued_node_title = next_node.title
 

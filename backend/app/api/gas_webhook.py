@@ -134,9 +134,9 @@ async def gas_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                     db.add(history)
                     advanced += 1
 
-                    # Queue the next node's PDF
+                    # Queue the next node's PDF (question + answer)
                     next_node = _get_node_at_pointer(mat_obj.nodes, new_pointer)
-                    if next_node and next_node.pdf_relpath:
+                    if next_node and (next_node.pdf_relpath or next_node.answer_pdf_relpath):
                         max_order += 1
                         item = PrintQueue(
                             student_id=student_id,
@@ -153,9 +153,31 @@ async def gas_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                             print_w=print_w,
                             work_title=subject,
                             work_detail=range_text,
+                            pdf_type="question",
                         )
                         db.add(item)
                         added += 1
+                        if next_node.answer_pdf_relpath:
+                            max_order += 1
+                            answer_item = PrintQueue(
+                                student_id=student_id,
+                                student_name=student_name,
+                                material_key=mat_key,
+                                material_name=mat_name,
+                                node_key=next_node.key,
+                                node_name=next_node.title,
+                                sort_order=max_order,
+                                gas_status=status,
+                                gas_today=today if today else None,
+                                gas_due=due if due else None,
+                                print_r=print_r,
+                                print_w=print_w,
+                                work_title=subject,
+                                work_detail=range_text,
+                                pdf_type="answer",
+                            )
+                            db.add(answer_item)
+                            added += 1
             else:
                 # --- FAIL: re-queue current node ---
                 current_node = None
@@ -176,7 +198,7 @@ async def gas_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 db.add(history)
                 retried += 1
 
-                if current_node and current_node.pdf_relpath:
+                if current_node and (current_node.pdf_relpath or current_node.answer_pdf_relpath):
                     max_order += 1
                     item = PrintQueue(
                         student_id=student_id,
@@ -193,9 +215,31 @@ async def gas_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                         print_w=print_w,
                         work_title=subject,
                         work_detail=range_text,
+                        pdf_type="question",
                     )
                     db.add(item)
                     added += 1
+                    if current_node.answer_pdf_relpath:
+                        max_order += 1
+                        answer_item = PrintQueue(
+                            student_id=student_id,
+                            student_name=student_name,
+                            material_key=mat_key,
+                            material_name=mat_name,
+                            node_key=current_node.key,
+                            node_name=current_node.title,
+                            sort_order=max_order,
+                            gas_status=status,
+                            gas_today=today if today else None,
+                            gas_due=due if due else None,
+                            print_r=print_r,
+                            print_w=print_w,
+                            work_title=subject,
+                            work_detail=range_text,
+                            pdf_type="answer",
+                        )
+                        db.add(answer_item)
+                        added += 1
 
     # --- Legacy mode: process works list (unchanged) ---
     if works and not results:

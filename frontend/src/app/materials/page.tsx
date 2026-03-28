@@ -588,6 +588,7 @@ function MaterialCard({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [nodeTitle, setNodeTitle] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [answerPdfFile, setAnswerPdfFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [showNodeList, setShowNodeList] = useState(false);
   const [editingNode, setEditingNode] = useState<MaterialNode | null>(null);
@@ -595,13 +596,14 @@ function MaterialCard({
   const resetForm = () => {
     setNodeTitle("");
     setPdfFile(null);
+    setAnswerPdfFile(null);
     setIsDragging(false);
   };
 
   const handleAddNode = () => {
     if (!nodeTitle.trim()) return;
     addNodeMutation.mutate(
-      { title: nodeTitle.trim(), file: pdfFile || undefined },
+      { title: nodeTitle.trim(), file: pdfFile || undefined, answerFile: answerPdfFile || undefined },
       {
         onSuccess: () => {
           toast.success("範囲を追加しました");
@@ -732,10 +734,10 @@ function MaterialCard({
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-medium">PDF（任意）</label>
+                    <label className="mb-2 block text-sm font-medium">問題PDF（任意）</label>
                     <div
                       className={cn(
-                        "relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-all",
+                        "relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 transition-all",
                         isDragging
                           ? "border-primary bg-primary/5 scale-[1.02]"
                           : pdfFile
@@ -761,11 +763,55 @@ function MaterialCard({
                         </div>
                       ) : (
                         <>
-                          <Upload className="mb-2 h-8 w-8 text-muted-foreground/30" />
-                          <p className="text-sm text-muted-foreground">ドラッグ&ドロップ</p>
-                          <label className="mt-1.5 cursor-pointer text-sm font-medium text-primary hover:underline">
+                          <Upload className="mb-1 h-6 w-6 text-muted-foreground/30" />
+                          <p className="text-xs text-muted-foreground">ドラッグ&ドロップ</p>
+                          <label className="mt-1 cursor-pointer text-xs font-medium text-primary hover:underline">
                             またはファイルを選択
                             <input type="file" accept=".pdf" className="hidden" onChange={handleFileSelect} />
+                          </label>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">解答PDF（任意）</label>
+                    <div
+                      className={cn(
+                        "relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 transition-all",
+                        answerPdfFile
+                          ? "border-amber-400 bg-amber-50/50 dark:bg-amber-950/20"
+                          : "border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/30"
+                      )}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const file = e.dataTransfer.files[0];
+                        if (file?.type === "application/pdf") setAnswerPdfFile(file);
+                      }}
+                    >
+                      {answerPdfFile ? (
+                        <div className="flex items-center gap-2 text-sm">
+                          <FileText className="h-5 w-5 text-amber-600" />
+                          <span className="font-medium">{answerPdfFile.name}</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-xs text-muted-foreground"
+                            onClick={() => setAnswerPdfFile(null)}
+                          >
+                            取消
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <Upload className="mb-1 h-6 w-6 text-muted-foreground/30" />
+                          <p className="text-xs text-muted-foreground">ドラッグ&ドロップ</p>
+                          <label className="mt-1 cursor-pointer text-xs font-medium text-primary hover:underline">
+                            またはファイルを選択
+                            <input type="file" accept=".pdf" className="hidden" onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) setAnswerPdfFile(file);
+                            }} />
                           </label>
                         </>
                       )}
@@ -853,10 +899,10 @@ function MaterialCard({
                     <span className="text-muted-foreground/50 font-mono tabular-nums w-5 text-right shrink-0">
                       {node.sort_order}
                     </span>
-                    <span className={cn(
-                      "h-1.5 w-1.5 rounded-full shrink-0",
-                      node.pdf_relpath ? "bg-emerald-500" : "bg-muted-foreground/25"
-                    )} />
+                    <span className="flex gap-0.5 shrink-0" title={`問:${node.pdf_relpath ? "有" : "無"} 解:${node.answer_pdf_relpath ? "有" : "無"}`}>
+                      <span className={cn("h-1.5 w-1.5 rounded-full", node.pdf_relpath ? "bg-emerald-500" : "bg-muted-foreground/25")} />
+                      <span className={cn("h-1.5 w-1.5 rounded-full", node.answer_pdf_relpath ? "bg-amber-500" : "bg-muted-foreground/25")} />
+                    </span>
                     <span className="font-medium truncate flex-1">{node.title}</span>
                     {node.range_text && node.range_text !== node.title && (
                       <span className="text-muted-foreground truncate max-w-[80px]">{node.range_text}</span>

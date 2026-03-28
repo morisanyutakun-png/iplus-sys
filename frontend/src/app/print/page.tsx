@@ -151,6 +151,7 @@ export default function PrintPage() {
     new Set()
   );
   const [previewNodeKey, setPreviewNodeKey] = useState<string | null>(null);
+  const [previewPdfType, setPreviewPdfType] = useState<string>("question");
   const [discoveredPrinters, setDiscoveredPrinters] = useState<DiscoveredPrinter[]>([]);
   const [ipAddress, setIpAddress] = useState("");
 
@@ -351,14 +352,19 @@ export default function PrintPage() {
       });
   };
 
+  const [autoQueueMode, setAutoQueueMode] = useState<string>("both");
+
   const handleAutoQueueAll = () => {
-    autoQueueMutation.mutate(undefined, {
-      onSuccess: (data) =>
-        toast.success(
-          `${data.students}名の生徒から${data.queued}件をキューに追加しました`
-        ),
-      onError: (err) => toast.error(`エラー: ${err.message}`),
-    });
+    autoQueueMutation.mutate(
+      { printMode: autoQueueMode },
+      {
+        onSuccess: (data) =>
+          toast.success(
+            `${data.students}名の生徒から${data.queued}件をキューに追加しました`
+          ),
+        onError: (err) => toast.error(`エラー: ${err.message}`),
+      }
+    );
   };
 
   const handleRefreshPrinters = () => {
@@ -580,17 +586,29 @@ export default function PrintPage() {
         <TabsContent value="queue" className="space-y-4">
           {/* Toolbar */}
           <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleAutoQueueAll}
-              disabled={autoQueueMutation.isPending}
-            >
-              <Zap className="mr-2 h-4 w-4" />
-              {autoQueueMutation.isPending
-                ? "処理中..."
-                : "全生徒の次回分を自動追加"}
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Select value={autoQueueMode} onValueChange={setAutoQueueMode}>
+                <SelectTrigger className="h-8 w-[120px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="both">問題+解答</SelectItem>
+                  <SelectItem value="questions_only">問題のみ</SelectItem>
+                  <SelectItem value="answers_only">解答のみ</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleAutoQueueAll}
+                disabled={autoQueueMutation.isPending}
+              >
+                <Zap className="mr-2 h-4 w-4" />
+                {autoQueueMutation.isPending
+                  ? "処理中..."
+                  : "全生徒の次回分を自動追加"}
+              </Button>
+            </div>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
@@ -919,6 +937,7 @@ export default function PrintPage() {
                             <TableRow className="bg-muted/10">
                               <TableHead className="text-xs">教材</TableHead>
                               <TableHead className="text-xs">範囲</TableHead>
+                              <TableHead className="text-xs w-16">種別</TableHead>
                               <TableHead className="text-xs w-20">
                                 ステータス
                               </TableHead>
@@ -933,6 +952,14 @@ export default function PrintPage() {
                                 </TableCell>
                                 <TableCell className="text-sm text-muted-foreground">
                                   {item.node_name || item.node_key || "-"}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant={item.pdf_type === "answer" ? "secondary" : "outline"}
+                                    className="text-xs"
+                                  >
+                                    {item.pdf_type === "answer" ? "解答" : "問題"}
+                                  </Badge>
                                 </TableCell>
                                 <TableCell>
                                   <Badge
@@ -955,9 +982,10 @@ export default function PrintPage() {
                                         variant="ghost"
                                         size="icon"
                                         className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                        onClick={() =>
-                                          setPreviewNodeKey(item.node_key!)
-                                        }
+                                        onClick={() => {
+                                          setPreviewNodeKey(item.node_key!);
+                                          setPreviewPdfType(item.pdf_type || "question");
+                                        }}
                                         title="プレビュー"
                                       >
                                         <Eye className="h-3.5 w-3.5" />
@@ -1169,7 +1197,7 @@ export default function PrintPage() {
           </DialogHeader>
           {previewNodeKey && (
             <iframe
-              src={previewUrl(previewNodeKey)}
+              src={previewUrl(previewNodeKey, previewPdfType)}
               className="w-full flex-1 rounded border"
             />
           )}

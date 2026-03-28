@@ -117,6 +117,7 @@ async def add_node(
         title=body.title,
         range_text=body.range_text,
         pdf_relpath=body.pdf_relpath,
+        answer_pdf_relpath=body.answer_pdf_relpath,
         duplex=body.duplex,
         sort_order=max_order + 1,
     )
@@ -131,9 +132,10 @@ async def add_node_simple(
     material_key: str,
     title: str = Form(...),
     file: UploadFile | None = File(None),
+    answer_file: UploadFile | None = File(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Simplified node creation: title + optional PDF upload only.
+    """Simplified node creation: title + optional question/answer PDF uploads.
     Auto-generates node key and handles PDF storage."""
     result = await db.execute(
         select(Material).where(Material.key == material_key)
@@ -154,21 +156,32 @@ async def add_node_simple(
     # Auto-generate node key
     node_key = f"{material_key}:{next_order:03d}"
 
-    # Handle PDF upload
+    subfolder = material_key.replace(":", "/")
+    storage_root = Path(settings.pdf_storage_dir)
+
+    # Handle question PDF upload
     pdf_relpath = ""
     if file and file.filename and file.filename.lower().endswith(".pdf"):
         content = await file.read()
-        # Build subfolder from material key (replace : with /)
-        subfolder = material_key.replace(":", "/")
-        storage_root = Path(settings.pdf_storage_dir)
         target_dir = storage_root / subfolder
         target_dir.mkdir(parents=True, exist_ok=True)
-
         target_file = target_dir / file.filename
         with open(target_file, "wb") as f:
             f.write(content)
         pdf_relpath = str(target_file.relative_to(storage_root))
         await upsert_pdf_blob(db, pdf_relpath, content, file.content_type or "application/pdf")
+
+    # Handle answer PDF upload
+    answer_pdf_relpath = ""
+    if answer_file and answer_file.filename and answer_file.filename.lower().endswith(".pdf"):
+        content = await answer_file.read()
+        target_dir = storage_root / subfolder / "answers"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_file = target_dir / answer_file.filename
+        with open(target_file, "wb") as f:
+            f.write(content)
+        answer_pdf_relpath = str(target_file.relative_to(storage_root))
+        await upsert_pdf_blob(db, answer_pdf_relpath, content, answer_file.content_type or "application/pdf")
 
     node = MaterialNode(
         key=node_key,
@@ -176,6 +189,7 @@ async def add_node_simple(
         title=title.strip(),
         range_text=title.strip(),
         pdf_relpath=pdf_relpath,
+        answer_pdf_relpath=answer_pdf_relpath,
         duplex=False,
         sort_order=next_order,
     )
@@ -204,6 +218,8 @@ async def update_node(
         node.range_text = body.range_text.strip()
     if body.duplex is not None:
         node.duplex = body.duplex
+    if body.answer_pdf_relpath is not None:
+        node.answer_pdf_relpath = body.answer_pdf_relpath
 
     await db.commit()
     await db.refresh(node)

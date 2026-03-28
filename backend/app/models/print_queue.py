@@ -42,6 +42,7 @@ class PrintQueue(Base):
     # Job reference
     generated_job_id: Mapped[str | None] = mapped_column(String, nullable=True)
     generated_pdf: Mapped[str | None] = mapped_column(String, nullable=True)
+    pdf_type: Mapped[str] = mapped_column(String, default="question")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

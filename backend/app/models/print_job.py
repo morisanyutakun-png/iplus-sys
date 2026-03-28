@@ -51,5 +51,6 @@ class PrintJobItem(Base):
     duplex: Mapped[bool] = mapped_column(Boolean, default=False)
     start_on: Mapped[str | None] = mapped_column(String, nullable=True)
     copies: Mapped[int] = mapped_column(Integer, default=1)
+    pdf_type: Mapped[str] = mapped_column(String, default="question")
 
     job: Mapped["PrintJob"] = relationship("PrintJob", back_populates="items")

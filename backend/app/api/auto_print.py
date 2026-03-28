@@ -11,6 +11,7 @@ from app.models.print_queue import PrintQueue
 from app.models.print_log import PrintLog
 from app.schemas.analytics import NextPrintItem, NextPrintsResponse, AutoQueueRequest, AutoQueueResponse
 from app.schemas.progress import PrintLogOut
+from app.services.print_ordering import material_sort_key
 
 router = APIRouter()
 
@@ -35,11 +36,22 @@ def _find_next_nodes(student: Student) -> list[NextPrintItem]:
                     node_key=node.key,
                     node_title=node.title,
                     pdf_relpath=node.pdf_relpath,
+                    answer_pdf_relpath=node.answer_pdf_relpath,
                     duplex=node.duplex,
                     pointer=sm.pointer,
                 ))
                 break
+    # Sort by subject priority
+    items.sort(key=lambda it: material_sort_key(it.material_key, _get_subject(it, student)))
     return items
+
+
+def _get_subject(item: NextPrintItem, student: Student) -> str:
+    """Get the subject for a NextPrintItem from the student's materials."""
+    for sm in student.materials:
+        if sm.material and sm.material.key == item.material_key:
+            return sm.material.subject
+    return "その他"
 
 
 @router.get("/students/{student_id}/next-prints", response_model=NextPrintsResponse)
@@ -65,7 +77,11 @@ async def auto_queue(
     body: AutoQueueRequest = AutoQueueRequest(),
     db: AsyncSession = Depends(get_db),
 ):
-    """Auto-queue next print items for specified students (or all students)."""
+    """Auto-queue next print items for specified students (or all students).
+
+    print_mode: "both" (default), "questions_only", "answers_only"
+    Ordering per student: all questions (by subject), then all answers (by subject).
+    """
     query = select(Student).options(
         selectinload(Student.materials)
         .selectinload(StudentMaterial.material)
@@ -83,25 +99,54 @@ async def auto_queue(
     )
     sort_order = max_order_result.scalar() + 1
 
+    print_mode = body.print_mode or "both"
+
     queued = 0
     student_count = 0
     for student in students:
-        next_items = _find_next_nodes(student)
-        if next_items:
-            student_count += 1
-        for item in next_items:
-            queue_entry = PrintQueue(
-                student_id=item.student_id,
-                student_name=item.student_name,
-                material_key=item.material_key,
-                material_name=item.material_name,
-                node_key=item.node_key,
-                node_name=item.node_title,
-                sort_order=sort_order,
-                status="pending",
-                start_on=None,
-            )
-            db.add(queue_entry)
+        next_items = _find_next_nodes(student)  # already sorted by subject
+        if not next_items:
+            continue
+        student_count += 1
+
+        # Build queue entries: questions first, then answers
+        entries_to_add: list[PrintQueue] = []
+
+        if print_mode in ("both", "questions_only"):
+            for item in next_items:
+                has_question = bool(item.pdf_relpath)
+                if has_question:
+                    entries_to_add.append(PrintQueue(
+                        student_id=item.student_id,
+                        student_name=item.student_name,
+                        material_key=item.material_key,
+                        material_name=item.material_name,
+                        node_key=item.node_key,
+                        node_name=item.node_title,
+                        sort_order=0,  # will be set below
+                        status="pending",
+                        pdf_type="question",
+                    ))
+
+        if print_mode in ("both", "answers_only"):
+            for item in next_items:
+                has_answer = bool(item.answer_pdf_relpath)
+                if has_answer:
+                    entries_to_add.append(PrintQueue(
+                        student_id=item.student_id,
+                        student_name=item.student_name,
+                        material_key=item.material_key,
+                        material_name=item.material_name,
+                        node_key=item.node_key,
+                        node_name=item.node_title,
+                        sort_order=0,
+                        status="pending",
+                        pdf_type="answer",
+                    ))
+
+        for entry in entries_to_add:
+            entry.sort_order = sort_order
+            db.add(entry)
             sort_order += 1
             queued += 1
 

@@ -15,6 +15,7 @@ class PrintJobItemOut(BaseModel):
     pdf_relpath: str | None = None
     missing_pdf: bool = False
     duplex: bool = False
+    pdf_type: str = "question"
 
     model_config = {"from_attributes": True}
 

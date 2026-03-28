@@ -556,21 +556,25 @@ async def set_default_printer(printer_name: str, db: AsyncSession = Depends(get_
 
 
 @router.get("/preview/{node_key}")
-async def preview_pdf(node_key: str, db: AsyncSession = Depends(get_db)):
-    """Serve a PDF file for preview by node_key."""
+async def preview_pdf(node_key: str, pdf_type: str = "question", db: AsyncSession = Depends(get_db)):
+    """Serve a PDF file for preview by node_key. Use ?pdf_type=answer for answer PDF."""
     from fastapi.responses import FileResponse
 
     result = await db.execute(
         select(MaterialNode).where(MaterialNode.key == node_key)
     )
     node = result.scalars().first()
-    if not node or not node.pdf_relpath:
+    if not node:
         raise HTTPException(status_code=404, detail="PDFが見つかりません")
-    resolved = await resolve_pdf_for_reading(db, node.pdf_relpath)
+
+    relpath = node.answer_pdf_relpath if pdf_type == "answer" else node.pdf_relpath
+    if not relpath:
+        raise HTTPException(status_code=404, detail="PDFが見つかりません")
+    resolved = await resolve_pdf_for_reading(db, relpath)
     if not resolved:
         raise HTTPException(
             status_code=404,
-            detail=f"PDFファイルが存在しません: {node.pdf_relpath}",
+            detail=f"PDFファイルが存在しません: {relpath}",
         )
     return FileResponse(resolved, media_type="application/pdf")
 
@@ -631,7 +635,10 @@ async def prepare_job(db: AsyncSession = Depends(get_db)):
             )
             node = result.scalars().first()
             if node:
-                pdf_relpath = qi.generated_pdf or node.pdf_relpath
+                if qi.pdf_type == "answer":
+                    pdf_relpath = qi.generated_pdf or node.answer_pdf_relpath
+                else:
+                    pdf_relpath = qi.generated_pdf or node.pdf_relpath
                 duplex = node.duplex
                 range_text = node.range_text
 
@@ -656,6 +663,7 @@ async def prepare_job(db: AsyncSession = Depends(get_db)):
             range_text=range_text,
             duplex=duplex,
             start_on=start_on,
+            pdf_type=qi.pdf_type,
         ))
 
     job = PrintJob(
@@ -732,6 +740,7 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
 
     job_items: list[PrintJobItem] = []
     queue_ids: list[int] = []
+    queue_pdf_types: list[str] = []
     missing_count = 0
 
     for idx, qi in enumerate(queue_items):
@@ -746,7 +755,10 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
             )
             node = node_result.scalars().first()
             if node:
-                pdf_relpath = qi.generated_pdf or node.pdf_relpath
+                if qi.pdf_type == "answer":
+                    pdf_relpath = qi.generated_pdf or node.answer_pdf_relpath
+                else:
+                    pdf_relpath = qi.generated_pdf or node.pdf_relpath
                 duplex = node.duplex
                 range_text = node.range_text
 
@@ -770,8 +782,10 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
             range_text=range_text,
             duplex=duplex,
             start_on=start_on,
+            pdf_type=qi.pdf_type,
         ))
         queue_ids.append(qi.id)
+        queue_pdf_types.append(qi.pdf_type)
 
     job_status = "queued" if use_agent else "created"
     job = PrintJob(
@@ -795,6 +809,13 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
 
     if use_agent:
         return {"job_id": job_id, "status": "queued", "item_count": len(job_items), "missing": missing_count}
+
+    # Build a set of (student_id, material_key, node_key) that have an answer item
+    # so we know to skip pointer advancement on the question item
+    answer_keys = set()
+    for qi in queue_items:
+        if qi.pdf_type == "answer":
+            answer_keys.add((qi.student_id, qi.material_key, qi.node_key))
 
     # Legacy direct-print path
     results = []
@@ -833,30 +854,39 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
 
         if success:
             success_ids.append(queue_ids[idx])
-            sm_result = await db.execute(
-                select(StudentMaterial).where(
-                    StudentMaterial.student_id == item.student_id,
-                    StudentMaterial.material_key == item.material_key,
+            # Only advance pointer on the last item for this node
+            # If both question+answer exist, advance on answer only
+            item_pdf_type = queue_pdf_types[idx]
+            should_advance = True
+            if item_pdf_type == "question" and (item.student_id, item.material_key, item.node_key) in answer_keys:
+                should_advance = False  # will advance when answer prints
+
+            if should_advance:
+                sm_result = await db.execute(
+                    select(StudentMaterial).where(
+                        StudentMaterial.student_id == item.student_id,
+                        StudentMaterial.material_key == item.material_key,
+                    )
                 )
-            )
-            sm = sm_result.scalars().first()
-            if sm:
-                old_pointer = sm.pointer
-                sm.pointer = old_pointer + 1
-                history = ProgressHistory(
-                    student_id=item.student_id,
-                    material_key=item.material_key,
-                    node_key=item.node_key,
-                    action="print",
-                    old_pointer=old_pointer,
-                    new_pointer=old_pointer + 1,
-                )
-                db.add(history)
+                sm = sm_result.scalars().first()
+                if sm:
+                    old_pointer = sm.pointer
+                    sm.pointer = old_pointer + 1
+                    history = ProgressHistory(
+                        student_id=item.student_id,
+                        material_key=item.material_key,
+                        node_key=item.node_key,
+                        action="print",
+                        old_pointer=old_pointer,
+                        new_pointer=old_pointer + 1,
+                    )
+                    db.add(history)
 
         results.append({
             "student": item.student_name,
             "material": item.material_name,
             "node": item.node_name,
+            "pdf_type": queue_pdf_types[idx],
             "success": success,
             "message": message,
         })
@@ -901,6 +931,7 @@ async def agent_poll(limit: int = 5, db: AsyncSession = Depends(get_db)):
                 "pdf_relpath": item.pdf_relpath,
                 "duplex": item.duplex,
                 "range_text": item.range_text,
+                "pdf_type": item.pdf_type,
             })
         payload.append({
             "job_id": job.id,
@@ -924,6 +955,12 @@ async def agent_ack(body: AgentAckRequest, db: AsyncSession = Depends(get_db)):
 
     items_by_id = {item.id: item for item in job.items}
 
+    # Build set of (student_id, material_key, node_key) that have answer items
+    answer_keys = set()
+    for item in job.items:
+        if item.pdf_type == "answer":
+            answer_keys.add((item.student_id, item.material_key, item.node_key))
+
     for res in body.results:
         item = items_by_id.get(res.item_id)
         if not item:
@@ -943,25 +980,31 @@ async def agent_ack(body: AgentAckRequest, db: AsyncSession = Depends(get_db)):
         db.add(log_entry)
 
         if res.success:
-            sm_result = await db.execute(
-                select(StudentMaterial).where(
-                    StudentMaterial.student_id == item.student_id,
-                    StudentMaterial.material_key == item.material_key,
+            # Only advance pointer on the last item for this node
+            should_advance = True
+            if item.pdf_type == "question" and (item.student_id, item.material_key, item.node_key) in answer_keys:
+                should_advance = False
+
+            if should_advance:
+                sm_result = await db.execute(
+                    select(StudentMaterial).where(
+                        StudentMaterial.student_id == item.student_id,
+                        StudentMaterial.material_key == item.material_key,
+                    )
                 )
-            )
-            sm = sm_result.scalars().first()
-            if sm:
-                old_pointer = sm.pointer
-                sm.pointer = old_pointer + 1
-                history = ProgressHistory(
-                    student_id=item.student_id,
-                    material_key=item.material_key,
-                    node_key=item.node_key,
-                    action="print",
-                    old_pointer=old_pointer,
-                    new_pointer=old_pointer + 1,
-                )
-                db.add(history)
+                sm = sm_result.scalars().first()
+                if sm:
+                    old_pointer = sm.pointer
+                    sm.pointer = old_pointer + 1
+                    history = ProgressHistory(
+                        student_id=item.student_id,
+                        material_key=item.material_key,
+                        node_key=item.node_key,
+                        action="print",
+                        old_pointer=old_pointer,
+                        new_pointer=old_pointer + 1,
+                    )
+                    db.add(history)
 
     await db.execute(
         delete(PrintQueue).where(PrintQueue.generated_job_id == job.id)

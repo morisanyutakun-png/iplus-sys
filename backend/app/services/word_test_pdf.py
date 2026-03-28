@@ -112,6 +112,44 @@ def _choose_font_and_wrap(
 
 # ── Public API ──
 
+def _prepare_words(
+    new_words: list[tuple[int, str, str]],
+    review_words: list[tuple[int, str, str]] | None,
+    questions_per_test: int,
+    rows_per_side: int,
+) -> tuple[list[tuple[int, str, str]], list[tuple[int, str, str]], str, str, bool]:
+    """Prepare and shuffle words for PDF generation. Returns (left_words, right_words, left_label, right_label, has_review)."""
+    rps = max(1, rows_per_side)
+    qpt = min(questions_per_test, rps)
+
+    has_review = bool(review_words)
+
+    sampled_new = list(new_words)
+    random.shuffle(sampled_new)
+    sampled_new = sampled_new[:qpt]
+
+    if has_review:
+        sampled_review = list(review_words)
+        random.shuffle(sampled_review)
+        sampled_review = sampled_review[:qpt]
+    else:
+        sampled_review = []
+
+    if has_review:
+        left_words = sampled_review
+        right_words = sampled_new
+    else:
+        left_words = sampled_new
+        right_words = []
+
+    while len(left_words) < rps:
+        left_words.append((0, "", ""))
+    while len(right_words) < rps:
+        right_words.append((0, "", ""))
+
+    return left_words, right_words, has_review
+
+
 def generate_word_test_pdf(
     output_path: Path,
     title: str,
@@ -128,48 +166,15 @@ def generate_word_test_pdf(
     Layout:
     - With review: LEFT = review, RIGHT = new
     - Without review (first range): LEFT = new, RIGHT = empty
-
-    Args:
-        rows_per_side: Number of rows per side (30 or 50).
-        questions_per_test: Max questions per side (capped at rows_per_side).
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-
     rps = max(1, rows_per_side)
-    qpt = min(questions_per_test, rps)
 
-    has_review = bool(review_words)
-
-    # Prepare new words (shuffled, sampled to qpt)
-    sampled_new = list(new_words)
-    random.shuffle(sampled_new)
-    sampled_new = sampled_new[:qpt]
-
-    # Prepare review words (shuffled, sampled to qpt)
-    if has_review:
-        sampled_review = list(review_words)
-        random.shuffle(sampled_review)
-        sampled_review = sampled_review[:qpt]
-    else:
-        sampled_review = []
-
-    # Assign sides: with review → left=review, right=new; without → left=new, right=empty
-    if has_review:
-        left_words = sampled_review
-        right_words = sampled_new
-        left_label = review_range_label
-        right_label = new_range_label
-    else:
-        left_words = sampled_new
-        right_words = []
-        left_label = new_range_label
-        right_label = ""
-
-    # Pad both sides to exactly rps
-    while len(left_words) < rps:
-        left_words.append((0, "", ""))
-    while len(right_words) < rps:
-        right_words.append((0, "", ""))
+    left_words, right_words, has_review = _prepare_words(
+        new_words, review_words, questions_per_test, rps,
+    )
+    left_label = review_range_label if has_review else new_range_label
+    right_label = new_range_label if has_review else ""
 
     c = Canvas(str(output_path), pagesize=A4)
 
@@ -191,6 +196,57 @@ def generate_word_test_pdf(
 
     c.save()
     return output_path
+
+
+def generate_word_test_pdfs(
+    question_output_path: Path,
+    answer_output_path: Path,
+    title: str,
+    new_words: list[tuple[int, str, str]],
+    review_words: list[tuple[int, str, str]] | None = None,
+    student_name: str | None = None,
+    new_range_label: str = "",
+    review_range_label: str = "",
+    questions_per_test: int = 50,
+    rows_per_side: int = 50,
+) -> tuple[Path, Path]:
+    """Generate two separate PDFs: question PDF and answer PDF.
+
+    Returns (question_path, answer_path).
+    """
+    question_output_path.parent.mkdir(parents=True, exist_ok=True)
+    answer_output_path.parent.mkdir(parents=True, exist_ok=True)
+    rps = max(1, rows_per_side)
+
+    left_words, right_words, has_review = _prepare_words(
+        new_words, review_words, questions_per_test, rps,
+    )
+    left_label = review_range_label if has_review else new_range_label
+    right_label = new_range_label if has_review else ""
+
+    # Question PDF
+    cq = Canvas(str(question_output_path), pagesize=A4)
+    _draw_page(
+        cq, title, left_words, right_words,
+        show_answers=False, student_name=student_name,
+        left_label=left_label, right_label=right_label,
+        rows_per_side=rps,
+    )
+    cq.showPage()
+    cq.save()
+
+    # Answer PDF
+    ca = Canvas(str(answer_output_path), pagesize=A4)
+    _draw_page(
+        ca, title, left_words, right_words,
+        show_answers=True, student_name=student_name,
+        left_label=left_label, right_label=right_label,
+        rows_per_side=rps,
+    )
+    ca.showPage()
+    ca.save()
+
+    return question_output_path, answer_output_path
 
 
 # ── Internal drawing ──

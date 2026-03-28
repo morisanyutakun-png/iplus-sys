@@ -17,6 +17,7 @@ export function useAddToQueue() {
       student_id: string;
       material_key: string;
       node_key?: string;
+      pdf_type?: string;
     }) =>
       apiFetch("/api/queue", {
         method: "POST",
@@ -167,6 +168,6 @@ export function useRegisterPrinter() {
   });
 }
 
-export function previewUrl(nodeKey: string): string {
-  return apiUrl(`/api/jobs/preview/${encodeURIComponent(nodeKey)}`);
+export function previewUrl(nodeKey: string, pdfType: string = "question"): string {
+  return apiUrl(`/api/jobs/preview/${encodeURIComponent(nodeKey)}?pdf_type=${pdfType}`);
 }

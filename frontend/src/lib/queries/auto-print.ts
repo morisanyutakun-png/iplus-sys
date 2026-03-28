@@ -17,10 +17,13 @@ export function useNextPrints(studentId: string) {
 export function useAutoQueue() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (studentIds?: string[]) =>
+    mutationFn: (params?: { studentIds?: string[]; printMode?: string }) =>
       apiFetch<{ queued: number; students: number }>("/api/print/auto-queue", {
         method: "POST",
-        body: JSON.stringify({ student_ids: studentIds ?? null }),
+        body: JSON.stringify({
+          student_ids: params?.studentIds ?? null,
+          print_mode: params?.printMode ?? "both",
+        }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["queue"] });

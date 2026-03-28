@@ -15,7 +15,7 @@ from app.config import settings
 from app.models.material import MaterialNode
 from app.models.word_test import WordBook, Word
 from app.services.pdf_store import upsert_pdf_blob
-from app.services.word_test_pdf import generate_word_test_pdf
+from app.services.word_test_pdf import generate_word_test_pdf, generate_word_test_pdfs
 
 
 async def generate_student_pdfs(
@@ -27,14 +27,14 @@ async def generate_student_pdfs(
     end_node: int | None = None,
     questions_per_test: int = 50,
     rows_per_side: int = 50,
-) -> list[tuple[str, str]]:
+) -> list[tuple[str, str, str]]:
     """Generate randomized PDFs for nodes of a word-test material.
 
     Args:
         start_node: sort_order of first node to generate (inclusive). None = all.
         end_node: sort_order of last node to generate (inclusive). None = all.
 
-    Returns list of (node_key, pdf_relpath) tuples.
+    Returns list of (node_key, question_pdf_relpath, answer_pdf_relpath) tuples.
     """
     book_name = material_key.removeprefix("単語:")
 
@@ -66,7 +66,7 @@ async def generate_student_pdfs(
     if not nodes:
         return []
 
-    generated: list[tuple[str, str]] = []
+    generated: list[tuple[str, str, str]] = []
     previous_words: list[tuple[int, str, str]] = []
 
     for node in nodes:
@@ -100,15 +100,17 @@ async def generate_student_pdfs(
                 review_words = random.sample(
                     previous_words, min(questions_per_test, len(previous_words))
                 )
-                # Determine review range extent (No.1 ~ last previous end)
                 prev_end = max(w[0] for w in previous_words)
                 review_range_label = f"復習 No.1〜{prev_end}"
 
-            pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
-            pdf_path = Path(settings.pdf_storage_dir) / pdf_relpath
+            q_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}_q.pdf"
+            a_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}_a.pdf"
+            q_path = Path(settings.pdf_storage_dir) / q_relpath
+            a_path = Path(settings.pdf_storage_dir) / a_relpath
 
-            generate_word_test_pdf(
-                output_path=pdf_path,
+            generate_word_test_pdfs(
+                question_output_path=q_path,
+                answer_output_path=a_path,
                 title=f"{book_name} {node.title}",
                 new_words=current_word_tuples,
                 review_words=review_words,
@@ -118,9 +120,10 @@ async def generate_student_pdfs(
                 questions_per_test=questions_per_test,
                 rows_per_side=rows_per_side,
             )
-            await upsert_pdf_blob(db, pdf_relpath, pdf_path.read_bytes())
+            await upsert_pdf_blob(db, q_relpath, q_path.read_bytes())
+            await upsert_pdf_blob(db, a_relpath, a_path.read_bytes())
 
-            generated.append((node.key, pdf_relpath))
+            generated.append((node.key, q_relpath, a_relpath))
 
         # Always accumulate for future review (even if not in generation range)
         previous_words.extend(current_word_tuples)

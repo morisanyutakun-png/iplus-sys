@@ -228,8 +228,11 @@ async def toggle_material(
                 material = mat.scalars().first()
                 if material and material.nodes:
                     first_node = sorted(material.nodes, key=lambda n: n.sort_order)[0]
-                    first_pdf = next(
-                        (p for k, p in pdf_list if k == first_node.key), ""
+                    first_q = next(
+                        (q for k, q, a in pdf_list if k == first_node.key), ""
+                    )
+                    first_a = next(
+                        (a for k, q, a in pdf_list if k == first_node.key), ""
                     )
                     db.add(PrintQueue(
                         student_id=student_id,
@@ -238,10 +241,24 @@ async def toggle_material(
                         material_name=material.name,
                         node_key=first_node.key,
                         node_name=first_node.title,
-                        generated_pdf=first_pdf,
+                        generated_pdf=first_q,
                         sort_order=0,
                         status="pending",
+                        pdf_type="question",
                     ))
+                    if first_a:
+                        db.add(PrintQueue(
+                            student_id=student_id,
+                            student_name=student.name if student else None,
+                            material_key=material_key,
+                            material_name=material.name,
+                            node_key=first_node.key,
+                            node_name=first_node.title,
+                            generated_pdf=first_a,
+                            sort_order=1,
+                            status="pending",
+                            pdf_type="answer",
+                        ))
 
             await db.commit()
             return {"status": "assigned"}
@@ -401,10 +418,11 @@ async def assign_word_test(
     db.add(sm)
     db.add(history)
 
-    # Queue first node
+    # Queue first node (question + answer)
     first_node = next((n for n in all_nodes if n.sort_order == start_node), None)
     if first_node:
-        first_pdf = next((p for k, p in pdf_list if k == first_node.key), "")
+        first_q = next((q for k, q, a in pdf_list if k == first_node.key), "")
+        first_a = next((a for k, q, a in pdf_list if k == first_node.key), "")
         db.add(PrintQueue(
             student_id=student_id,
             student_name=student.name,
@@ -412,10 +430,24 @@ async def assign_word_test(
             material_name=f"単語テスト:{book.name}",
             node_key=first_node.key,
             node_name=first_node.title,
-            generated_pdf=first_pdf,
+            generated_pdf=first_q,
             sort_order=0,
             status="pending",
+            pdf_type="question",
         ))
+        if first_a:
+            db.add(PrintQueue(
+                student_id=student_id,
+                student_name=student.name,
+                material_key=material_key,
+                material_name=f"単語テスト:{book.name}",
+                node_key=first_node.key,
+                node_name=first_node.title,
+                generated_pdf=first_a,
+                sort_order=1,
+                status="pending",
+                pdf_type="answer",
+            ))
 
     await db.commit()
     return {

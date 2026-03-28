@@ -20,6 +20,7 @@ export interface MaterialNode {
   title: string;
   range_text: string;
   pdf_relpath: string;
+  answer_pdf_relpath: string;
   duplex: boolean;
   sort_order: number;
 }
@@ -44,6 +45,7 @@ export interface QueueItem {
   node_name?: string;
   sort_order: number;
   status: string;
+  pdf_type: string;
   scheduled_at?: string;
   created_at: string;
 }
@@ -60,6 +62,7 @@ export interface PrintJobItem {
   pdf_relpath?: string;
   missing_pdf: boolean;
   duplex: boolean;
+  pdf_type: string;
 }
 
 export interface PrintJob {
@@ -239,6 +242,7 @@ export interface NextPrintItem {
   node_key: string;
   node_title: string;
   pdf_relpath: string;
+  answer_pdf_relpath: string;
   duplex: boolean;
   pointer: number;
 }

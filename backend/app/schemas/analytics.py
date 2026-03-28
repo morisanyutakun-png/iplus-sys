@@ -11,6 +11,7 @@ class NextPrintItem(BaseModel):
     node_key: str
     node_title: str
     pdf_relpath: str
+    answer_pdf_relpath: str = ""
     duplex: bool
     pointer: int
 
@@ -21,6 +22,7 @@ class NextPrintsResponse(BaseModel):
 
 class AutoQueueRequest(BaseModel):
     student_ids: list[str] | None = None
+    print_mode: str = "both"  # "questions_only", "answers_only", "both"
 
 
 class AutoQueueResponse(BaseModel):

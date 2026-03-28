@@ -65,6 +65,7 @@ async def add_to_queue(body: QueueItemCreate, db: AsyncSession = Depends(get_db)
         node_key=body.node_key,
         node_name=node_name,
         sort_order=max_order + 1,
+        pdf_type=body.pdf_type,
     )
     db.add(item)
     await db.commit()

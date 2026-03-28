@@ -13,6 +13,7 @@ class QueueItemOut(BaseModel):
     node_name: str | None = None
     sort_order: int
     status: str
+    pdf_type: str = "question"
     scheduled_at: datetime | None = None
     created_at: datetime
 
@@ -23,6 +24,7 @@ class QueueItemCreate(BaseModel):
     student_id: str
     material_key: str
     node_key: str | None = None
+    pdf_type: str = "question"
 
 
 class QueueItemUpdate(BaseModel):
