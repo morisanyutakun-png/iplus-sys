@@ -8,9 +8,11 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.lesson_record import LessonRecord
+from app.models.student import Student
 from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
 from app.models.material import Material, MaterialNode
 from app.models.print_queue import PrintQueue
+from app.services.word_test_material import regenerate_node_pdfs
 from app.schemas.lesson_record import (
     LessonRecordOut,
     LessonRecordBatchRequest,
@@ -230,14 +232,30 @@ async def batch_mastery_input(
                 # For word test materials, use per-student PDF paths (question + answer)
                 gen_q_pdf = None
                 gen_a_pdf = None
-                if rec.material_key.startswith("単語:"):
+                is_word_test = rec.material_key.startswith("単語:")
+                is_word_test_recheck = is_word_test and not did_advance
+
+                if is_word_test_recheck:
+                    # Dynamically regenerate PDFs with new random questions for retry
+                    student_result = await db.execute(
+                        select(Student.name).where(Student.id == rec.student_id)
+                    )
+                    student_name = (student_result.scalar() or rec.student_id)
+                    regen = await regenerate_node_pdfs(
+                        db, rec.student_id, student_name,
+                        rec.material_key, next_node,
+                    )
+                    if regen:
+                        gen_q_pdf, gen_a_pdf = regen
+                elif is_word_test:
                     book_name = rec.material_key.removeprefix("単語:")
                     gen_q_pdf = f"単語/{book_name}/{rec.student_id}/{next_node.sort_order:03d}_q.pdf"
                     gen_a_pdf = f"単語/{book_name}/{rec.student_id}/{next_node.sort_order:03d}_a.pdf"
 
                 # Determine if we should use recheck PDFs
                 # Use recheck when: retry (not advance) and recheck PDF exists for this node
-                use_recheck = not did_advance and bool(next_node.recheck_pdf_relpath)
+                # For word tests, recheck is handled by regenerating PDFs above
+                use_recheck = not did_advance and not is_word_test and bool(next_node.recheck_pdf_relpath)
 
                 # Question entry
                 queue_entry = PrintQueue(
@@ -246,7 +264,7 @@ async def batch_mastery_input(
                     material_key=rec.material_key,
                     material_name=sm.material.name,
                     node_key=next_node.key,
-                    node_name=next_node.title + ("\uff08\u30ea\u30c1\u30a7\u30c3\u30af\uff09" if use_recheck else ""),
+                    node_name=next_node.title + ("（リチェック）" if use_recheck or is_word_test_recheck else ""),
                     sort_order=sort_order,
                     status="pending",
                     generated_pdf=gen_q_pdf,
@@ -268,7 +286,7 @@ async def batch_mastery_input(
                         material_key=rec.material_key,
                         material_name=sm.material.name,
                         node_key=next_node.key,
-                        node_name=next_node.title + ("\uff08\u30ea\u30c1\u30a7\u30c3\u30af\uff09" if use_recheck else ""),
+                        node_name=next_node.title + ("（リチェック）" if use_recheck or is_word_test_recheck else ""),
                         sort_order=sort_order,
                         status="pending",
                         generated_pdf=gen_a_pdf if not use_recheck else None,

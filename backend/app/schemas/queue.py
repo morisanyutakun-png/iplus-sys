@@ -14,6 +14,7 @@ class QueueItemOut(BaseModel):
     sort_order: int
     status: str
     pdf_type: str = "question"
+    generated_pdf: str | None = None
     scheduled_at: datetime | None = None
     created_at: datetime
 

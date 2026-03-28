@@ -175,3 +175,7 @@ export function useRegisterPrinter() {
 export function previewUrl(nodeKey: string, pdfType: string = "question"): string {
   return apiUrl(`/api/jobs/preview/${encodeURIComponent(nodeKey)}?pdf_type=${pdfType}`);
 }
+
+export function previewQueueItemUrl(itemId: number): string {
+  return apiUrl(`/api/jobs/preview/queue/${itemId}`);
+}

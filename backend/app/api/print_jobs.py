@@ -555,6 +555,48 @@ async def set_default_printer(printer_name: str, db: AsyncSession = Depends(get_
     return {"status": "ok", "default": printer_name}
 
 
+@router.get("/preview/queue/{item_id}")
+async def preview_queue_item_pdf(item_id: int, db: AsyncSession = Depends(get_db)):
+    """Serve a PDF preview for a specific queue item (supports generated_pdf for word tests)."""
+    from fastapi.responses import FileResponse
+
+    result = await db.execute(
+        select(PrintQueue).where(PrintQueue.id == item_id)
+    )
+    qi = result.scalars().first()
+    if not qi:
+        raise HTTPException(status_code=404, detail="キューアイテムが見つかりません")
+
+    # Try generated_pdf first (word tests), then fall back to node-based lookup
+    relpath = None
+    if qi.generated_pdf:
+        relpath = qi.generated_pdf
+    elif qi.node_key:
+        node_result = await db.execute(
+            select(MaterialNode).where(MaterialNode.key == qi.node_key)
+        )
+        node = node_result.scalars().first()
+        if node:
+            if qi.pdf_type == "recheck_question":
+                relpath = node.recheck_pdf_relpath
+            elif qi.pdf_type == "recheck_answer":
+                relpath = node.recheck_answer_pdf_relpath
+            elif qi.pdf_type == "answer":
+                relpath = node.answer_pdf_relpath
+            else:
+                relpath = node.pdf_relpath
+
+    if not relpath:
+        raise HTTPException(status_code=404, detail="PDFが見つかりません")
+    resolved = await resolve_pdf_for_reading(db, relpath)
+    if not resolved:
+        raise HTTPException(
+            status_code=404,
+            detail=f"PDFファイルが存在しません: {relpath}",
+        )
+    return FileResponse(resolved, media_type="application/pdf")
+
+
 @router.get("/preview/{node_key}")
 async def preview_pdf(node_key: str, pdf_type: str = "question", db: AsyncSession = Depends(get_db)):
     """Serve a PDF file for preview by node_key. Use ?pdf_type=answer for answer PDF."""

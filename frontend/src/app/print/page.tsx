@@ -16,6 +16,7 @@ import {
   useDiscoverPrinters,
   useRegisterPrinter,
   previewUrl,
+  previewQueueItemUrl,
 } from "@/lib/queries/queue";
 import type { DiscoveredPrinter } from "@/lib/queries/queue";
 import { useStudents } from "@/lib/queries/students";
@@ -143,7 +144,7 @@ const sanitizePrinterName = (name: string) =>
 function QueueItemRow({ item, onRemove, onPreview }: {
   item: QueueItem;
   onRemove: (id: number) => void;
-  onPreview: (nodeKey: string, pdfType: string) => void;
+  onPreview: (item: QueueItem) => void;
 }) {
   return (
     <TableRow>
@@ -160,12 +161,12 @@ function QueueItemRow({ item, onRemove, onPreview }: {
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-1">
-          {item.node_key && (
+          {(item.node_key || item.generated_pdf) && (
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-primary"
-              onClick={() => onPreview(item.node_key!, item.pdf_type || "question")}
+              onClick={() => onPreview(item)}
               title="プレビュー"
             >
               <Eye className="h-3.5 w-3.5" />
@@ -220,6 +221,7 @@ export default function PrintPage() {
   );
   const [previewNodeKey, setPreviewNodeKey] = useState<string | null>(null);
   const [previewPdfType, setPreviewPdfType] = useState<string>("question");
+  const [previewQueueItemId, setPreviewQueueItemId] = useState<number | null>(null);
   const [discoveredPrinters, setDiscoveredPrinters] = useState<DiscoveredPrinter[]>([]);
   const [ipAddress, setIpAddress] = useState("");
 
@@ -1056,7 +1058,7 @@ export default function PrintPage() {
                             <Table>
                               <TableBody>
                                 {group.questionItems.map((item) => (
-                                  <QueueItemRow key={item.id} item={item} onRemove={handleRemove} onPreview={(nodeKey, pdfType) => { setPreviewNodeKey(nodeKey); setPreviewPdfType(pdfType); }} />
+                                  <QueueItemRow key={item.id} item={item} onRemove={handleRemove} onPreview={(qi) => { if (qi.generated_pdf) { setPreviewQueueItemId(qi.id); } else { setPreviewNodeKey(qi.node_key!); setPreviewPdfType(qi.pdf_type || "question"); } }} />
                                 ))}
                               </TableBody>
                             </Table>
@@ -1090,7 +1092,7 @@ export default function PrintPage() {
                             <Table>
                               <TableBody>
                                 {group.answerItems.map((item) => (
-                                  <QueueItemRow key={item.id} item={item} onRemove={handleRemove} onPreview={(nodeKey, pdfType) => { setPreviewNodeKey(nodeKey); setPreviewPdfType(pdfType); }} />
+                                  <QueueItemRow key={item.id} item={item} onRemove={handleRemove} onPreview={(qi) => { if (qi.generated_pdf) { setPreviewQueueItemId(qi.id); } else { setPreviewNodeKey(qi.node_key!); setPreviewPdfType(qi.pdf_type || "question"); } }} />
                                 ))}
                               </TableBody>
                             </Table>
@@ -1285,16 +1287,24 @@ export default function PrintPage() {
 
       {/* ─── PDF Preview Dialog ─── */}
       <Dialog
-        open={!!previewNodeKey}
-        onOpenChange={(open) => !open && setPreviewNodeKey(null)}
+        open={!!(previewNodeKey || previewQueueItemId)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewNodeKey(null);
+            setPreviewQueueItemId(null);
+          }
+        }}
       >
         <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>PDF プレビュー</DialogTitle>
+            <DialogTitle>PDF プレビ���ー</DialogTitle>
           </DialogHeader>
-          {previewNodeKey && (
+          {(previewNodeKey || previewQueueItemId) && (
             <iframe
-              src={previewUrl(previewNodeKey, previewPdfType)}
+              src={previewQueueItemId
+                ? previewQueueItemUrl(previewQueueItemId)
+                : previewUrl(previewNodeKey!, previewPdfType)
+              }
               className="w-full flex-1 rounded border"
             />
           )}

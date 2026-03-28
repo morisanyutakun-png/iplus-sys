@@ -131,6 +131,101 @@ async def generate_student_pdfs(
     return generated
 
 
+async def regenerate_node_pdfs(
+    db: AsyncSession,
+    student_id: str,
+    student_name: str,
+    material_key: str,
+    target_node: "MaterialNode",
+    questions_per_test: int = 50,
+    rows_per_side: int = 50,
+) -> tuple[str, str] | None:
+    """Regenerate randomized PDFs for a single node (recheck / retry).
+
+    Generates new questions with different random sampling for the same word range.
+    Returns (question_relpath, answer_relpath) or None on failure.
+    """
+    book_name = material_key.removeprefix("単語:")
+
+    result = await db.execute(
+        select(WordBook).where(WordBook.name == book_name)
+    )
+    book = result.scalars().first()
+    if not book:
+        return None
+
+    words_result = await db.execute(
+        select(Word)
+        .where(Word.word_book_id == book.id)
+        .order_by(Word.word_number)
+    )
+    all_words = words_result.scalars().all()
+    if not all_words:
+        return None
+
+    # Load all nodes up to and including target to accumulate review words
+    stmt = (
+        select(MaterialNode)
+        .where(MaterialNode.material_key == material_key)
+        .where(MaterialNode.sort_order <= target_node.sort_order)
+        .order_by(MaterialNode.sort_order)
+    )
+    nodes = (await db.execute(stmt)).scalars().all()
+
+    previous_words: list[tuple[int, str, str]] = []
+    current_word_tuples: list[tuple[int, str, str]] = []
+
+    for node in nodes:
+        s, e = _parse_range(node.range_text)
+        if s is None or e is None:
+            continue
+        word_tuples = [
+            (w.word_number, w.question, w.answer)
+            for w in all_words
+            if s <= w.word_number <= e
+        ]
+        if node.sort_order == target_node.sort_order:
+            current_word_tuples = word_tuples
+        else:
+            previous_words.extend(word_tuples)
+
+    if not current_word_tuples:
+        return None
+
+    review_words = None
+    review_range_label = ""
+    if previous_words:
+        review_words = random.sample(
+            previous_words, min(questions_per_test, len(previous_words))
+        )
+        prev_end = max(w[0] for w in previous_words)
+        review_range_label = f"復習 No.1〜{prev_end}"
+
+    s, e = _parse_range(target_node.range_text)
+
+    q_relpath = f"単語/{book_name}/{student_id}/{target_node.sort_order:03d}_q.pdf"
+    a_relpath = f"単語/{book_name}/{student_id}/{target_node.sort_order:03d}_a.pdf"
+    q_path = Path(settings.pdf_storage_dir) / q_relpath
+    a_path = Path(settings.pdf_storage_dir) / a_relpath
+
+    generate_word_test_pdfs(
+        question_output_path=q_path,
+        answer_output_path=a_path,
+        title=f"{book_name} {target_node.title}（リチェック）",
+        new_words=current_word_tuples,
+        review_words=review_words,
+        student_name=student_name,
+        new_range_label=f"No.{s}〜{e}" if s and e else "",
+        review_range_label=review_range_label,
+        questions_per_test=questions_per_test,
+        rows_per_side=rows_per_side,
+    )
+    await upsert_pdf_blob(db, q_relpath, q_path.read_bytes())
+    await upsert_pdf_blob(db, a_relpath, a_path.read_bytes())
+
+    return q_relpath, a_relpath
+
+
 def _parse_range(range_text: str) -> tuple[int | None, int | None]:
     """Parse 'No.1〜100' into (1, 100)."""
     m = re.search(r"(\d+)\s*[〜~\-]\s*(\d+)", range_text)

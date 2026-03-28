@@ -48,6 +48,7 @@ export interface QueueItem {
   sort_order: number;
   status: string;
   pdf_type: string;
+  generated_pdf?: string;
   scheduled_at?: string;
   created_at: string;
 }
