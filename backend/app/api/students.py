@@ -500,8 +500,10 @@ async def get_student_material_nodes(
         has_pdf = False
         if is_word_test:
             book_name = material_key.removeprefix("単語:")
-            pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
-            has_pdf = await pdf_exists(db, pdf_relpath)
+            # Check for split format (_q.pdf) first, then legacy format (.pdf)
+            q_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}_q.pdf"
+            legacy_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
+            has_pdf = await pdf_exists(db, q_relpath) or await pdf_exists(db, legacy_relpath)
         elif node.pdf_relpath:
             has_pdf = await pdf_exists(db, node.pdf_relpath)
 
@@ -528,6 +530,7 @@ async def get_student_material_nodes(
 async def preview_student_pdf(
     student_id: str, material_key: str,
     node_sort_order: int = 0,
+    pdf_type: str = "question",
     db: AsyncSession = Depends(get_db),
 ):
     """生徒の割り当てPDFをプレビュー用に返す"""
@@ -544,8 +547,13 @@ async def preview_student_pdf(
     resolved = None
     if material_key.startswith("単語:"):
         book_name = material_key.removeprefix("単語:")
-        pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
+        suffix = "_a" if pdf_type in ("answer", "recheck_answer") else "_q"
+        # Try split format first, then legacy format
+        pdf_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}{suffix}.pdf"
         resolved = await resolve_pdf_for_reading(db, pdf_relpath)
+        if not resolved:
+            legacy_relpath = f"単語/{book_name}/{student_id}/{node.sort_order:03d}.pdf"
+            resolved = await resolve_pdf_for_reading(db, legacy_relpath)
     elif node.pdf_relpath:
         resolved = await resolve_pdf_for_reading(db, node.pdf_relpath)
 
