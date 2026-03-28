@@ -567,7 +567,14 @@ async def preview_pdf(node_key: str, pdf_type: str = "question", db: AsyncSessio
     if not node:
         raise HTTPException(status_code=404, detail="PDFが見つかりません")
 
-    relpath = node.answer_pdf_relpath if pdf_type == "answer" else node.pdf_relpath
+    if pdf_type == "recheck_question":
+        relpath = node.recheck_pdf_relpath
+    elif pdf_type == "recheck_answer":
+        relpath = node.recheck_answer_pdf_relpath
+    elif pdf_type == "answer":
+        relpath = node.answer_pdf_relpath
+    else:
+        relpath = node.pdf_relpath
     if not relpath:
         raise HTTPException(status_code=404, detail="PDFが見つかりません")
     resolved = await resolve_pdf_for_reading(db, relpath)
@@ -635,7 +642,11 @@ async def prepare_job(db: AsyncSession = Depends(get_db)):
             )
             node = result.scalars().first()
             if node:
-                if qi.pdf_type == "answer":
+                if qi.pdf_type == "recheck_question":
+                    pdf_relpath = node.recheck_pdf_relpath
+                elif qi.pdf_type == "recheck_answer":
+                    pdf_relpath = node.recheck_answer_pdf_relpath
+                elif qi.pdf_type == "answer":
                     pdf_relpath = qi.generated_pdf or node.answer_pdf_relpath
                 else:
                     pdf_relpath = qi.generated_pdf or node.pdf_relpath
@@ -755,7 +766,11 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
             )
             node = node_result.scalars().first()
             if node:
-                if qi.pdf_type == "answer":
+                if qi.pdf_type == "recheck_question":
+                    pdf_relpath = node.recheck_pdf_relpath
+                elif qi.pdf_type == "recheck_answer":
+                    pdf_relpath = node.recheck_answer_pdf_relpath
+                elif qi.pdf_type == "answer":
                     pdf_relpath = qi.generated_pdf or node.answer_pdf_relpath
                 else:
                     pdf_relpath = qi.generated_pdf or node.pdf_relpath
@@ -814,7 +829,7 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
     # so we know to skip pointer advancement on the question item
     answer_keys = set()
     for qi in queue_items:
-        if qi.pdf_type == "answer":
+        if qi.pdf_type in ("answer", "recheck_answer"):
             answer_keys.add((qi.student_id, qi.material_key, qi.node_key))
 
     # Legacy direct-print path
@@ -858,7 +873,7 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
             # If both question+answer exist, advance on answer only
             item_pdf_type = queue_pdf_types[idx]
             should_advance = True
-            if item_pdf_type == "question" and (item.student_id, item.material_key, item.node_key) in answer_keys:
+            if item_pdf_type in ("question", "recheck_question") and (item.student_id, item.material_key, item.node_key) in answer_keys:
                 should_advance = False  # will advance when answer prints
 
             if should_advance:
@@ -958,7 +973,7 @@ async def agent_ack(body: AgentAckRequest, db: AsyncSession = Depends(get_db)):
     # Build set of (student_id, material_key, node_key) that have answer items
     answer_keys = set()
     for item in job.items:
-        if item.pdf_type == "answer":
+        if item.pdf_type in ("answer", "recheck_answer"):
             answer_keys.add((item.student_id, item.material_key, item.node_key))
 
     for res in body.results:
@@ -982,7 +997,7 @@ async def agent_ack(body: AgentAckRequest, db: AsyncSession = Depends(get_db)):
         if res.success:
             # Only advance pointer on the last item for this node
             should_advance = True
-            if item.pdf_type == "question" and (item.student_id, item.material_key, item.node_key) in answer_keys:
+            if item.pdf_type in ("question", "recheck_question") and (item.student_id, item.material_key, item.node_key) in answer_keys:
                 should_advance = False
 
             if should_advance:

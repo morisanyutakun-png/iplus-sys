@@ -21,6 +21,8 @@ export interface MaterialNode {
   range_text: string;
   pdf_relpath: string;
   answer_pdf_relpath: string;
+  recheck_pdf_relpath: string;
+  recheck_answer_pdf_relpath: string;
   duplex: boolean;
   sort_order: number;
 }

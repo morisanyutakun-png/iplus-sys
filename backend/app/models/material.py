@@ -41,6 +41,8 @@ class MaterialNode(Base):
     range_text: Mapped[str] = mapped_column(String, default="")
     pdf_relpath: Mapped[str] = mapped_column(String, default="")
     answer_pdf_relpath: Mapped[str] = mapped_column(String, default="")
+    recheck_pdf_relpath: Mapped[str] = mapped_column(String, default="")
+    recheck_answer_pdf_relpath: Mapped[str] = mapped_column(String, default="")
     duplex: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
     aliases: Mapped[list] = mapped_column(JSON, default=list)

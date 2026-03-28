@@ -521,6 +521,11 @@ function NodeEditDialog({
           <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             <FileText className="h-3.5 w-3.5 shrink-0" />
             <span>{node.pdf_relpath ? `PDF: ${node.pdf_relpath.split("/").pop()}` : "PDF なし"}</span>
+            {node.recheck_pdf_relpath && (
+              <Badge variant="outline" className="text-[10px] px-1.5 text-sky-600 border-sky-300">
+                リチェック有
+              </Badge>
+            )}
             <Badge variant="secondary" className="ml-auto text-[10px] px-1.5">
               #{node.sort_order}
             </Badge>
@@ -589,6 +594,8 @@ function MaterialCard({
   const [nodeTitle, setNodeTitle] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [answerPdfFile, setAnswerPdfFile] = useState<File | null>(null);
+  const [recheckPdfFile, setRecheckPdfFile] = useState<File | null>(null);
+  const [recheckAnswerPdfFile, setRecheckAnswerPdfFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [showNodeList, setShowNodeList] = useState(false);
   const [editingNode, setEditingNode] = useState<MaterialNode | null>(null);
@@ -597,13 +604,15 @@ function MaterialCard({
     setNodeTitle("");
     setPdfFile(null);
     setAnswerPdfFile(null);
+    setRecheckPdfFile(null);
+    setRecheckAnswerPdfFile(null);
     setIsDragging(false);
   };
 
   const handleAddNode = () => {
     if (!nodeTitle.trim()) return;
     addNodeMutation.mutate(
-      { title: nodeTitle.trim(), file: pdfFile || undefined, answerFile: answerPdfFile || undefined },
+      { title: nodeTitle.trim(), file: pdfFile || undefined, answerFile: answerPdfFile || undefined, recheckFile: recheckPdfFile || undefined, recheckAnswerFile: recheckAnswerPdfFile || undefined },
       {
         onSuccess: () => {
           toast.success("範囲を追加しました");
@@ -817,6 +826,101 @@ function MaterialCard({
                       )}
                     </div>
                   </div>
+                  {/* Recheck section */}
+                  <div className="border-t pt-4">
+                    <p className="text-xs text-muted-foreground mb-3">リチェック（不合格時の再テスト用・任意）</p>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium">リチェック問題PDF（任意）</label>
+                        <div
+                          className={cn(
+                            "relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 transition-all",
+                            recheckPdfFile
+                              ? "border-sky-400 bg-sky-50/50 dark:bg-sky-950/20"
+                              : "border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/30"
+                          )}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const file = e.dataTransfer.files[0];
+                            if (file?.type === "application/pdf") setRecheckPdfFile(file);
+                          }}
+                        >
+                          {recheckPdfFile ? (
+                            <div className="flex items-center gap-2 text-sm">
+                              <FileText className="h-5 w-5 text-sky-600" />
+                              <span className="font-medium">{recheckPdfFile.name}</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 px-2 text-xs text-muted-foreground"
+                                onClick={() => setRecheckPdfFile(null)}
+                              >
+                                取消
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <Upload className="mb-1 h-6 w-6 text-muted-foreground/30" />
+                              <p className="text-xs text-muted-foreground">ドラッグ&ドロップ</p>
+                              <label className="mt-1 cursor-pointer text-xs font-medium text-primary hover:underline">
+                                またはファイルを選択
+                                <input type="file" accept=".pdf" className="hidden" onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) setRecheckPdfFile(file);
+                                }} />
+                              </label>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium">リチェック解答PDF（任意）</label>
+                        <div
+                          className={cn(
+                            "relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 transition-all",
+                            recheckAnswerPdfFile
+                              ? "border-orange-400 bg-orange-50/50 dark:bg-orange-950/20"
+                              : "border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/30"
+                          )}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const file = e.dataTransfer.files[0];
+                            if (file?.type === "application/pdf") setRecheckAnswerPdfFile(file);
+                          }}
+                        >
+                          {recheckAnswerPdfFile ? (
+                            <div className="flex items-center gap-2 text-sm">
+                              <FileText className="h-5 w-5 text-orange-600" />
+                              <span className="font-medium">{recheckAnswerPdfFile.name}</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 px-2 text-xs text-muted-foreground"
+                                onClick={() => setRecheckAnswerPdfFile(null)}
+                              >
+                                取消
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <Upload className="mb-1 h-6 w-6 text-muted-foreground/30" />
+                              <p className="text-xs text-muted-foreground">ドラッグ&ドロップ</p>
+                              <label className="mt-1 cursor-pointer text-xs font-medium text-primary hover:underline">
+                                またはファイルを選択
+                                <input type="file" accept=".pdf" className="hidden" onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) setRecheckAnswerPdfFile(file);
+                                }} />
+                              </label>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <Button
                     className="w-full h-10 rounded-xl font-medium"
                     onClick={handleAddNode}
@@ -899,9 +1003,12 @@ function MaterialCard({
                     <span className="text-muted-foreground/50 font-mono tabular-nums w-5 text-right shrink-0">
                       {node.sort_order}
                     </span>
-                    <span className="flex gap-0.5 shrink-0" title={`問:${node.pdf_relpath ? "有" : "無"} 解:${node.answer_pdf_relpath ? "有" : "無"}`}>
+                    <span className="flex gap-0.5 shrink-0" title={`問:${node.pdf_relpath ? "有" : "無"} 解:${node.answer_pdf_relpath ? "有" : "無"}${node.recheck_pdf_relpath ? " リチェック:有" : ""}`}>
                       <span className={cn("h-1.5 w-1.5 rounded-full", node.pdf_relpath ? "bg-emerald-500" : "bg-muted-foreground/25")} />
                       <span className={cn("h-1.5 w-1.5 rounded-full", node.answer_pdf_relpath ? "bg-amber-500" : "bg-muted-foreground/25")} />
+                      {node.recheck_pdf_relpath && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
+                      )}
                     </span>
                     <span className="font-medium truncate flex-1">{node.title}</span>
                     {node.range_text && node.range_text !== node.title && (

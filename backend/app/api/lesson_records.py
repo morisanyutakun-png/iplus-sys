@@ -235,6 +235,10 @@ async def batch_mastery_input(
                     gen_q_pdf = f"単語/{book_name}/{rec.student_id}/{next_node.sort_order:03d}_q.pdf"
                     gen_a_pdf = f"単語/{book_name}/{rec.student_id}/{next_node.sort_order:03d}_a.pdf"
 
+                # Determine if we should use recheck PDFs
+                # Use recheck when: retry (not advance) and recheck PDF exists for this node
+                use_recheck = not did_advance and bool(next_node.recheck_pdf_relpath)
+
                 # Question entry
                 queue_entry = PrintQueue(
                     student_id=rec.student_id,
@@ -242,18 +246,21 @@ async def batch_mastery_input(
                     material_key=rec.material_key,
                     material_name=sm.material.name,
                     node_key=next_node.key,
-                    node_name=next_node.title,
+                    node_name=next_node.title + ("\uff08\u30ea\u30c1\u30a7\u30c3\u30af\uff09" if use_recheck else ""),
                     sort_order=sort_order,
                     status="pending",
                     generated_pdf=gen_q_pdf,
-                    pdf_type="question",
+                    pdf_type="recheck_question" if use_recheck else "question",
                 )
                 db.add(queue_entry)
                 sort_order += 1
                 queued_count += 1
 
-                # Answer entry (for word tests or nodes with answer PDF)
-                has_answer = bool(gen_a_pdf) or bool(next_node.answer_pdf_relpath)
+                # Answer entry
+                if use_recheck:
+                    has_answer = bool(next_node.recheck_answer_pdf_relpath)
+                else:
+                    has_answer = bool(gen_a_pdf) or bool(next_node.answer_pdf_relpath)
                 if has_answer:
                     answer_entry = PrintQueue(
                         student_id=rec.student_id,
@@ -261,11 +268,11 @@ async def batch_mastery_input(
                         material_key=rec.material_key,
                         material_name=sm.material.name,
                         node_key=next_node.key,
-                        node_name=next_node.title,
+                        node_name=next_node.title + ("\uff08\u30ea\u30c1\u30a7\u30c3\u30af\uff09" if use_recheck else ""),
                         sort_order=sort_order,
                         status="pending",
-                        generated_pdf=gen_a_pdf,
-                        pdf_type="answer",
+                        generated_pdf=gen_a_pdf if not use_recheck else None,
+                        pdf_type="recheck_answer" if use_recheck else "answer",
                     )
                     db.add(answer_entry)
                     sort_order += 1

@@ -49,11 +49,13 @@ export function useAddNode(materialKey: string) {
 export function useAddNodeSimple(materialKey: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ title, file, answerFile }: { title: string; file?: File; answerFile?: File }) => {
+    mutationFn: async ({ title, file, answerFile, recheckFile, recheckAnswerFile }: { title: string; file?: File; answerFile?: File; recheckFile?: File; recheckAnswerFile?: File }) => {
       const formData = new FormData();
       formData.append("title", title);
       if (file) formData.append("file", file);
       if (answerFile) formData.append("answer_file", answerFile);
+      if (recheckFile) formData.append("recheck_file", recheckFile);
+      if (recheckAnswerFile) formData.append("recheck_answer_file", recheckAnswerFile);
       const res = await fetch(
         apiUrl(`/api/materials/${encodeURIComponent(materialKey)}/nodes/simple`),
         { method: "POST", body: formData }

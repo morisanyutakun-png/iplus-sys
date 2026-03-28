@@ -118,6 +118,8 @@ async def add_node(
         range_text=body.range_text,
         pdf_relpath=body.pdf_relpath,
         answer_pdf_relpath=body.answer_pdf_relpath,
+        recheck_pdf_relpath=body.recheck_pdf_relpath,
+        recheck_answer_pdf_relpath=body.recheck_answer_pdf_relpath,
         duplex=body.duplex,
         sort_order=max_order + 1,
     )
@@ -133,9 +135,11 @@ async def add_node_simple(
     title: str = Form(...),
     file: UploadFile | None = File(None),
     answer_file: UploadFile | None = File(None),
+    recheck_file: UploadFile | None = File(None),
+    recheck_answer_file: UploadFile | None = File(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Simplified node creation: title + optional question/answer PDF uploads.
+    """Simplified node creation: title + optional question/answer/recheck PDF uploads.
     Auto-generates node key and handles PDF storage."""
     result = await db.execute(
         select(Material).where(Material.key == material_key)
@@ -183,6 +187,30 @@ async def add_node_simple(
         answer_pdf_relpath = str(target_file.relative_to(storage_root))
         await upsert_pdf_blob(db, answer_pdf_relpath, content, answer_file.content_type or "application/pdf")
 
+    # Handle recheck PDF upload
+    recheck_pdf_relpath = ""
+    if recheck_file and recheck_file.filename and recheck_file.filename.lower().endswith(".pdf"):
+        content = await recheck_file.read()
+        target_dir = storage_root / subfolder / "recheck"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_file = target_dir / recheck_file.filename
+        with open(target_file, "wb") as f:
+            f.write(content)
+        recheck_pdf_relpath = str(target_file.relative_to(storage_root))
+        await upsert_pdf_blob(db, recheck_pdf_relpath, content, recheck_file.content_type or "application/pdf")
+
+    # Handle recheck answer PDF upload
+    recheck_answer_pdf_relpath = ""
+    if recheck_answer_file and recheck_answer_file.filename and recheck_answer_file.filename.lower().endswith(".pdf"):
+        content = await recheck_answer_file.read()
+        target_dir = storage_root / subfolder / "recheck" / "answers"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_file = target_dir / recheck_answer_file.filename
+        with open(target_file, "wb") as f:
+            f.write(content)
+        recheck_answer_pdf_relpath = str(target_file.relative_to(storage_root))
+        await upsert_pdf_blob(db, recheck_answer_pdf_relpath, content, recheck_answer_file.content_type or "application/pdf")
+
     node = MaterialNode(
         key=node_key,
         material_key=material_key,
@@ -190,6 +218,8 @@ async def add_node_simple(
         range_text=title.strip(),
         pdf_relpath=pdf_relpath,
         answer_pdf_relpath=answer_pdf_relpath,
+        recheck_pdf_relpath=recheck_pdf_relpath,
+        recheck_answer_pdf_relpath=recheck_answer_pdf_relpath,
         duplex=False,
         sort_order=next_order,
     )
@@ -220,6 +250,10 @@ async def update_node(
         node.duplex = body.duplex
     if body.answer_pdf_relpath is not None:
         node.answer_pdf_relpath = body.answer_pdf_relpath
+    if body.recheck_pdf_relpath is not None:
+        node.recheck_pdf_relpath = body.recheck_pdf_relpath
+    if body.recheck_answer_pdf_relpath is not None:
+        node.recheck_answer_pdf_relpath = body.recheck_answer_pdf_relpath
 
     await db.commit()
     await db.refresh(node)

@@ -10,6 +10,8 @@ class MaterialNodeOut(BaseModel):
     range_text: str
     pdf_relpath: str
     answer_pdf_relpath: str = ""
+    recheck_pdf_relpath: str = ""
+    recheck_answer_pdf_relpath: str = ""
     duplex: bool
     sort_order: int
 
@@ -50,6 +52,8 @@ class MaterialNodeCreate(BaseModel):
     range_text: str = ""
     pdf_relpath: str = ""
     answer_pdf_relpath: str = ""
+    recheck_pdf_relpath: str = ""
+    recheck_answer_pdf_relpath: str = ""
     duplex: bool = False
 
 
@@ -58,3 +62,5 @@ class MaterialNodeUpdate(BaseModel):
     range_text: str | None = None
     duplex: bool | None = None
     answer_pdf_relpath: str | None = None
+    recheck_pdf_relpath: str | None = None
+    recheck_answer_pdf_relpath: str | None = None
