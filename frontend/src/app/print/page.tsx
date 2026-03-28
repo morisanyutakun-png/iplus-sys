@@ -1297,7 +1297,7 @@ export default function PrintPage() {
       >
         <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>PDF プレビ���ー</DialogTitle>
+            <DialogTitle>PDF プレビュー</DialogTitle>
           </DialogHeader>
           {(previewNodeKey || previewQueueItemId) && (
             <iframe
