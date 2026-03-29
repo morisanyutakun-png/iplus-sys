@@ -120,43 +120,50 @@ export default function ExamsPage() {
    ═══════════════════════════════════════════════════ */
 function AnalyticsTab({ allExams }: { allExams: ExamMaterial[] }) {
   const { data: students } = useStudents();
-  const [selectedStudentId, setSelectedStudentId] = useState("");
+  // studentSelect: "" = 未選択, "all" = 教室全体, or student ID
+  const [studentSelect, setStudentSelect] = useState("");
   // examSelect: "" = 未選択, "all" = 全試験, "common_test" = 共テ全体, "university_past" = 過去問全体, or numeric ID
   const [examSelect, setExamSelect] = useState<string>("");
-  const [selectedGrade, setSelectedGrade] = useState<string>("");
 
   const commonTests = allExams.filter((e) => e.exam_type === "common_test");
   const universityPast = allExams.filter((e) => e.exam_type === "university_past");
 
+  const isAllStudents = studentSelect === "all";
+  const selectedStudentId = !isAllStudents && studentSelect ? studentSelect : "";
+
   // Parse exam selection
   const isSpecificExam = examSelect !== "" && examSelect !== "all" && examSelect !== "common_test" && examSelect !== "university_past";
   const selectedExamId = isSpecificExam ? Number(examSelect) : 0;
-  const selectedExamType = examSelect === "common_test" || examSelect === "university_past" ? examSelect : examSelect === "all" ? undefined : undefined;
   const isCrossExam = examSelect === "all" || examSelect === "common_test" || examSelect === "university_past";
 
   const { data: summary } = useStudentExamSummary(selectedStudentId, selectedExamId || undefined);
   const { data: overview } = useExamOverview(
     selectedExamId || undefined,
     isCrossExam ? (examSelect === "all" ? undefined : examSelect) : undefined,
-    selectedGrade || undefined,
   );
 
-  const grades = Array.from(new Set((students || []).map((s) => s.grade).filter(Boolean))) as string[];
   const latestAttempt = summary?.attempts?.[summary.attempts.length - 1];
 
   return (
     <div className="space-y-6">
-      {/* Step 1: Select student */}
+      {/* Selectors */}
       <Card className="border-0 shadow-premium">
         <CardContent className="pt-5 pb-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">生徒</label>
-              <Select value={selectedStudentId} onValueChange={setSelectedStudentId}>
+              <Select value={studentSelect} onValueChange={setStudentSelect}>
                 <SelectTrigger>
                   <SelectValue placeholder="生徒を選択" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="all">
+                    <span className="flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5" />
+                      教室全体
+                    </span>
+                  </SelectItem>
+                  <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground mt-1">生徒</div>
                   {(students || []).map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name} {s.grade ? `(${s.grade})` : ""}
@@ -195,235 +202,232 @@ function AnalyticsTab({ allExams }: { allExams: ExamMaterial[] }) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">学年フィルタ</label>
-              <Select value={selectedGrade} onValueChange={setSelectedGrade}>
-                <SelectTrigger>
-                  <SelectValue placeholder="全学年" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全学年</SelectItem>
-                  {grades.map((g) => (
-                    <SelectItem key={g} value={g}>{g}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
         </CardContent>
       </Card>
 
-      {!selectedStudentId && !examSelect ? (
+      {!studentSelect && !examSelect ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
           <BarChart3 className="h-10 w-10 mb-3 opacity-20" />
-          <p className="text-sm">生徒または試験を選択して分析を表示</p>
+          <p className="text-sm">生徒と試験を選択して分析を表示</p>
         </div>
-      ) : (
-        <Tabs defaultValue="student">
-          <TabsList>
-            <TabsTrigger value="student">
-              <User className="mr-1.5 h-4 w-4" />
-              生徒別
-            </TabsTrigger>
-            <TabsTrigger value="class">
-              <Users className="mr-1.5 h-4 w-4" />
-              教室全体
-            </TabsTrigger>
-            {selectedStudentId && (
-              <TabsTrigger value="compressed">
-                <GraduationCap className="mr-1.5 h-4 w-4" />
-                圧縮点
-              </TabsTrigger>
-            )}
-          </TabsList>
-
-          {/* ── Student tab ── */}
-          <TabsContent value="student" className="space-y-4">
-            {selectedStudentId && summary ? (
-              <>
-                {latestAttempt && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <Card className="border-0 shadow-premium">
-                      <CardContent className="pt-5 text-center">
-                        <div className="text-2xl font-bold">
-                          {latestAttempt.total_score}
-                          <span className="text-sm text-muted-foreground font-normal">/{latestAttempt.total_max}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">最新合計点</p>
-                      </CardContent>
-                    </Card>
-                    <Card className="border-0 shadow-premium">
-                      <CardContent className="pt-5 text-center">
-                        <div className="text-2xl font-bold">{latestAttempt.percentage}%</div>
-                        <p className="text-xs text-muted-foreground">最新得点率</p>
-                      </CardContent>
-                    </Card>
-                    <Card className="border-0 shadow-premium">
-                      <CardContent className="pt-5 text-center">
-                        <div className="text-2xl font-bold">{summary.attempts.length}</div>
-                        <p className="text-xs text-muted-foreground">実施回数</p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
-
-                {latestAttempt && (
-                  <Card className="border-0 shadow-premium overflow-hidden">
-                    <CardHeader><CardTitle className="text-sm">教科別得点率</CardTitle></CardHeader>
-                    <CardContent>
-                      <SubjectScoreChart subjects={latestAttempt.subjects} title={latestAttempt.attempt_date} />
-                    </CardContent>
-                  </Card>
-                )}
-
-                {latestAttempt && latestAttempt.subjects.some((s) => s.target_score != null) && (
-                  <Card className="border-0 shadow-premium overflow-hidden">
-                    <CardHeader><CardTitle className="text-sm">目標点との差異</CardTitle></CardHeader>
-                    <CardContent>
-                      <TargetComparisonChart subjects={latestAttempt.subjects} />
-                    </CardContent>
-                  </Card>
-                )}
-
-                {summary.attempts.length > 1 && (
-                  <Card className="border-0 shadow-premium overflow-hidden">
-                    <CardHeader><CardTitle className="text-sm">得点率推移</CardTitle></CardHeader>
-                    <CardContent>
-                      <ScoreTrendChart attempts={summary.attempts} />
-                    </CardContent>
-                  </Card>
-                )}
-
-                <Card className="border-0 shadow-premium overflow-hidden">
-                  <CardHeader><CardTitle className="text-sm">実施履歴</CardTitle></CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left py-2 px-2 text-muted-foreground">日付</th>
-                            <th className="text-left py-2 px-2 text-muted-foreground">試験</th>
-                            <th className="text-right py-2 px-2 text-muted-foreground">合計</th>
-                            <th className="text-right py-2 px-2 text-muted-foreground">得点率</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {summary.attempts.map((a, i) => (
-                            <tr key={i} className="border-b hover:bg-muted/30">
-                              <td className="py-2 px-2">{a.attempt_date}</td>
-                              <td className="py-2 px-2">{a.exam_name}</td>
-                              <td className="py-2 px-2 text-right tabular-nums">{a.total_score}/{a.total_max}</td>
-                              <td className="py-2 px-2 text-right">
-                                <Badge variant={a.percentage >= 80 ? "default" : a.percentage >= 60 ? "secondary" : "destructive"} className="text-xs">
-                                  {a.percentage}%
-                                </Badge>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
-            ) : (
-              <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
-                生徒を選択してください
-              </div>
-            )}
-          </TabsContent>
-
-          {/* ── Class tab ── */}
-          <TabsContent value="class" className="space-y-4">
-            {overview && examSelect ? (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <Card className="border-0 shadow-premium">
-                    <CardContent className="pt-5 text-center">
-                      <div className="text-2xl font-bold">{overview.class_average_total}</div>
-                      <p className="text-xs text-muted-foreground">教室平均点</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-0 shadow-premium">
-                    <CardContent className="pt-5 text-center">
-                      <div className="text-2xl font-bold">{overview.class_average_percentage}%</div>
-                      <p className="text-xs text-muted-foreground">教室平均得点率</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card className="border-0 shadow-premium overflow-hidden">
-                  <CardHeader><CardTitle className="text-sm">生徒ランキング</CardTitle></CardHeader>
-                  <CardContent>
-                    <div className="space-y-1.5">
-                      {overview.rankings.map((r, i) => (
-                        <div key={r.student_id} className="flex items-center gap-3 rounded-lg border px-3 py-2">
-                          <span className="w-6 text-center font-bold text-muted-foreground">{i + 1}</span>
-                          <div className="flex-1 min-w-0">
-                            <span className="font-medium text-sm">{r.student_name}</span>
-                            {r.grade && <Badge variant="outline" className="ml-2 text-[10px]">{r.grade}</Badge>}
-                          </div>
-                          <span className="tabular-nums text-sm">{r.total_score}/{r.total_max}</span>
-                          <Badge variant={r.percentage >= 80 ? "default" : r.percentage >= 60 ? "secondary" : "destructive"} className="w-14 justify-center text-xs">
-                            {r.percentage}%
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-premium overflow-hidden">
-                  <CardHeader><CardTitle className="text-sm">教科別平均</CardTitle></CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left py-2 px-2 text-muted-foreground">教科</th>
-                            <th className="text-right py-2 px-2 text-muted-foreground">満点</th>
-                            <th className="text-right py-2 px-2 text-muted-foreground">平均点</th>
-                            <th className="text-right py-2 px-2 text-muted-foreground">平均率</th>
-                            <th className="text-right py-2 px-2 text-muted-foreground">人数</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {overview.subject_averages.map((sa) => (
-                            <tr key={sa.subject_name} className="border-b hover:bg-muted/30">
-                              <td className="py-2 px-2 font-medium">{sa.subject_name}</td>
-                              <td className="py-2 px-2 text-right text-muted-foreground">{sa.max_score}</td>
-                              <td className="py-2 px-2 text-right tabular-nums">{sa.avg_score}</td>
-                              <td className="py-2 px-2 text-right">
-                                <Badge variant={sa.avg_percentage >= 80 ? "default" : sa.avg_percentage >= 60 ? "secondary" : "destructive"} className="text-xs">
-                                  {sa.avg_percentage}%
-                                </Badge>
-                              </td>
-                              <td className="py-2 px-2 text-right text-muted-foreground">{sa.student_count}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
-            ) : (
-              <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
-                試験を選択してください
-              </div>
-            )}
-          </TabsContent>
-
-          {/* ── Compressed score tab ── */}
-          {selectedStudentId && (
-            <TabsContent value="compressed" className="space-y-4">
-              <CompressedScoreCalculator
-                studentId={selectedStudentId}
-                examMaterialId={selectedExamId || undefined}
-              />
-            </TabsContent>
+      ) : isAllStudents ? (
+        /* ── 教室全体ビュー ── */
+        <ClassOverviewSection overview={overview} examSelect={examSelect} />
+      ) : selectedStudentId ? (
+        /* ── 生徒別ビュー ── */
+        <>
+          {summary && summary.attempts.length > 0 ? (
+            <StudentAnalyticsSection
+              summary={summary}
+              latestAttempt={latestAttempt!}
+              selectedStudentId={selectedStudentId}
+              selectedExamId={selectedExamId || undefined}
+            />
+          ) : (
+            <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
+              この生徒のスコアデータがありません
+            </div>
           )}
-        </Tabs>
+        </>
+      ) : (
+        /* examSelect のみ選択されている場合は教室全体を表示 */
+        <ClassOverviewSection overview={overview} examSelect={examSelect} />
+      )}
+    </div>
+  );
+}
+
+/* ── 生徒別分析セクション ── */
+function StudentAnalyticsSection({
+  summary,
+  latestAttempt,
+  selectedStudentId,
+  selectedExamId,
+}: {
+  summary: NonNullable<ReturnType<typeof useStudentExamSummary>["data"]>;
+  latestAttempt: NonNullable<ReturnType<typeof useStudentExamSummary>["data"]>["attempts"][0];
+  selectedStudentId: string;
+  selectedExamId?: number;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Card className="border-0 shadow-premium">
+          <CardContent className="pt-5 text-center">
+            <div className="text-2xl font-bold">
+              {latestAttempt.total_score}
+              <span className="text-sm text-muted-foreground font-normal">/{latestAttempt.total_max}</span>
+            </div>
+            <p className="text-xs text-muted-foreground">最新合計点</p>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-premium">
+          <CardContent className="pt-5 text-center">
+            <div className="text-2xl font-bold">{latestAttempt.percentage}%</div>
+            <p className="text-xs text-muted-foreground">最新得点率</p>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-premium">
+          <CardContent className="pt-5 text-center">
+            <div className="text-2xl font-bold">{summary.attempts.length}</div>
+            <p className="text-xs text-muted-foreground">実施回数</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-0 shadow-premium overflow-hidden">
+        <CardHeader><CardTitle className="text-sm">教科別得点率</CardTitle></CardHeader>
+        <CardContent>
+          <SubjectScoreChart subjects={latestAttempt.subjects} title={latestAttempt.attempt_date} />
+        </CardContent>
+      </Card>
+
+      {latestAttempt.subjects.some((s) => s.target_score != null) && (
+        <Card className="border-0 shadow-premium overflow-hidden">
+          <CardHeader><CardTitle className="text-sm">目標点との差異</CardTitle></CardHeader>
+          <CardContent>
+            <TargetComparisonChart subjects={latestAttempt.subjects} />
+          </CardContent>
+        </Card>
+      )}
+
+      {summary.attempts.length > 1 && (
+        <Card className="border-0 shadow-premium overflow-hidden">
+          <CardHeader><CardTitle className="text-sm">得点率推移</CardTitle></CardHeader>
+          <CardContent>
+            <ScoreTrendChart attempts={summary.attempts} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 圧縮点 */}
+      <Card className="border-0 shadow-premium overflow-hidden">
+        <CardHeader><CardTitle className="text-sm">圧縮点計算</CardTitle></CardHeader>
+        <CardContent>
+          <CompressedScoreCalculator studentId={selectedStudentId} examMaterialId={selectedExamId} />
+        </CardContent>
+      </Card>
+
+      <Card className="border-0 shadow-premium overflow-hidden">
+        <CardHeader><CardTitle className="text-sm">実施履歴</CardTitle></CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 px-2 text-muted-foreground">日付</th>
+                  <th className="text-left py-2 px-2 text-muted-foreground">試験</th>
+                  <th className="text-right py-2 px-2 text-muted-foreground">合計</th>
+                  <th className="text-right py-2 px-2 text-muted-foreground">得点率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.attempts.map((a, i) => (
+                  <tr key={i} className="border-b hover:bg-muted/30">
+                    <td className="py-2 px-2">{a.attempt_date}</td>
+                    <td className="py-2 px-2">{a.exam_name}</td>
+                    <td className="py-2 px-2 text-right tabular-nums">{a.total_score}/{a.total_max}</td>
+                    <td className="py-2 px-2 text-right">
+                      <Badge variant={a.percentage >= 80 ? "default" : a.percentage >= 60 ? "secondary" : "destructive"} className="text-xs">
+                        {a.percentage}%
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/* ── 教室全体セクション ── */
+function ClassOverviewSection({ overview, examSelect }: { overview: ReturnType<typeof useExamOverview>["data"]; examSelect: string }) {
+  if (!overview || !examSelect) {
+    return (
+      <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
+        試験を選択してください
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Card className="border-0 shadow-premium">
+          <CardContent className="pt-5 text-center">
+            <div className="text-2xl font-bold">{overview.class_average_total}</div>
+            <p className="text-xs text-muted-foreground">教室平均点</p>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-premium">
+          <CardContent className="pt-5 text-center">
+            <div className="text-2xl font-bold">{overview.class_average_percentage}%</div>
+            <p className="text-xs text-muted-foreground">教室平均得点率</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {overview.rankings.length > 0 && (
+        <Card className="border-0 shadow-premium overflow-hidden">
+          <CardHeader><CardTitle className="text-sm">生徒ランキング</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-1.5">
+              {overview.rankings.map((r, i) => (
+                <div key={r.student_id} className="flex items-center gap-3 rounded-lg border px-3 py-2">
+                  <span className="w-6 text-center font-bold text-muted-foreground">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium text-sm">{r.student_name}</span>
+                    {r.grade && <Badge variant="outline" className="ml-2 text-[10px]">{r.grade}</Badge>}
+                  </div>
+                  <span className="tabular-nums text-sm">{r.total_score}/{r.total_max}</span>
+                  <Badge variant={r.percentage >= 80 ? "default" : r.percentage >= 60 ? "secondary" : "destructive"} className="w-14 justify-center text-xs">
+                    {r.percentage}%
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {overview.subject_averages.length > 0 && (
+        <Card className="border-0 shadow-premium overflow-hidden">
+          <CardHeader><CardTitle className="text-sm">教科別平均</CardTitle></CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-2 text-muted-foreground">教科</th>
+                    <th className="text-right py-2 px-2 text-muted-foreground">満点</th>
+                    <th className="text-right py-2 px-2 text-muted-foreground">平均点</th>
+                    <th className="text-right py-2 px-2 text-muted-foreground">平均率</th>
+                    <th className="text-right py-2 px-2 text-muted-foreground">人数</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overview.subject_averages.map((sa) => (
+                    <tr key={sa.subject_name} className="border-b hover:bg-muted/30">
+                      <td className="py-2 px-2 font-medium">{sa.subject_name}</td>
+                      <td className="py-2 px-2 text-right text-muted-foreground">{sa.max_score}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">{sa.avg_score}</td>
+                      <td className="py-2 px-2 text-right">
+                        <Badge variant={sa.avg_percentage >= 80 ? "default" : sa.avg_percentage >= 60 ? "secondary" : "destructive"} className="text-xs">
+                          {sa.avg_percentage}%
+                        </Badge>
+                      </td>
+                      <td className="py-2 px-2 text-right text-muted-foreground">{sa.student_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

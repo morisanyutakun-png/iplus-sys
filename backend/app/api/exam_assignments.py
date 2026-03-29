@@ -111,17 +111,21 @@ async def assign_exam(body: ExamAssignmentCreate, db: AsyncSession = Depends(get
                 metadata_={"source": "exam_assignment", "exam_name": mat.name},
             ))
 
-        # Queue the first node for printing (if it has a PDF)
+        # Queue the node for printing
         first_node = sorted(linked_mat.nodes, key=lambda n: n.sort_order)[0] if linked_mat.nodes else None
-        if first_node and first_node.pdf_relpath:
+        if first_node:
+            # Question PDF (queue even if pdf_relpath is empty — marks it as needed)
+            has_question_pdf = bool(first_node.pdf_relpath)
             db.add(PrintQueue(
                 student_id=body.student_id,
                 student_name=student.name,
                 student_grade=student.grade,
                 material_key=mat_key,
                 material_name=linked_mat.name,
+                material_valid=True,
                 node_key=first_node.key,
                 node_name=first_node.title,
+                node_valid=has_question_pdf,
                 sort_order=sort_order,
                 status="pending",
                 pdf_type="question",
@@ -135,8 +139,10 @@ async def assign_exam(body: ExamAssignmentCreate, db: AsyncSession = Depends(get
                     student_grade=student.grade,
                     material_key=mat_key,
                     material_name=linked_mat.name,
+                    material_valid=True,
                     node_key=first_node.key,
                     node_name=first_node.title,
+                    node_valid=True,
                     sort_order=sort_order,
                     status="pending",
                     pdf_type="answer",
