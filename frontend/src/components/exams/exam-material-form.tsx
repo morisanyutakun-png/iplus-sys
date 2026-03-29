@@ -21,26 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, X, Zap } from "lucide-react";
 import { useCreateExamMaterial } from "@/lib/queries/exam-materials";
-
-const COMMON_TEST_SUBJECTS = [
-  { subject_name: "英語R", max_score: 100 },
-  { subject_name: "英語L", max_score: 100 },
-  { subject_name: "数学IA", max_score: 100 },
-  { subject_name: "数学IIB(C)", max_score: 100 },
-  { subject_name: "国語", max_score: 200 },
-  { subject_name: "物理", max_score: 100 },
-  { subject_name: "化学", max_score: 100 },
-  { subject_name: "生物", max_score: 100 },
-  { subject_name: "地学", max_score: 100 },
-  { subject_name: "日本史", max_score: 100 },
-  { subject_name: "世界史", max_score: 100 },
-  { subject_name: "地理", max_score: 100 },
-  { subject_name: "政治経済", max_score: 100 },
-  { subject_name: "倫理", max_score: 100 },
-  { subject_name: "現代社会", max_score: 100 },
-  { subject_name: "倫理政経", max_score: 100 },
-  { subject_name: "情報I", max_score: 100 },
-];
+import { COMMON_TEST_SUBJECTS } from "@/lib/subjects";
 
 type SubjectEntry = { subject_name: string; max_score: number };
 

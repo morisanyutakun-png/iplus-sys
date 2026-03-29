@@ -25,59 +25,33 @@ import type {
   MasteryInput,
   MasteryBatchResponse,
 } from "@/lib/types";
+import {
+  getSubjectSortIndex,
+  getSubjectHeaderColor,
+  getWordTestHeaderColor,
+  EXAM_HEADER_COLOR,
+} from "@/lib/subjects";
 
-// ── Subject ordering & header colors ──
-
-const SUBJECT_ORDER = [
-  "英語", "現代文", "古文", "漢文", "国語",
-  "数学",
-  "物理", "化学", "生物", "地学",
-  "社会",
-];
-
-const WORD_TEST_SUBJECT_ORDER = ["英語", "古文", "漢文", "国語"];
-
-const HEADER_COLORS: Record<string, string> = {
-  "英語": "bg-rose-700",
-  "現代文": "bg-red-700",
-  "古文": "bg-red-700",
-  "漢文": "bg-red-700",
-  "国語": "bg-red-700",
-  "数学": "bg-blue-700",
-  "物理": "bg-emerald-700",
-  "化学": "bg-emerald-700",
-  "生物": "bg-emerald-700",
-  "地学": "bg-emerald-700",
-  "社会": "bg-amber-700",
-};
-
-const WORD_TEST_HEADER_COLORS: Record<string, string> = {
-  "英語": "bg-rose-600",
-  "古文": "bg-red-600",
-  "漢文": "bg-red-600",
-  "国語": "bg-red-600",
-};
+// ── Column sorting & header colors ──
 
 type ColObj = { sm: StudentMaterialInfo; material?: Material; isExam: boolean };
 
 function getColumnSortKey(col: ColObj): number {
+  const subject = col.material?.subject ?? "";
   if (col.sm.material_key.startsWith("単語:")) {
-    const subIdx = WORD_TEST_SUBJECT_ORDER.indexOf(col.material?.subject ?? "");
-    return subIdx >= 0 ? subIdx : WORD_TEST_SUBJECT_ORDER.length;
+    return getSubjectSortIndex(subject);
   }
   if (col.isExam) {
-    return 1000 + (col.material?.sort_order ?? 0);
+    return 1000 + getSubjectSortIndex(subject);
   }
-  const subIdx = SUBJECT_ORDER.indexOf(col.material?.subject ?? "");
-  return 100 + (subIdx >= 0 ? subIdx : SUBJECT_ORDER.length);
+  return 100 + getSubjectSortIndex(subject);
 }
 
 function getHeaderColor(col: ColObj): string {
-  if (col.isExam) return "bg-violet-700";
-  if (col.sm.material_key.startsWith("単語:")) {
-    return WORD_TEST_HEADER_COLORS[col.material?.subject ?? ""] ?? "bg-slate-700";
-  }
-  return HEADER_COLORS[col.material?.subject ?? ""] ?? "bg-gray-800";
+  const subject = col.material?.subject ?? "";
+  if (col.isExam) return EXAM_HEADER_COLOR;
+  if (col.sm.material_key.startsWith("単語:")) return getWordTestHeaderColor(subject);
+  return getSubjectHeaderColor(subject);
 }
 
 type ColInput = {

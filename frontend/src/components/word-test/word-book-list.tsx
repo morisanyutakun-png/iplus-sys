@@ -25,8 +25,7 @@ import {
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Plus, BookOpen, Trash2, Pencil } from "lucide-react";
-
-const SUBJECT_OPTIONS = ["英語", "国語", "古文", "漢文", "社会", "理科", "その他"] as const;
+import { SUBJECT_GROUPS, getSubjectGroupStyle } from "@/lib/subjects";
 import { useWordBooks, useCreateWordBook, useUpdateWordBook, useDeleteWordBook } from "@/lib/queries/word-test";
 import type { WordBook } from "@/lib/types";
 import { CsvImportDialog } from "./csv-import-dialog";
@@ -123,20 +122,24 @@ export function WordBookList({ selectedBookId, onSelectBook }: Props) {
               />
               <div>
                 <label className="text-xs text-muted-foreground mb-1.5 block">教科</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {SUBJECT_OPTIONS.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setSubject(s)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                        subject === s
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/60"
-                      }`}
-                    >
-                      {s}
-                    </button>
+                <div className="space-y-1.5">
+                  {SUBJECT_GROUPS.map((group) => (
+                    <div key={group.label} className="flex flex-wrap gap-1">
+                      {group.subjects.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setSubject(s)}
+                          className={`px-2 py-1 rounded-md text-[11px] font-medium border transition-all ${
+                            subject === s
+                              ? `${getSubjectGroupStyle(s).badge} border-current shadow-sm`
+                              : "bg-muted/40 text-muted-foreground border-transparent hover:bg-muted/60"
+                          }`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -250,20 +253,24 @@ export function WordBookList({ selectedBookId, onSelectBook }: Props) {
             />
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">教科</label>
-              <div className="flex flex-wrap gap-1.5">
-                {SUBJECT_OPTIONS.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setRenameSubject(s)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                      renameSubject === s
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/60"
-                    }`}
-                  >
-                    {s}
-                  </button>
+              <div className="space-y-1.5">
+                {SUBJECT_GROUPS.map((group) => (
+                  <div key={group.label} className="flex flex-wrap gap-1">
+                    {group.subjects.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setRenameSubject(s)}
+                        className={`px-2 py-1 rounded-md text-[11px] font-medium border transition-all ${
+                          renameSubject === s
+                            ? `${getSubjectGroupStyle(s).badge} border-current shadow-sm`
+                            : "bg-muted/40 text-muted-foreground border-transparent hover:bg-muted/60"
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
                 ))}
               </div>
             </div>

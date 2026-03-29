@@ -63,6 +63,7 @@ import {
   Users,
 } from "lucide-react";
 import type { ExamMaterial } from "@/lib/types";
+import { ALL_SUBJECTS, SUBJECT_GROUPS, getSubjectGroupStyle } from "@/lib/subjects";
 
 export default function ExamsPage() {
   const { data: allExams, isLoading } = useExamMaterials();
@@ -699,15 +700,36 @@ function ExamCard({ exam }: { exam: ExamMaterial }) {
               <DialogContent onClick={(e) => e.stopPropagation()} className="sm:max-w-md">
                 <DialogHeader><DialogTitle>{exam.name} に教科追加</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-2">
-                      <label className="mb-2 block text-sm font-medium">教科名</label>
-                      <Input value={subjectName} onChange={(e) => setSubjectName(e.target.value)} placeholder="例: 数学IA" className="h-10 rounded-xl" autoFocus />
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">教科</label>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                      {SUBJECT_GROUPS.map((group) => (
+                        <div key={group.label}>
+                          <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">{group.label}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {group.subjects.map((s) => (
+                              <button
+                                key={s}
+                                type="button"
+                                onClick={() => setSubjectName(s)}
+                                className={cn(
+                                  "px-2 py-1 rounded-md text-[11px] font-medium border transition-all",
+                                  subjectName === s
+                                    ? `${getSubjectGroupStyle(s).badge} border-current shadow-sm`
+                                    : "bg-muted/40 text-muted-foreground border-transparent hover:bg-muted/60"
+                                )}
+                              >
+                                {s}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-medium">満点</label>
-                      <Input value={maxScore} onChange={(e) => setMaxScore(e.target.value)} type="number" className="h-10 rounded-xl" />
-                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">満点</label>
+                    <Input value={maxScore} onChange={(e) => setMaxScore(e.target.value)} type="number" className="h-10 rounded-xl" />
                   </div>
                   <div>
                     <label className="mb-2 block text-sm font-medium">問題PDF（任意）</label>

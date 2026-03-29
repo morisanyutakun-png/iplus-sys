@@ -126,10 +126,14 @@ const DEFAULT_CONFIG: SubjectConfig = {
 };
 
 function getConfig(subject: string) {
-  return SUBJECT_CONFIG[subject] || DEFAULT_CONFIG;
+  // Try exact match first, then group-based match
+  if (SUBJECT_CONFIG[subject]) return SUBJECT_CONFIG[subject];
+  const group = SUBJECT_TO_GROUP[subject];
+  if (group && SUBJECT_CONFIG[group]) return SUBJECT_CONFIG[group];
+  return DEFAULT_CONFIG;
 }
 
-const PRESET_SUBJECTS = ["数学", "英語", "国語", "理科", "社会"];
+import { SUBJECT_GROUPS, ALL_SUBJECTS, SUBJECT_TO_GROUP, getSubjectGroupStyle } from "@/lib/subjects";
 
 export default function MaterialsPage() {
   const { data: materials, isLoading } = useMaterials();
@@ -137,8 +141,7 @@ export default function MaterialsPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [selectedSubject, setSelectedSubject] = useState("その他");
-  const [customSubject, setCustomSubject] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("英語");
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedSubjects, setCollapsedSubjects] = useState<Set<string>>(new Set());
 
@@ -153,8 +156,8 @@ export default function MaterialsPage() {
       groups.get(subject)!.push(mat);
     }
     const sorted = [...groups.entries()].sort(([a], [b]) => {
-      const ai = PRESET_SUBJECTS.indexOf(a);
-      const bi = PRESET_SUBJECTS.indexOf(b);
+      const ai = ALL_SUBJECTS.indexOf(a);
+      const bi = ALL_SUBJECTS.indexOf(b);
       if (ai >= 0 && bi >= 0) return ai - bi;
       if (ai >= 0) return -1;
       if (bi >= 0) return 1;
@@ -175,20 +178,16 @@ export default function MaterialsPage() {
     });
   };
 
-  const effectiveSubject =
-    selectedSubject === "カスタム" ? customSubject.trim() || "その他" : selectedSubject;
-
   const handleCreate = () => {
     if (!newName.trim()) return;
     createMutation.mutate(
-      { name: newName.trim(), subject: effectiveSubject },
+      { name: newName.trim(), subject: selectedSubject },
       {
         onSuccess: () => {
           toast.success("教材を登録しました");
           setCreateOpen(false);
           setNewName("");
-          setSelectedSubject("その他");
-          setCustomSubject("");
+          setSelectedSubject("英語");
         },
         onError: (err) => toast.error(`登録に失敗: ${err.message}`),
       }
@@ -275,49 +274,30 @@ export default function MaterialsPage() {
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-medium">教科</label>
-                  <div className="flex flex-wrap gap-2">
-                    {PRESET_SUBJECTS.map((s) => {
-                      const cfg = getConfig(s);
-                      const SubjectIcon = cfg.icon;
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => { setSelectedSubject(s); setCustomSubject(""); }}
-                          className={cn(
-                            "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all border-2",
-                            selectedSubject === s
-                              ? `${cfg.badge} border-current shadow-sm scale-105`
-                              : "border-transparent bg-muted/60 text-muted-foreground hover:bg-muted"
-                          )}
-                        >
-                          <SubjectIcon className="h-3.5 w-3.5" />
-                          {s}
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSubject("カスタム")}
-                      className={cn(
-                        "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all border-2",
-                        selectedSubject === "カスタム"
-                          ? "bg-gray-100 text-gray-800 border-gray-300 shadow-sm dark:bg-gray-800 dark:text-gray-200"
-                          : "border-transparent bg-muted/60 text-muted-foreground hover:bg-muted"
-                      )}
-                    >
-                      <BookOpen className="h-3.5 w-3.5" />
-                      その他
-                    </button>
+                  <div className="space-y-2">
+                    {SUBJECT_GROUPS.map((group) => (
+                      <div key={group.label}>
+                        <p className="text-[10px] font-semibold text-muted-foreground mb-1">{group.label}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {group.subjects.map((s) => (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => setSelectedSubject(s)}
+                              className={cn(
+                                "px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border",
+                                selectedSubject === s
+                                  ? `${getSubjectGroupStyle(s).badge} border-current shadow-sm`
+                                  : "border-transparent bg-muted/60 text-muted-foreground hover:bg-muted"
+                              )}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  {selectedSubject === "カスタム" && (
-                    <Input
-                      value={customSubject}
-                      onChange={(e) => setCustomSubject(e.target.value)}
-                      placeholder="教科名を入力"
-                      className="mt-3 h-10 rounded-xl"
-                    />
-                  )}
                 </div>
                 <Button
                   className="w-full h-10 rounded-xl font-medium"
