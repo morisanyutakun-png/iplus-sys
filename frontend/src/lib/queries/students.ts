@@ -58,6 +58,7 @@ export function useToggleMaterial(studentId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["students"] });
       qc.invalidateQueries({ queryKey: ["material-zones", studentId] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
     },
   });
 }

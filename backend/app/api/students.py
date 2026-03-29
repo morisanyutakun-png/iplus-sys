@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -265,6 +265,57 @@ async def toggle_material(
                             status="pending",
                             pdf_type="answer",
                         ))
+
+            # Exam material: queue all node PDFs for printing
+            elif material_key.startswith("試験:"):
+                student = await db.get(Student, student_id)
+                mat = await db.execute(
+                    select(Material)
+                    .where(Material.key == material_key)
+                    .options(selectinload(Material.nodes))
+                )
+                material = mat.scalars().first()
+                if material and material.nodes:
+                    max_order_result = await db.execute(
+                        select(sa_func.coalesce(sa_func.max(PrintQueue.sort_order), 0))
+                    )
+                    sort_order = max_order_result.scalar() + 1
+
+                    for node in sorted(material.nodes, key=lambda n: n.sort_order):
+                        # Queue question PDF
+                        db.add(PrintQueue(
+                            student_id=student_id,
+                            student_name=student.name if student else None,
+                            student_grade=student.grade if student else None,
+                            material_key=material_key,
+                            material_name=material.name,
+                            material_valid=True,
+                            node_key=node.key,
+                            node_name=node.title,
+                            node_valid=bool(node.pdf_relpath),
+                            sort_order=sort_order,
+                            status="pending",
+                            pdf_type="question",
+                        ))
+                        sort_order += 1
+
+                        # Queue answer PDF if available
+                        if node.answer_pdf_relpath:
+                            db.add(PrintQueue(
+                                student_id=student_id,
+                                student_name=student.name if student else None,
+                                student_grade=student.grade if student else None,
+                                material_key=material_key,
+                                material_name=material.name,
+                                material_valid=True,
+                                node_key=node.key,
+                                node_name=node.title,
+                                node_valid=True,
+                                sort_order=sort_order,
+                                status="pending",
+                                pdf_type="answer",
+                            ))
+                            sort_order += 1
 
             await db.commit()
             return {"status": "assigned"}

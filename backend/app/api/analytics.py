@@ -33,6 +33,9 @@ async def get_student_analytics(student_id: str, db: AsyncSession = Depends(get_
 
     timeline = []
     for h in history:
+        # Exclude exam materials from student analytics
+        if h.material_key.startswith("試験:"):
+            continue
         timeline.append({
             "date": h.created_at.isoformat(),
             "material_key": h.material_key,
@@ -50,6 +53,9 @@ async def get_student_analytics(student_id: str, db: AsyncSession = Depends(get_
     sms = result.scalars().all()
     completion_rates = []
     for sm in sms:
+        # Exclude exam materials from student analytics
+        if sm.material_key.startswith("試験:"):
+            continue
         total = len(sm.material.nodes) if sm.material else 0
         pct = min((sm.pointer - 1) / total * 100, 100) if total > 0 else 0
         completion_rates.append({
@@ -75,6 +81,8 @@ async def get_student_analytics(student_id: str, db: AsyncSession = Depends(get_
 
     weeks_data: dict[str, int] = {}
     for h in print_history:
+        if h.material_key.startswith("試験:"):
+            continue
         week_key = h.created_at.strftime("%Y-W%W")
         weeks_data[week_key] = weeks_data.get(week_key, 0) + 1
 
@@ -121,6 +129,8 @@ async def get_overview_analytics(db: AsyncSession = Depends(get_db)):
         percents = []
         total_completed = 0
         for sm in student.materials:
+            if sm.material_key.startswith("試験:"):
+                continue
             total = len(sm.material.nodes) if sm.material else 0
             pct = min((sm.pointer - 1) / total * 100, 100) if total > 0 else 0
             percents.append(pct)
@@ -148,6 +158,8 @@ async def get_overview_analytics(db: AsyncSession = Depends(get_db)):
     materials = result.scalars().unique().all()
     material_difficulties = []
     for mat in materials:
+        if mat.key.startswith("試験:"):
+            continue
         # Count print actions per material
         count_result = await db.execute(
             select(sa_func.count(ProgressHistory.id))

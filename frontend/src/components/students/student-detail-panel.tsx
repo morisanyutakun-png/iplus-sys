@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStudent, useUpdateStudent, useDeleteStudent } from "@/lib/queries/students";
 import { useStudentAnalytics } from "@/lib/queries/analytics";
-import { useStudentProgress } from "@/lib/queries/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -42,14 +41,6 @@ const ResponsiveContainer = dynamic(
   () => import("recharts").then((m) => m.ResponsiveContainer),
   { ssr: false }
 );
-const LineChart = dynamic(
-  () => import("recharts").then((m) => m.LineChart),
-  { ssr: false }
-);
-const Line = dynamic(
-  () => import("recharts").then((m) => m.Line),
-  { ssr: false }
-);
 const BarChart = dynamic(
   () => import("recharts").then((m) => m.BarChart),
   { ssr: false }
@@ -84,14 +75,6 @@ type Props = {
   onPendingChange?: (hasPending: boolean) => void;
 };
 
-const ACTION_LABELS: Record<string, string> = {
-  assign: "割当",
-  remove: "解除",
-  advance: "進行",
-  manual_set: "手動",
-  print: "印刷",
-};
-
 export function StudentDetailPanel({
   studentId,
   initialTab = "mastery",
@@ -102,7 +85,6 @@ export function StudentDetailPanel({
 }: Props) {
   const { data: student, isLoading } = useStudent(studentId);
   const { data: analytics } = useStudentAnalytics(studentId);
-  const { data: progress } = useStudentProgress(studentId);
   const router = useRouter();
   const updateMutation = useUpdateStudent();
   const deleteMutation = useDeleteStudent();
@@ -409,57 +391,6 @@ export function StudentDetailPanel({
                 </Card>
               )}
 
-              {/* Progress timeline */}
-              {analytics.progress_timeline.length > 0 && (
-                <Card className="border-0 shadow-premium overflow-hidden">
-                  <CardHeader>
-                    <CardTitle className="text-sm">進捗タイムライン</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <LineChart
-                        data={analytics.progress_timeline.filter(
-                          (e) => e.new_pointer != null
-                        )}
-                      >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke="hsl(0 0% 91%)"
-                        />
-                        <XAxis
-                          dataKey="date"
-                          tick={{ fontSize: 10, fill: "hsl(0 0% 45%)" }}
-                          tickFormatter={(v) =>
-                            new Date(v).toLocaleDateString("ja-JP", {
-                              month: "short",
-                              day: "numeric",
-                            })
-                          }
-                        />
-                        <YAxis tick={{ fontSize: 11, fill: "hsl(0 0% 45%)" }} />
-                        <Tooltip
-                          labelFormatter={(v) =>
-                            new Date(v).toLocaleDateString("ja-JP")
-                          }
-                          formatter={(value, name) => [
-                            value,
-                            name === "new_pointer" ? "ポインタ" : String(name),
-                          ]}
-                          contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 8px 30px rgba(0,0,0,0.12)", fontSize: "13px", padding: "10px 14px" }}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="new_pointer"
-                          stroke="#dc2626"
-                          strokeWidth={2.5}
-                          dot={{ r: 3, fill: "#dc2626" }}
-                          activeDot={{ r: 5 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              )}
             </>
           ) : (
             <div className="flex items-center justify-center py-16 text-muted-foreground">
@@ -468,42 +399,6 @@ export function StudentDetailPanel({
             </div>
           )}
 
-          {/* Progress history */}
-          {progress?.history && progress.history.length > 0 && (
-            <Card className="border-0 shadow-premium overflow-hidden">
-              <CardHeader>
-                <CardTitle className="text-sm">進捗履歴</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                  {progress.history.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="flex items-center justify-between rounded border border-border p-2 text-xs"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-[10px]">
-                          {ACTION_LABELS[entry.action] || entry.action}
-                        </Badge>
-                        <span>{entry.material_key}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        {entry.old_pointer != null &&
-                          entry.new_pointer != null && (
-                            <span>
-                              {entry.old_pointer} → {entry.new_pointer}
-                            </span>
-                          )}
-                        <span>
-                          {new Date(entry.created_at).toLocaleString("ja-JP")}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </TabsContent>
       </Tabs>
     </div>
