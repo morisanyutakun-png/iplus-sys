@@ -174,7 +174,6 @@ export default function ExamsPage() {
                     placeholder="例: 河合実戦模試 / 2025共テ"
                     className="h-10 rounded-xl"
                     autoFocus
-                    onKeyDown={(e) => e.key === "Enter" && handleCreate()}
                   />
                 </div>
                 <div>
