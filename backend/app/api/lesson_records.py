@@ -249,12 +249,12 @@ async def batch_mastery_input(
                 )
             )
 
-        # 5. Queue next node for printing (only if not completed)
+        # 5. Queue next node for printing (only if not completed, and NOT exam materials)
         new_pointer = sm.pointer
         queued_node_key = None
         queued_node_title = None
 
-        if not is_completed and new_pointer <= effective_total:
+        if not is_exam and not is_completed and new_pointer <= effective_total:
             # Find the node at current pointer
             next_node = next(
                 (n for n in nodes_sorted if n.sort_order == new_pointer), None

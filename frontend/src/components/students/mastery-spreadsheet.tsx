@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useMaterials } from "@/lib/queries/materials";
 import { useMasteryBatch } from "@/lib/queries/lesson-records";
+import { useExamMaterials } from "@/lib/queries/exam-materials";
 import { useSpreadsheetKeyboard } from "@/hooks/use-spreadsheet-keyboard";
 import { ScoreCell, PassCheckbox } from "./mastery-cell";
 import { Button } from "@/components/ui/button";
@@ -39,7 +40,21 @@ type Props = {
 
 export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPendingChange }: Props) {
   const { data: allMaterials } = useMaterials();
+  const { data: allExamMaterials } = useExamMaterials();
   const masteryMutation = useMasteryBatch();
+
+  // Build node_key → max_score map from exam subjects
+  const examMaxScoreMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const exam of allExamMaterials || []) {
+      for (const subj of exam.subjects) {
+        if (subj.node_key) {
+          map.set(subj.node_key, subj.max_score);
+        }
+      }
+    }
+    return map;
+  }, [allExamMaterials]);
 
   const [inputs, setInputs] = useState<Record<string, ColInput>>({});
   const [lastResult, setLastResult] = useState<MasteryBatchResponse | null>(null);
@@ -65,9 +80,10 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
         nodes.find((n) => n.sort_order === sm.pointer + 1) ?? null;
       const isCompleted = sm.pointer > sm.total_nodes;
       const isExam = !!material?.exam_material_id;
-      return { sm, material, nodes, currentNode, nextNode, isCompleted, isExam };
+      const examMaxScore = currentNode ? examMaxScoreMap.get(currentNode.key) ?? null : null;
+      return { sm, material, nodes, currentNode, nextNode, isCompleted, isExam, examMaxScore };
     });
-  }, [student.materials, allMaterials]);
+  }, [student.materials, allMaterials, examMaxScoreMap]);
 
   // Track completed column indices
   const completedCols = useMemo(() => {
@@ -121,16 +137,20 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
       if (col.isCompleted) continue;
       const input = getInput(col.sm.material_key);
       if (input.score === null) continue;
-      if (input.maxScore === null) {
+
+      // Exam materials: max_score is auto-filled from exam subject definition
+      const effectiveMax = col.isExam && col.examMaxScore ? col.examMaxScore : input.maxScore;
+
+      if (effectiveMax === null) {
         toast.error(`${col.sm.material_name}: 得点を入力した場合は満点も入力してください`);
         return;
       }
-      if (input.maxScore <= 0) {
+      if (effectiveMax <= 0) {
         toast.error(`${col.sm.material_name}: 満点は0より大きい値を入力してください`);
         return;
       }
-      if (input.score > input.maxScore) {
-        toast.error(`${col.sm.material_name}: 得点が満点を超えています`);
+      if (input.score > effectiveMax) {
+        toast.error(`${col.sm.material_name}: 得点が満点(${effectiveMax})を超えています`);
         return;
       }
     }
@@ -139,7 +159,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
     for (const col of columns) {
       if (col.isCompleted) continue;
       const input = getInput(col.sm.material_key);
-      // For exam materials: only need score (pass checkbox is irrelevant)
+      // For exam materials: only need score, max_score is fixed from exam subject
       if (col.isExam) {
         if (input.score === null) continue;
         if (!col.currentNode) continue;
@@ -150,7 +170,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
           lesson_date: todayStr,
           status: "completed",
           score: input.score ?? undefined,
-          max_score: input.maxScore ?? undefined,
+          max_score: col.examMaxScore ?? input.maxScore ?? undefined,
         });
       } else {
         if (!input.passed && input.score === null) continue;
@@ -386,9 +406,24 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                   );
                 }
 
-                // ── Row: Max score input ──
+                // ── Row: Max score input (fixed for exam materials) ──
                 if (rowDef.key === "max") {
                   const isFocused = isActiveCol && activeCell.row === 1;
+
+                  // Exam materials: show fixed max score from exam subject
+                  if (col.isExam && col.examMaxScore) {
+                    return (
+                      <div
+                        key={`${rowIdx}-${colIdx}`}
+                        className="flex items-center justify-center px-2 py-1.5 border-b border-r border-border bg-gray-50"
+                      >
+                        <span className="text-sm font-medium text-muted-foreground tabular-nums">
+                          {col.examMaxScore}
+                        </span>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div
                       key={`${rowIdx}-${colIdx}`}

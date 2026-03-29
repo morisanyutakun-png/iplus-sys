@@ -352,6 +352,7 @@ export interface ExamSubject {
   subject_name: string;
   max_score: number;
   sort_order: number;
+  node_key?: string | null;
 }
 
 export interface ExamMaterial {
