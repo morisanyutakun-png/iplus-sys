@@ -2,17 +2,24 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../api";
 import type { CompressedScoreResult, ExamOverview } from "../types";
 
-export function useExamOverview(examMaterialId: number, grade?: string, attemptDate?: string) {
+export function useExamOverview(
+  examMaterialId?: number,
+  examType?: string,
+  grade?: string,
+  attemptDate?: string,
+) {
   return useQuery({
-    queryKey: ["exam-analytics", "overview", examMaterialId, grade, attemptDate],
+    queryKey: ["exam-analytics", "overview", examMaterialId, examType, grade, attemptDate],
     queryFn: () => {
       const params = new URLSearchParams();
-      params.set("exam_material_id", String(examMaterialId));
+      if (examMaterialId) params.set("exam_material_id", String(examMaterialId));
+      if (examType) params.set("exam_type", examType);
       if (grade) params.set("grade", grade);
       if (attemptDate) params.set("attempt_date", attemptDate);
       return apiFetch<ExamOverview>(`/api/exam-analytics/overview?${params}`);
     },
-    enabled: !!examMaterialId,
+    // Always enabled — either specific exam or cross-exam aggregation
+    enabled: true,
   });
 }
 

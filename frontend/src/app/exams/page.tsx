@@ -121,14 +121,25 @@ export default function ExamsPage() {
 function AnalyticsTab({ allExams }: { allExams: ExamMaterial[] }) {
   const { data: students } = useStudents();
   const [selectedStudentId, setSelectedStudentId] = useState("");
-  const [selectedExamId, setSelectedExamId] = useState<number>(0);
+  // examSelect: "" = 未選択, "all" = 全試験, "common_test" = 共テ全体, "university_past" = 過去問全体, or numeric ID
+  const [examSelect, setExamSelect] = useState<string>("");
   const [selectedGrade, setSelectedGrade] = useState<string>("");
 
   const commonTests = allExams.filter((e) => e.exam_type === "common_test");
   const universityPast = allExams.filter((e) => e.exam_type === "university_past");
 
+  // Parse exam selection
+  const isSpecificExam = examSelect !== "" && examSelect !== "all" && examSelect !== "common_test" && examSelect !== "university_past";
+  const selectedExamId = isSpecificExam ? Number(examSelect) : 0;
+  const selectedExamType = examSelect === "common_test" || examSelect === "university_past" ? examSelect : examSelect === "all" ? undefined : undefined;
+  const isCrossExam = examSelect === "all" || examSelect === "common_test" || examSelect === "university_past";
+
   const { data: summary } = useStudentExamSummary(selectedStudentId, selectedExamId || undefined);
-  const { data: overview } = useExamOverview(selectedExamId, selectedGrade || undefined);
+  const { data: overview } = useExamOverview(
+    selectedExamId || undefined,
+    isCrossExam ? (examSelect === "all" ? undefined : examSelect) : undefined,
+    selectedGrade || undefined,
+  );
 
   const grades = Array.from(new Set((students || []).map((s) => s.grade).filter(Boolean))) as string[];
   const latestAttempt = summary?.attempts?.[summary.attempts.length - 1];
@@ -156,17 +167,18 @@ function AnalyticsTab({ allExams }: { allExams: ExamMaterial[] }) {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">試験</label>
-              <Select
-                value={selectedExamId ? String(selectedExamId) : ""}
-                onValueChange={(v) => setSelectedExamId(Number(v))}
-              >
+              <Select value={examSelect} onValueChange={setExamSelect}>
                 <SelectTrigger>
-                  <SelectValue placeholder="試験を選択" />
+                  <SelectValue placeholder="試験を選択（または全体集計）" />
                 </SelectTrigger>
                 <SelectContent>
+                  <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground">全体集計</div>
+                  <SelectItem value="all">全試験</SelectItem>
+                  <SelectItem value="common_test">共テ・模試 全体</SelectItem>
+                  <SelectItem value="university_past">大学過去問 全体</SelectItem>
                   {commonTests.length > 0 && (
                     <>
-                      <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground">共テ・模試</div>
+                      <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground mt-1">共テ・模試</div>
                       {commonTests.map((e) => (
                         <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
                       ))}
@@ -174,7 +186,7 @@ function AnalyticsTab({ allExams }: { allExams: ExamMaterial[] }) {
                   )}
                   {universityPast.length > 0 && (
                     <>
-                      <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground">大学過去問</div>
+                      <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground mt-1">大学過去問</div>
                       {universityPast.map((e) => (
                         <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
                       ))}
@@ -201,10 +213,10 @@ function AnalyticsTab({ allExams }: { allExams: ExamMaterial[] }) {
         </CardContent>
       </Card>
 
-      {!selectedStudentId && !selectedExamId ? (
+      {!selectedStudentId && !examSelect ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
           <BarChart3 className="h-10 w-10 mb-3 opacity-20" />
-          <p className="text-sm">生徒と試験を選択して分析を表示</p>
+          <p className="text-sm">生徒または試験を選択して分析を表示</p>
         </div>
       ) : (
         <Tabs defaultValue="student">
@@ -323,7 +335,7 @@ function AnalyticsTab({ allExams }: { allExams: ExamMaterial[] }) {
 
           {/* ── Class tab ── */}
           <TabsContent value="class" className="space-y-4">
-            {overview && selectedExamId ? (
+            {overview && examSelect ? (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Card className="border-0 shadow-premium">
