@@ -35,6 +35,7 @@ export interface Material {
   start_on?: string;
   aliases: string[];
   sort_order: number;
+  exam_material_id?: number | null;
   nodes: MaterialNode[];
 }
 

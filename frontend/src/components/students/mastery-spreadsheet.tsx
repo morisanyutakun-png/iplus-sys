@@ -64,7 +64,8 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
       const nextNode =
         nodes.find((n) => n.sort_order === sm.pointer + 1) ?? null;
       const isCompleted = sm.pointer > sm.total_nodes;
-      return { sm, material, nodes, currentNode, nextNode, isCompleted };
+      const isExam = !!material?.exam_material_id;
+      return { sm, material, nodes, currentNode, nextNode, isCompleted, isExam };
     });
   }, [student.materials, allMaterials]);
 
@@ -97,9 +98,18 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
     [columns, inputs]
   );
 
-  const pendingCount = Object.values(inputs).filter(
-    (v) => v.passed || v.score !== null
-  ).length;
+  const pendingCount = useMemo(() => {
+    let count = 0;
+    for (const col of columns) {
+      const input = getInput(col.sm.material_key);
+      if (col.isExam) {
+        if (input.score !== null) count++;
+      } else {
+        if (input.passed || input.score !== null) count++;
+      }
+    }
+    return count;
+  }, [inputs, columns]);
 
   useEffect(() => {
     onPendingChange?.(pendingCount > 0);
@@ -129,17 +139,32 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
     for (const col of columns) {
       if (col.isCompleted) continue;
       const input = getInput(col.sm.material_key);
-      if (!input.passed && input.score === null) continue;
-      if (!col.currentNode) continue;
-      records.push({
-        student_id: student.id,
-        material_key: col.sm.material_key,
-        node_key: col.currentNode.key,
-        lesson_date: todayStr,
-        status: input.passed ? "completed" : "retry",
-        score: input.score ?? undefined,
-        max_score: input.maxScore ?? undefined,
-      });
+      // For exam materials: only need score (pass checkbox is irrelevant)
+      if (col.isExam) {
+        if (input.score === null) continue;
+        if (!col.currentNode) continue;
+        records.push({
+          student_id: student.id,
+          material_key: col.sm.material_key,
+          node_key: col.currentNode.key,
+          lesson_date: todayStr,
+          status: "completed",
+          score: input.score ?? undefined,
+          max_score: input.maxScore ?? undefined,
+        });
+      } else {
+        if (!input.passed && input.score === null) continue;
+        if (!col.currentNode) continue;
+        records.push({
+          student_id: student.id,
+          material_key: col.sm.material_key,
+          node_key: col.currentNode.key,
+          lesson_date: todayStr,
+          status: input.passed ? "completed" : "retry",
+          score: input.score ?? undefined,
+          max_score: input.maxScore ?? undefined,
+        });
+      }
     }
     if (records.length === 0) {
       toast.info("入力されたデータがありません");
@@ -392,7 +417,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                   );
                 }
 
-                // ── Row: Pass checkbox ──
+                // ── Row: Pass checkbox (hidden for exam materials) ──
                 if (rowDef.key === "pass") {
                   const isFocused = isActiveCol && activeCell.row === 2;
                   return (
@@ -400,7 +425,9 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                       key={`${rowIdx}-${colIdx}`}
                       className={cn(
                         "flex items-center justify-center px-2 py-1.5 border-b border-r border-border transition-colors",
-                        input.passed
+                        col.isExam
+                          ? "bg-gray-50"
+                          : input.passed
                           ? "bg-emerald-50"
                           : isFocused
                           ? "bg-primary/5 ring-inset ring-1 ring-primary/20"
@@ -408,9 +435,9 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                           ? "bg-amber-50/50"
                           : "bg-white"
                       )}
-                      onClick={() => handleCellClick(colIdx, 2)}
+                      onClick={() => !col.isExam && handleCellClick(colIdx, 2)}
                     >
-                      {!col.isCompleted && (
+                      {!col.isCompleted && !col.isExam && (
                         <PassCheckbox
                           checked={input.passed}
                           onToggle={() => togglePass(colIdx)}
@@ -418,12 +445,34 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                           focusTrigger={focusTrigger}
                         />
                       )}
+                      {col.isExam && (
+                        <span className="text-[10px] text-muted-foreground">—</span>
+                      )}
                     </div>
                   );
                 }
 
-                // ── Row: Next range (read-only) ──
+                // ── Row: Next range (read-only; hidden for exam materials) ──
                 if (rowDef.key === "next") {
+                  // Exam materials: no next range concept
+                  if (col.isExam) {
+                    return (
+                      <div
+                        key={`${rowIdx}-${colIdx}`}
+                        className="flex items-center justify-center px-2 py-2 text-xs border-b border-r border-border bg-gray-50"
+                      >
+                        {resultItem ? (
+                          <span className="flex items-center gap-1 text-blue-600">
+                            <Save className="h-3 w-3" />
+                            <span className="truncate">試験記録済</span>
+                          </span>
+                        ) : input.score !== null ? (
+                          <span className="text-muted-foreground text-[10px]">単発試験</span>
+                        ) : null}
+                      </div>
+                    );
+                  }
+
                   let nextText = "";
                   if (resultItem) {
                     if (resultItem.advanced) {

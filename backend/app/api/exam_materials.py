@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.exam import ExamMaterial, ExamSubject
+from app.models.material import Material, MaterialNode
 from app.schemas.exam import (
     ExamMaterialCreate,
     ExamMaterialOut,
@@ -13,6 +14,16 @@ from app.schemas.exam import (
 )
 
 router = APIRouter()
+
+
+def _make_material_key(exam_name: str, subject_name: str) -> str:
+    """Generate a material key for an exam subject."""
+    return f"試験:{exam_name}:{subject_name}"
+
+
+def _make_node_key(exam_name: str, subject_name: str) -> str:
+    """Generate a node key for an exam subject."""
+    return f"試験:{exam_name}:{subject_name}:001"
 
 
 @router.get("", response_model=list[ExamMaterialOut])
@@ -39,7 +50,7 @@ async def create_exam_material(body: ExamMaterialCreate, db: AsyncSession = Depe
     )
     max_order = max_result.scalar()
 
-    material = ExamMaterial(
+    exam_mat = ExamMaterial(
         name=body.name,
         exam_type=body.exam_type,
         year=body.year,
@@ -48,20 +59,54 @@ async def create_exam_material(body: ExamMaterialCreate, db: AsyncSession = Depe
         exam_period=body.exam_period,
         sort_order=max_order + 1,
     )
-    db.add(material)
-    await db.flush()
+    db.add(exam_mat)
+    await db.flush()  # Get exam_mat.id
 
+    # Get max sort_order for materials table
+    mat_max_result = await db.execute(
+        select(sa_func.coalesce(sa_func.max(Material.sort_order), 0))
+    )
+    mat_sort_order = mat_max_result.scalar()
+
+    # Create Material + MaterialNode for each subject
     for idx, subj in enumerate(body.subjects):
-        db.add(ExamSubject(
-            exam_material_id=material.id,
+        mat_key = _make_material_key(body.name, subj.subject_name)
+        node_key = _make_node_key(body.name, subj.subject_name)
+        mat_sort_order += 1
+
+        # Create Material (linked to exam via exam_material_id)
+        material = Material(
+            key=mat_key,
+            name=f"{body.name} {subj.subject_name}",
+            subject=subj.subject_name,
+            exam_material_id=exam_mat.id,
+            sort_order=mat_sort_order,
+        )
+        db.add(material)
+
+        # Create single MaterialNode (for PDF attachment)
+        node = MaterialNode(
+            key=node_key,
+            material_key=mat_key,
+            title=subj.subject_name,
+            range_text=f"{body.name}",
+            sort_order=1,
+        )
+        db.add(node)
+
+        # Create ExamSubject with node_key link
+        exam_subj = ExamSubject(
+            exam_material_id=exam_mat.id,
             subject_name=subj.subject_name,
             max_score=subj.max_score,
             sort_order=idx + 1,
-        ))
+            node_key=node_key,
+        )
+        db.add(exam_subj)
 
     await db.commit()
-    await db.refresh(material)
-    return ExamMaterialOut.model_validate(material)
+    await db.refresh(exam_mat)
+    return ExamMaterialOut.model_validate(exam_mat)
 
 
 @router.get("/{material_id}", response_model=ExamMaterialOut)
@@ -80,20 +125,33 @@ async def get_exam_material(material_id: int, db: AsyncSession = Depends(get_db)
 @router.delete("/{material_id}")
 async def delete_exam_material(material_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(ExamMaterial).where(ExamMaterial.id == material_id))
-    material = result.scalars().first()
-    if not material:
+    exam_mat = result.scalars().first()
+    if not exam_mat:
         raise HTTPException(status_code=404, detail="試験が見つかりません")
+
+    # Delete linked Materials (cascade will handle nodes, student_materials, etc.)
+    linked_result = await db.execute(
+        select(Material).where(Material.exam_material_id == material_id)
+    )
+    linked_materials = linked_result.scalars().all()
+    for mat in linked_materials:
+        await db.execute(delete(Material).where(Material.key == mat.key))
+
+    # Delete exam material (cascade handles subjects, scores, assignments)
     await db.execute(delete(ExamMaterial).where(ExamMaterial.id == material_id))
     await db.commit()
-    return {"status": "deleted"}
+    return {"status": "deleted", "materials_removed": len(linked_materials)}
 
 
 @router.post("/{material_id}/subjects", response_model=ExamSubjectOut)
 async def add_subject(
     material_id: int, body: ExamSubjectCreate, db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(ExamMaterial).where(ExamMaterial.id == material_id))
-    if not result.scalars().first():
+    result = await db.execute(
+        select(ExamMaterial).where(ExamMaterial.id == material_id)
+    )
+    exam_mat = result.scalars().first()
+    if not exam_mat:
         raise HTTPException(status_code=404, detail="試験が見つかりません")
 
     max_result = await db.execute(
@@ -102,11 +160,39 @@ async def add_subject(
     )
     max_order = max_result.scalar()
 
+    # Create corresponding Material + MaterialNode
+    mat_key = _make_material_key(exam_mat.name, body.subject_name)
+    node_key = _make_node_key(exam_mat.name, body.subject_name)
+
+    mat_max_result = await db.execute(
+        select(sa_func.coalesce(sa_func.max(Material.sort_order), 0))
+    )
+    mat_sort_order = mat_max_result.scalar() + 1
+
+    material = Material(
+        key=mat_key,
+        name=f"{exam_mat.name} {body.subject_name}",
+        subject=body.subject_name,
+        exam_material_id=material_id,
+        sort_order=mat_sort_order,
+    )
+    db.add(material)
+
+    node = MaterialNode(
+        key=node_key,
+        material_key=mat_key,
+        title=body.subject_name,
+        range_text=exam_mat.name,
+        sort_order=1,
+    )
+    db.add(node)
+
     subject = ExamSubject(
         exam_material_id=material_id,
         subject_name=body.subject_name,
         max_score=body.max_score,
         sort_order=max_order + 1,
+        node_key=node_key,
     )
     db.add(subject)
     await db.commit()
@@ -127,6 +213,16 @@ async def delete_subject(
     subject = result.scalars().first()
     if not subject:
         raise HTTPException(status_code=404, detail="教科が見つかりません")
+
+    # Get exam material name to reconstruct material key
+    exam_result = await db.execute(
+        select(ExamMaterial).where(ExamMaterial.id == material_id)
+    )
+    exam_mat = exam_result.scalars().first()
+    if exam_mat:
+        mat_key = _make_material_key(exam_mat.name, subject.subject_name)
+        await db.execute(delete(Material).where(Material.key == mat_key))
+
     await db.execute(delete(ExamSubject).where(ExamSubject.id == subject_id))
     await db.commit()
     return {"status": "deleted"}

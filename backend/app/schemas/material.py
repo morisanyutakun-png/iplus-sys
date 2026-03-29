@@ -25,6 +25,7 @@ class MaterialOut(BaseModel):
     start_on: str | None = None
     aliases: list[str] = []
     sort_order: int
+    exam_material_id: int | None = None
     nodes: list[MaterialNodeOut] = []
 
     model_config = {"from_attributes": True}

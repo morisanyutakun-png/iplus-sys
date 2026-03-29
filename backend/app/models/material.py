@@ -15,6 +15,9 @@ class Material(Base):
     start_on: Mapped[str | None] = mapped_column(String, nullable=True)
     aliases: Mapped[list] = mapped_column(JSON, default=list)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    exam_material_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("exam_materials.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

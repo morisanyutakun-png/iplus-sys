@@ -50,6 +50,7 @@ class ExamSubject(Base):
     subject_name: Mapped[str] = mapped_column(String, nullable=False)
     max_score: Mapped[float] = mapped_column(Float, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    node_key: Mapped[str | None] = mapped_column(String, nullable=True)
 
     exam_material: Mapped["ExamMaterial"] = relationship(
         "ExamMaterial", back_populates="subjects"

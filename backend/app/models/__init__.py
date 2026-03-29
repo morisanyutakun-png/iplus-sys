@@ -9,6 +9,14 @@ from app.models.lesson_record import LessonRecord
 from app.models.configured_printer import ConfiguredPrinter
 from app.models.word_test import WordBook, Word, WordTestSession
 from app.models.pdf_blob import PdfBlob
+from app.models.exam import (
+    ExamMaterial,
+    ExamSubject,
+    StudentExamAssignment,
+    ExamScore,
+    UniversityScoreWeight,
+    ExamScoreTarget,
+)
 
 __all__ = [
     "Base",
@@ -28,4 +36,10 @@ __all__ = [
     "Word",
     "WordTestSession",
     "PdfBlob",
+    "ExamMaterial",
+    "ExamSubject",
+    "StudentExamAssignment",
+    "ExamScore",
+    "UniversityScoreWeight",
+    "ExamScoreTarget",
 ]

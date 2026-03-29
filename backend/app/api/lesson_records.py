@@ -12,6 +12,7 @@ from app.models.student import Student
 from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
 from app.models.material import Material, MaterialNode
 from app.models.print_queue import PrintQueue
+from app.models.exam import ExamSubject, ExamScore
 from app.services.word_test_material import regenerate_node_pdfs
 from app.schemas.lesson_record import (
     LessonRecordOut,
@@ -165,8 +166,35 @@ async def batch_mastery_input(
         total_nodes = len(nodes_sorted)
         effective_total = sm.max_node if sm.max_node else total_nodes
         did_advance = False
+        is_exam = sm.material.exam_material_id is not None
 
-        # 2b. Update low_score_streak counter
+        # 2b. If this is an exam-linked material, also save to exam_scores
+        if is_exam and rec.score is not None:
+            # Find the ExamSubject linked to this node
+            exam_subj_result = await db.execute(
+                select(ExamSubject).where(ExamSubject.node_key == rec.node_key)
+            )
+            exam_subj = exam_subj_result.scalars().first()
+            if exam_subj:
+                exam_score_stmt = pg_insert(ExamScore).values(
+                    student_id=rec.student_id,
+                    exam_material_id=exam_subj.exam_material_id,
+                    exam_subject_id=exam_subj.id,
+                    score=rec.score,
+                    attempt_date=rec.lesson_date,
+                    notes=rec.notes,
+                )
+                exam_score_stmt = exam_score_stmt.on_conflict_do_update(
+                    constraint="uq_exam_score",
+                    set_={
+                        "score": exam_score_stmt.excluded.score,
+                        "notes": exam_score_stmt.excluded.notes,
+                        "updated_at": func.now(),
+                    },
+                )
+                await db.execute(exam_score_stmt)
+
+        # 2c. Update low_score_streak counter
         if accuracy_rate is not None:
             if accuracy_rate < 0.6:
                 sm.low_score_streak = (sm.low_score_streak or 0) + 1
@@ -174,8 +202,8 @@ async def batch_mastery_input(
                 sm.low_score_streak = 0
             sm.last_accuracy = accuracy_rate
 
-        # 3. Advance pointer if completed
-        if rec.status == "completed" and old_pointer <= effective_total:
+        # 3. Advance pointer if completed (skip for exam materials — they are single-shot)
+        if not is_exam and rec.status == "completed" and old_pointer <= effective_total:
             sm.pointer = old_pointer + 1
             did_advance = True
             advanced_count += 1
@@ -190,12 +218,15 @@ async def batch_mastery_input(
                 new_pointer=sm.pointer,
                 metadata_={"source": "mastery_input", "score": rec.score, "max_score": rec.max_score, "accuracy_rate": accuracy_rate},
             ))
+        elif is_exam:
+            # Exam materials: count as "retried" (no advancement) but still record
+            retried_count += 1
         else:
             retried_count += 1
 
-        # 4. Check if material is completed (pointer exceeded total)
+        # 4. Check if material is completed (pointer exceeded total) — never for exam materials
         is_completed = False
-        if did_advance and sm.pointer > effective_total:
+        if not is_exam and did_advance and sm.pointer > effective_total:
             is_completed = True
             completed_count += 1
             # Archive progress before removing assignment

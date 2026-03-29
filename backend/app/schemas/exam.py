@@ -16,6 +16,7 @@ class ExamSubjectOut(BaseModel):
     subject_name: str
     max_score: float
     sort_order: int
+    node_key: str | None = None
 
     model_config = {"from_attributes": True}
 
