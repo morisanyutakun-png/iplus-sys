@@ -18,7 +18,10 @@ router = APIRouter()
 @router.get("", response_model=MaterialListOut)
 async def list_materials(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Material).options(selectinload(Material.nodes)).order_by(Material.sort_order)
+        select(Material)
+        .where(Material.exam_material_id.is_(None))
+        .options(selectinload(Material.nodes))
+        .order_by(Material.sort_order)
     )
     materials = result.scalars().unique().all()
     return MaterialListOut(materials=[MaterialOut.model_validate(m) for m in materials])

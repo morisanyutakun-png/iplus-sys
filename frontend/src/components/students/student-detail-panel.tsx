@@ -271,7 +271,7 @@ export function StudentDetailPanel({
           </TabsTrigger>
           <TabsTrigger value="materials">
             <BookOpen className="mr-1.5 h-4 w-4" />
-            教材管理
+            割り当て管理
           </TabsTrigger>
           <TabsTrigger value="analytics">
             <BarChart3 className="mr-1.5 h-4 w-4" />

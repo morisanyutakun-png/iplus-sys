@@ -286,17 +286,17 @@ export function MaterialManager({ studentId }: Props) {
   };
 
   const hasChanges = Object.keys(editedPointers).length > 0;
-  const assigned = zones?.assigned || [];
-  const source = zones?.source || [];
+  const allAssigned = zones?.assigned || [];
+  const allSource = zones?.source || [];
 
   // Split assigned into regular vs exam
-  const assignedRegular = useMemo(() => assigned.filter((m) => !m.exam_material_id), [assigned]);
-  const assignedExam = useMemo(() => assigned.filter((m) => !!m.exam_material_id), [assigned]);
+  const assigned = useMemo(() => allAssigned.filter((m) => !m.exam_material_id), [allAssigned]);
+  const assignedExam = useMemo(() => allAssigned.filter((m) => !!m.exam_material_id), [allAssigned]);
 
-  // Split source into regular vs exam, group exams by exam_name + exam_type
-  const sourceRegular = useMemo(() => source.filter((m) => !m.exam_material_id), [source]);
+  // Split source into regular vs exam, group exams by exam_name
+  const source = useMemo(() => allSource.filter((m) => !m.exam_material_id), [allSource]);
   const sourceExamGroups = useMemo(() => {
-    const exams = source.filter((m) => !!m.exam_material_id);
+    const exams = allSource.filter((m) => !!m.exam_material_id);
     const groups: Record<string, { exam_name: string; exam_type: string; exam_year?: number; exam_university?: string; exam_faculty?: string; items: MaterialZoneItem[] }> = {};
     for (const m of exams) {
       const groupKey = `${m.exam_material_id}`;
@@ -313,7 +313,7 @@ export function MaterialManager({ studentId }: Props) {
       groups[groupKey].items.push(m);
     }
     return Object.values(groups);
-  }, [source]);
+  }, [allSource]);
 
   // Filter nearly complete items for this student from dashboard data
   const nearlyComplete = (dashboard?.nearly_complete || []).filter(
@@ -335,9 +335,9 @@ export function MaterialManager({ studentId }: Props) {
               <BookOpen className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
             </div>
             <h3 className="text-sm font-semibold">教材一覧</h3>
-            {assignedRegular.length > 0 && (
+            {assigned.length > 0 && (
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
-                {assignedRegular.length}
+                {assigned.length}
               </Badge>
             )}
           </div>
@@ -355,7 +355,7 @@ export function MaterialManager({ studentId }: Props) {
         </div>
 
         <div className="space-y-2">
-          {assignedRegular.map((mat) => {
+          {assigned.map((mat) => {
             const currentPointer = editedPointers[mat.key] ?? mat.pointer ?? 1;
             const completed = currentPointer - 1;
             const total = mat.max_node || mat.total_nodes;
@@ -496,7 +496,7 @@ export function MaterialManager({ studentId }: Props) {
             );
           })}
 
-          {assignedRegular.length === 0 && assignedExam.length === 0 && (
+          {assigned.length === 0 && assignedExam.length === 0 && (
             <div className="flex flex-col items-center justify-center py-8 text-center rounded-xl border border-dashed border-border/50 bg-muted/20">
               <div className="flex items-center justify-center h-10 w-10 rounded-full bg-muted/50 mb-3">
                 <BookOpen className="h-5 w-5 text-muted-foreground/40" />
@@ -697,7 +697,7 @@ export function MaterialManager({ studentId }: Props) {
       )}
 
       {/* ── Available Regular Materials ── */}
-      {sourceRegular.length > 0 && (
+      {source.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-3">
             <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
@@ -705,12 +705,12 @@ export function MaterialManager({ studentId }: Props) {
             </div>
             <h3 className="text-sm font-semibold">追加可能な教材</h3>
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
-              {sourceRegular.length}
+              {source.length}
             </Badge>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {sourceRegular.map((mat) => (
+            {source.map((mat) => (
               <button
                 key={mat.key}
                 type="button"
@@ -753,6 +753,7 @@ export function MaterialManager({ studentId }: Props) {
         </div>
       )}
 
+
       {/* ── Available Exam Materials (grouped by exam) ── */}
       {sourceExamGroups.length > 0 && (
         <div>
@@ -776,7 +777,6 @@ export function MaterialManager({ studentId }: Props) {
                       : "border-orange-200/60 dark:border-orange-800/40"
                   )}
                 >
-                  {/* Card header */}
                   <div
                     className={cn(
                       "flex items-center gap-2.5 px-4 py-2.5 border-b",
@@ -787,12 +787,10 @@ export function MaterialManager({ studentId }: Props) {
                   >
                     <div className={cn(
                       "flex items-center justify-center h-7 w-7 rounded-lg shrink-0",
-                      isCommon
-                        ? "bg-blue-100 dark:bg-blue-900/50"
-                        : "bg-orange-100 dark:bg-orange-900/50"
+                      isCommon ? "bg-blue-100 dark:bg-blue-900/50" : "bg-orange-100 dark:bg-orange-900/50"
                     )}>
                       {isCommon ? (
-                        <GraduationCap className={cn("h-4 w-4", isCommon ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400")} />
+                        <GraduationCap className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       ) : (
                         <School className="h-4 w-4 text-orange-600 dark:text-orange-400" />
                       )}
@@ -827,10 +825,8 @@ export function MaterialManager({ studentId }: Props) {
                     </Badge>
                   </div>
 
-                  {/* Subject buttons */}
                   <div className="p-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                     {group.items.map((mat) => {
-                      // Extract subject name from full name (e.g., "2024共テ 英語" -> "英語")
                       const subjectName = mat.name.replace(group.exam_name, "").trim() || mat.name;
                       return (
                         <button
@@ -855,6 +851,15 @@ export function MaterialManager({ studentId }: Props) {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* All assigned state */}
+      {allSource.length === 0 && (assigned.length > 0 || assignedExam.length > 0) && (
+        <div className="flex items-center gap-2 py-3 px-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-800/30">
+          <span className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
+            全ての教材が割り当て済みです
+          </span>
         </div>
       )}
 
@@ -975,14 +980,6 @@ export function MaterialManager({ studentId }: Props) {
         </DialogContent>
       </Dialog>
 
-      {/* All assigned state */}
-      {source.length === 0 && (assignedRegular.length > 0 || assignedExam.length > 0) && (
-        <div className="flex items-center gap-2 py-3 px-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-800/30">
-          <span className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
-            全ての教材が割り当て済みです
-          </span>
-        </div>
-      )}
     </div>
   );
 }
