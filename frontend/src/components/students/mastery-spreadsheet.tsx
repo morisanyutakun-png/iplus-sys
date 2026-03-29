@@ -20,9 +20,65 @@ import {
 } from "lucide-react";
 import type {
   Student,
+  StudentMaterialInfo,
+  Material,
   MasteryInput,
   MasteryBatchResponse,
 } from "@/lib/types";
+
+// ── Subject ordering & header colors ──
+
+const SUBJECT_ORDER = [
+  "英語", "現代文", "古文", "漢文", "国語",
+  "数学",
+  "物理", "化学", "生物", "地学",
+  "社会",
+];
+
+const WORD_TEST_SUBJECT_ORDER = ["英語", "古文", "漢文", "国語"];
+
+const HEADER_COLORS: Record<string, string> = {
+  "英語": "bg-rose-700",
+  "現代文": "bg-red-700",
+  "古文": "bg-red-700",
+  "漢文": "bg-red-700",
+  "国語": "bg-red-700",
+  "数学": "bg-blue-700",
+  "物理": "bg-emerald-700",
+  "化学": "bg-emerald-700",
+  "生物": "bg-emerald-700",
+  "地学": "bg-emerald-700",
+  "社会": "bg-amber-700",
+};
+
+const WORD_TEST_HEADER_COLORS: Record<string, string> = {
+  "英語": "bg-rose-600",
+  "古文": "bg-red-600",
+  "漢文": "bg-red-600",
+  "国語": "bg-red-600",
+};
+
+type ColObj = { sm: StudentMaterialInfo; material?: Material; isExam: boolean };
+
+function getColumnSortKey(col: ColObj): number {
+  if (col.sm.material_key.startsWith("単語:")) {
+    const subIdx = WORD_TEST_SUBJECT_ORDER.indexOf(col.material?.subject ?? "");
+    return subIdx >= 0 ? subIdx : WORD_TEST_SUBJECT_ORDER.length;
+  }
+  if (col.isExam) {
+    return 1000 + (col.material?.sort_order ?? 0);
+  }
+  const subIdx = SUBJECT_ORDER.indexOf(col.material?.subject ?? "");
+  return 100 + (subIdx >= 0 ? subIdx : SUBJECT_ORDER.length);
+}
+
+function getHeaderColor(col: ColObj): string {
+  if (col.isExam) return "bg-violet-700";
+  if (col.sm.material_key.startsWith("単語:")) {
+    return WORD_TEST_HEADER_COLORS[col.material?.subject ?? ""] ?? "bg-slate-700";
+  }
+  return HEADER_COLORS[col.material?.subject ?? ""] ?? "bg-gray-800";
+}
 
 type ColInput = {
   score: number | null;
@@ -67,22 +123,24 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
     setLastResult(null);
   }, [student.id]);
 
-  // Build columns: one per assigned material
+  // Build columns: one per assigned material, sorted by subject group
   const columns = useMemo(() => {
-    return student.materials.map((sm) => {
-      const material = allMaterials?.find((m) => m.key === sm.material_key);
-      const nodes = material?.nodes
-        ? [...material.nodes].sort((a, b) => a.sort_order - b.sort_order)
-        : [];
-      const currentNode =
-        nodes.find((n) => n.sort_order === sm.pointer) ?? null;
-      const nextNode =
-        nodes.find((n) => n.sort_order === sm.pointer + 1) ?? null;
-      const isCompleted = sm.pointer > sm.total_nodes;
-      const isExam = !!material?.exam_material_id;
-      const examMaxScore = currentNode ? examMaxScoreMap.get(currentNode.key) ?? null : null;
-      return { sm, material, nodes, currentNode, nextNode, isCompleted, isExam, examMaxScore };
-    });
+    return student.materials
+      .map((sm) => {
+        const material = allMaterials?.find((m) => m.key === sm.material_key);
+        const nodes = material?.nodes
+          ? [...material.nodes].sort((a, b) => a.sort_order - b.sort_order)
+          : [];
+        const currentNode =
+          nodes.find((n) => n.sort_order === sm.pointer) ?? null;
+        const nextNode =
+          nodes.find((n) => n.sort_order === sm.pointer + 1) ?? null;
+        const isCompleted = sm.pointer > sm.total_nodes;
+        const isExam = !!material?.exam_material_id;
+        const examMaxScore = currentNode ? examMaxScoreMap.get(currentNode.key) ?? null : null;
+        return { sm, material, nodes, currentNode, nextNode, isCompleted, isExam, examMaxScore };
+      })
+      .sort((a, b) => getColumnSortKey(a) - getColumnSortKey(b));
   }, [student.materials, allMaterials, examMaxScoreMap]);
 
   // Track completed column indices
@@ -332,7 +390,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                     <div
                       key={`${rowIdx}-${colIdx}`}
                       className={cn(
-                        "flex items-center justify-center px-3 py-2 text-sm font-bold border-b border-r border-border bg-gray-900 text-white",
+                        `flex items-center justify-center px-3 py-2 text-sm font-bold border-b border-r border-border text-white ${getHeaderColor(col)}`,
                         col.isCompleted && "opacity-40"
                       )}
                     >
