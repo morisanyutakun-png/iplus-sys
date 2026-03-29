@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "../api";
+import { apiFetch, apiUrl } from "../api";
 import type { ExamMaterial } from "../types";
 
 export function useExamMaterials(examType?: string) {
@@ -63,6 +63,43 @@ export function useAddExamSubject(materialId: number) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["exam-materials"] });
+    },
+  });
+}
+
+export function useAddExamSubjectSimple(materialId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      subject_name,
+      max_score,
+      file,
+      answerFile,
+    }: {
+      subject_name: string;
+      max_score: number;
+      file?: File;
+      answerFile?: File;
+    }) => {
+      const formData = new FormData();
+      formData.append("subject_name", subject_name);
+      formData.append("max_score", String(max_score));
+      if (file) formData.append("file", file);
+      if (answerFile) formData.append("answer_file", answerFile);
+      const res = await fetch(
+        apiUrl(`/api/exam-materials/${materialId}/subjects/simple`),
+        { method: "POST", body: formData }
+      );
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`追加に失敗: ${text}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["exam-materials"] });
+      qc.invalidateQueries({ queryKey: ["materials"] });
+      qc.invalidateQueries({ queryKey: ["pdfs"] });
     },
   });
 }
