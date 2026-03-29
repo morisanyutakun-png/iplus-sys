@@ -287,6 +287,7 @@ export interface WordBook {
   id: number;
   name: string;
   description: string;
+  subject: string;
   total_words: number;
   material_key?: string | null;
   created_at: string;

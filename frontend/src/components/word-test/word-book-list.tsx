@@ -23,7 +23,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Plus, BookOpen, Trash2, Pencil } from "lucide-react";
+
+const SUBJECT_OPTIONS = ["英語", "国語", "古文", "漢文", "社会", "理科", "その他"] as const;
 import { useWordBooks, useCreateWordBook, useUpdateWordBook, useDeleteWordBook } from "@/lib/queries/word-test";
 import type { WordBook } from "@/lib/types";
 import { CsvImportDialog } from "./csv-import-dialog";
@@ -42,16 +45,19 @@ export function WordBookList({ selectedBookId, onSelectBook }: Props) {
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [subject, setSubject] = useState("英語");
   const [renameBook, setRenameBook] = useState<WordBook | null>(null);
   const [renameName, setRenameName] = useState("");
+  const [renameSubject, setRenameSubject] = useState("");
 
   const handleCreate = async () => {
     if (!name.trim()) return;
     try {
-      const book = await createBook.mutateAsync({ name: name.trim(), description: description.trim() });
+      const book = await createBook.mutateAsync({ name: name.trim(), description: description.trim(), subject });
       toast.success(`「${book.name}」を作成しました`);
       setName("");
       setDescription("");
+      setSubject("英語");
       setCreateOpen(false);
       onSelectBook(book);
     } catch {
@@ -62,8 +68,12 @@ export function WordBookList({ selectedBookId, onSelectBook }: Props) {
   const handleRename = async () => {
     if (!renameBook || !renameName.trim()) return;
     try {
-      const updated = await updateBook.mutateAsync({ bookId: renameBook.id, name: renameName.trim() });
-      toast.success(`「${updated.name}」に名称変更しました`);
+      const updated = await updateBook.mutateAsync({
+        bookId: renameBook.id,
+        name: renameName.trim() !== renameBook.name ? renameName.trim() : undefined,
+        subject: renameSubject !== renameBook.subject ? renameSubject : undefined,
+      });
+      toast.success(`「${updated.name}」を更新しました`);
       setRenameBook(null);
       setRenameName("");
     } catch {
@@ -111,6 +121,25 @@ export function WordBookList({ selectedBookId, onSelectBook }: Props) {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
+              <div>
+                <label className="text-xs text-muted-foreground mb-1.5 block">教科</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {SUBJECT_OPTIONS.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSubject(s)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                        subject === s
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/60"
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <Button onClick={handleCreate} disabled={!name.trim() || createBook.isPending} className="w-full">
                 作成
               </Button>
@@ -145,9 +174,10 @@ export function WordBookList({ selectedBookId, onSelectBook }: Props) {
                     </div>
                     <div className="min-w-0">
                       <p className="font-medium truncate">{book.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {book.total_words}語
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">{book.total_words}語</span>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 rounded-full">{book.subject || "英語"}</Badge>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -159,6 +189,7 @@ export function WordBookList({ selectedBookId, onSelectBook }: Props) {
                         e.stopPropagation();
                         setRenameBook(book);
                         setRenameName(book.name);
+                        setRenameSubject(book.subject || "英語");
                       }}
                       title="名称変更"
                     >
@@ -208,7 +239,7 @@ export function WordBookList({ selectedBookId, onSelectBook }: Props) {
       <Dialog open={!!renameBook} onOpenChange={(open) => !open && setRenameBook(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>単語帳の名称変更</DialogTitle>
+            <DialogTitle>単語帳の編集</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 pt-2">
             <Input
@@ -217,12 +248,34 @@ export function WordBookList({ selectedBookId, onSelectBook }: Props) {
               onChange={(e) => setRenameName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleRename()}
             />
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">教科</label>
+              <div className="flex flex-wrap gap-1.5">
+                {SUBJECT_OPTIONS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setRenameSubject(s)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                      renameSubject === s
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/60"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
             <Button
               onClick={handleRename}
-              disabled={!renameName.trim() || renameName.trim() === renameBook?.name || updateBook.isPending}
+              disabled={
+                (!renameName.trim() || (renameName.trim() === renameBook?.name && renameSubject === (renameBook?.subject || "英語")))
+                || updateBook.isPending
+              }
               className="w-full"
             >
-              {updateBook.isPending ? "変更中..." : "変更"}
+              {updateBook.isPending ? "保存中..." : "保存"}
             </Button>
           </div>
         </DialogContent>

@@ -36,7 +36,7 @@ async def create_word_book(body: WordBookCreate, db: AsyncSession = Depends(get_
     if existing.scalars().first():
         raise HTTPException(status_code=409, detail="同名の単語帳が既に存在します")
 
-    book = WordBook(name=body.name, description=body.description)
+    book = WordBook(name=body.name, description=body.description, subject=body.subject)
     db.add(book)
     await db.commit()
     await db.refresh(book)
@@ -127,6 +127,14 @@ async def update_word_book(
 
     if body.description is not None:
         book.description = body.description
+
+    if body.subject is not None:
+        book.subject = body.subject
+        # Update linked Material subject
+        if book.material_key:
+            mat = await db.get(Material, book.material_key)
+            if mat:
+                mat.subject = body.subject
 
     await db.commit()
     await db.refresh(book)
@@ -304,13 +312,14 @@ async def _auto_generate_material(db: AsyncSession, book: WordBook) -> None:
     words_per_test = 100
 
     # Create or update Material
+    subject = book.subject or "英語"
     existing_mat = await db.get(Material, material_key)
     if existing_mat:
         existing_mat.name = material_name
-        existing_mat.subject = "英語"
+        existing_mat.subject = subject
     else:
         db.add(Material(
-            key=material_key, name=material_name, subject="英語", sort_order=900,
+            key=material_key, name=material_name, subject=subject, sort_order=900,
         ))
         await db.flush()
 

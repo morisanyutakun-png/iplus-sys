@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy import select, delete, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -16,13 +16,14 @@ router = APIRouter()
 
 
 @router.get("", response_model=MaterialListOut)
-async def list_materials(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Material)
-        .where(Material.exam_material_id.is_(None))
-        .options(selectinload(Material.nodes))
-        .order_by(Material.sort_order)
-    )
+async def list_materials(
+    include_all: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(Material).options(selectinload(Material.nodes)).order_by(Material.sort_order)
+    if not include_all:
+        query = query.where(Material.exam_material_id.is_(None))
+    result = await db.execute(query)
     materials = result.scalars().unique().all()
     return MaterialListOut(materials=[MaterialOut.model_validate(m) for m in materials])
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { useMaterials } from "@/lib/queries/materials";
+import { useAllMaterials } from "@/lib/queries/materials";
 import { useMasteryBatch } from "@/lib/queries/lesson-records";
 import { useExamMaterials } from "@/lib/queries/exam-materials";
 import { useSpreadsheetKeyboard } from "@/hooks/use-spreadsheet-keyboard";
@@ -39,7 +39,7 @@ type Props = {
 };
 
 export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPendingChange }: Props) {
-  const { data: allMaterials } = useMaterials();
+  const { data: allMaterials } = useAllMaterials();
   const { data: allExamMaterials } = useExamMaterials();
   const masteryMutation = useMasteryBatch();
 
@@ -489,21 +489,26 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
 
                 // ── Row: Next range (read-only; hidden for exam materials) ──
                 if (rowDef.key === "next") {
-                  // Exam materials: no next range concept
+                  // Exam materials: single-shot — auto-unassign after recording
                   if (col.isExam) {
                     return (
                       <div
                         key={`${rowIdx}-${colIdx}`}
-                        className="flex items-center justify-center px-2 py-2 text-xs border-b border-r border-border bg-gray-50"
+                        className={cn(
+                          "flex items-center justify-center px-2 py-2 text-xs border-b border-r border-border",
+                          resultItem ? "bg-violet-50" : "bg-gray-50"
+                        )}
                       >
                         {resultItem ? (
-                          <span className="flex items-center gap-1 text-blue-600">
+                          <span className="flex items-center gap-1 text-violet-600">
                             <Save className="h-3 w-3" />
-                            <span className="truncate">試験記録済</span>
+                            <span className="truncate">記録済→自動解除</span>
                           </span>
                         ) : input.score !== null ? (
-                          <span className="text-muted-foreground text-[10px]">単発試験</span>
-                        ) : null}
+                          <span className="text-violet-500 text-[10px] font-medium">単発（反映で解除）</span>
+                        ) : (
+                          <span className="text-muted-foreground/50 text-[10px]">単発試験</span>
+                        )}
                       </div>
                     );
                   }

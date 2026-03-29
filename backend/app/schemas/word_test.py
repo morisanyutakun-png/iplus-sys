@@ -8,17 +8,20 @@ from pydantic import BaseModel
 class WordBookCreate(BaseModel):
     name: str
     description: str = ""
+    subject: str = "英語"
 
 
 class WordBookUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+    subject: str | None = None
 
 
 class WordBookOut(BaseModel):
     id: int
     name: str
     description: str
+    subject: str = "英語"
     total_words: int
     material_key: str | None = None
     created_at: datetime

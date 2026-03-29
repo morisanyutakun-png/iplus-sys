@@ -20,7 +20,7 @@ export function useWordBooks() {
 export function useCreateWordBook() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string; description?: string }) =>
+    mutationFn: (body: { name: string; description?: string; subject?: string }) =>
       apiFetch<WordBook>("/api/word-test", {
         method: "POST",
         body: JSON.stringify(body),
@@ -34,10 +34,10 @@ export function useCreateWordBook() {
 export function useUpdateWordBook() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ bookId, name, description }: { bookId: number; name?: string; description?: string }) =>
+    mutationFn: ({ bookId, name, description, subject }: { bookId: number; name?: string; description?: string; subject?: string }) =>
       apiFetch<WordBook>(`/api/word-test/${bookId}`, {
         method: "PUT",
-        body: JSON.stringify({ name, description }),
+        body: JSON.stringify({ name, description, subject }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["word-books"] });

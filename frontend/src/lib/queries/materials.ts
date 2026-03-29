@@ -12,6 +12,16 @@ export function useMaterials() {
   });
 }
 
+export function useAllMaterials() {
+  return useQuery({
+    queryKey: ["materials", "all"],
+    queryFn: () =>
+      apiFetch<{ materials: Material[] }>("/api/materials?include_all=true").then(
+        (r) => r.materials
+      ),
+  });
+}
+
 export function useCreateMaterial() {
   const qc = useQueryClient();
   return useMutation({
