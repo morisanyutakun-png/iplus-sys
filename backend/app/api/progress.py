@@ -54,18 +54,21 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
         mat_progress_list: list[StudentMaterialProgress] = []
         percents: list[float] = []
         for sm in student.materials:
+            # Skip exam-linked materials (共テ・過去問)
+            is_exam = sm.material and sm.material.exam_material_id is not None
             total = len(sm.material.nodes) if sm.material else 0
             pct = min((sm.pointer - 1) / total * 100, 100) if total > 0 else 0
             remaining = max(total - sm.pointer + 1, 0) if total > 0 else 0
-            percents.append(pct)
-            mat_progress_list.append(StudentMaterialProgress(
-                material_key=sm.material_key,
-                material_name=sm.material.name if sm.material else sm.material_key,
-                pointer=sm.pointer,
-                total_nodes=total,
-                percent=round(pct, 1),
-            ))
-            if 0 < remaining <= 2 and total > 0:
+            if not is_exam:
+                percents.append(pct)
+                mat_progress_list.append(StudentMaterialProgress(
+                    material_key=sm.material_key,
+                    material_name=sm.material.name if sm.material else sm.material_key,
+                    pointer=sm.pointer,
+                    total_nodes=total,
+                    percent=round(pct, 1),
+                ))
+            if not is_exam and 0 < remaining <= 2 and total > 0:
                 nearly_complete.append(NearlyCompleteItem(
                     student_id=student.id,
                     student_name=student.name,
@@ -149,6 +152,9 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
 
     for student in students:
         for sm in student.materials:
+            # Skip exam-linked materials (共テ・過去問)
+            if sm.material and sm.material.exam_material_id is not None:
+                continue
             if (sm.low_score_streak or 0) >= 2:
                 # Find current node title
                 current_node_title = ""
