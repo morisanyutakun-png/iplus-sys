@@ -8,7 +8,6 @@ import {
   BookOpen,
   Languages,
   Printer,
-  BarChart3,
   PanelLeftClose,
   PanelLeftOpen,
   FileText,
@@ -24,7 +23,6 @@ const navItems = [
   { href: "/word-test", label: "単語テスト", icon: Languages, description: "単語帳・ミックステスト" },
   { href: "/exams", label: "試験管理", icon: FileText, description: "共テ・過去問管理" },
   { href: "/print", label: "印刷", icon: Printer, description: "キュー・ジョブ・ログ" },
-  { href: "/analytics", label: "分析", icon: BarChart3, description: "全体分析・比較" },
 ];
 
 function IPlusLogo() {

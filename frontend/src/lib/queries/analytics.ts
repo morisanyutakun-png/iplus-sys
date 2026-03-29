@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
-import type { StudentAnalytics, OverviewAnalytics } from "@/lib/types";
+import type { StudentAnalytics } from "@/lib/types";
 
 export function useStudentAnalytics(studentId: string) {
   return useQuery({
@@ -8,12 +8,5 @@ export function useStudentAnalytics(studentId: string) {
     queryFn: () =>
       apiFetch<StudentAnalytics>(`/api/analytics/students/${studentId}`),
     enabled: !!studentId,
-  });
-}
-
-export function useOverviewAnalytics() {
-  return useQuery({
-    queryKey: ["overview-analytics"],
-    queryFn: () => apiFetch<OverviewAnalytics>("/api/analytics/overview"),
   });
 }

@@ -277,35 +277,6 @@ export interface StudentAnalytics {
   };
 }
 
-export interface StudentRanking {
-  student_id: string;
-  name: string;
-  avg_percent: number;
-  total_nodes_completed: number;
-}
-
-export interface OverviewAnalytics {
-  student_rankings: StudentRanking[];
-  material_difficulty: {
-    material_key: string;
-    name: string;
-    avg_pace: number;
-    avg_score?: number;
-  }[];
-  weekly_activity: {
-    week: string;
-    records_count: number;
-    prints_count: number;
-    manual_set_count: number;
-  }[];
-  completion_heatmap: {
-    student_id: string;
-    student_name: string;
-    material_key: string;
-    material_name: string;
-    percent: number;
-  }[];
-}
 
 // Word Test (単語ミックステスト)
 export interface WordBook {
