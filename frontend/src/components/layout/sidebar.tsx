@@ -11,6 +11,7 @@ import {
   BarChart3,
   PanelLeftClose,
   PanelLeftOpen,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/providers/sidebar-provider";
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/students", label: "生徒", icon: Users, description: "生徒管理・定着度入力" },
   { href: "/materials", label: "教材管理", icon: BookOpen, description: "教材と範囲" },
   { href: "/word-test", label: "単語テスト", icon: Languages, description: "単語帳・ミックステスト" },
+  { href: "/exams", label: "試験管理", icon: FileText, description: "共テ・過去問管理" },
   { href: "/print", label: "印刷", icon: Printer, description: "キュー・ジョブ・ログ" },
   { href: "/analytics", label: "分析", icon: BarChart3, description: "全体分析・比較" },
 ];

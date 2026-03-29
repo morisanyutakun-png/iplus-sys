@@ -12,6 +12,12 @@ from app.api.lesson_records import router as lesson_records_router
 from app.api.auto_print import router as auto_print_router
 from app.api.analytics import router as analytics_router
 from app.api.word_test import router as word_test_router
+from app.api.exam_materials import router as exam_materials_router
+from app.api.exam_scores import router as exam_scores_router
+from app.api.exam_assignments import router as exam_assignments_router
+from app.api.exam_analytics import router as exam_analytics_router
+from app.api.university_weights import router as university_weights_router
+from app.api.exam_targets import router as exam_targets_router
 
 api_router = APIRouter()
 api_router.include_router(students_router, prefix="/students", tags=["students"])
@@ -26,3 +32,9 @@ api_router.include_router(lesson_records_router, prefix="/lesson-records", tags=
 api_router.include_router(auto_print_router, prefix="/print", tags=["auto-print"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(word_test_router, prefix="/word-test", tags=["word-test"])
+api_router.include_router(exam_materials_router, prefix="/exam-materials", tags=["exam-materials"])
+api_router.include_router(exam_scores_router, prefix="/exam-scores", tags=["exam-scores"])
+api_router.include_router(exam_assignments_router, prefix="/exam-assignments", tags=["exam-assignments"])
+api_router.include_router(exam_analytics_router, prefix="/exam-analytics", tags=["exam-analytics"])
+api_router.include_router(university_weights_router, prefix="/university-weights", tags=["university-weights"])
+api_router.include_router(exam_targets_router, prefix="/exam-targets", tags=["exam-targets"])

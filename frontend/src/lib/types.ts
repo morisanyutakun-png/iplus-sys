@@ -342,3 +342,142 @@ export interface CsvImportResponse {
   updated: number;
   errors: string[];
 }
+
+// ── Exam Management (共通テスト・過去問) ──
+
+export interface ExamSubject {
+  id: number;
+  exam_material_id: number;
+  subject_name: string;
+  max_score: number;
+  sort_order: number;
+}
+
+export interface ExamMaterial {
+  id: number;
+  name: string;
+  exam_type: "common_test" | "university_past";
+  year?: number;
+  university?: string;
+  faculty?: string;
+  exam_period?: string;
+  sort_order: number;
+  subjects: ExamSubject[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExamAssignment {
+  student_id: string;
+  exam_material_id: number;
+  assigned_at: string;
+  exam_name?: string;
+}
+
+export interface ExamScore {
+  id: number;
+  student_id: string;
+  exam_material_id: number;
+  exam_subject_id: number;
+  score: number | null;
+  attempt_date: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExamScoreUpsert {
+  student_id: string;
+  exam_material_id: number;
+  exam_subject_id: number;
+  score: number | null;
+  attempt_date: string;
+  notes?: string;
+}
+
+export interface ExamScoreTarget {
+  id: number;
+  student_id: string;
+  exam_material_id: number;
+  exam_subject_id: number;
+  target_score: number;
+}
+
+export interface UniversityScoreWeight {
+  id: number;
+  name: string;
+  university: string;
+  faculty: string;
+  weights: Record<string, { max: number; compressed_max: number }>;
+  total_compressed_max: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SubjectScoreDetail {
+  subject_name: string;
+  max_score: number;
+  score: number | null;
+  target_score?: number | null;
+}
+
+export interface ExamAttemptSummary {
+  exam_material_id: number;
+  exam_name: string;
+  exam_type: string;
+  attempt_date: string;
+  subjects: SubjectScoreDetail[];
+  total_score: number;
+  total_max: number;
+  percentage: number;
+}
+
+export interface StudentExamSummary {
+  student_id: string;
+  student_name: string;
+  attempts: ExamAttemptSummary[];
+}
+
+export interface CompressedScoreSubject {
+  subject_name: string;
+  raw_score: number;
+  original_max: number;
+  compressed_max: number;
+  compressed_score: number;
+}
+
+export interface CompressedScoreResult {
+  weight_name: string;
+  university: string;
+  faculty: string;
+  subjects: CompressedScoreSubject[];
+  total_compressed: number;
+  total_compressed_max: number;
+  percentage: number;
+}
+
+export interface StudentExamRanking {
+  student_id: string;
+  student_name: string;
+  grade?: string;
+  total_score: number;
+  total_max: number;
+  percentage: number;
+}
+
+export interface SubjectAverageItem {
+  subject_name: string;
+  max_score: number;
+  avg_score: number;
+  avg_percentage: number;
+  student_count: number;
+}
+
+export interface ExamOverview {
+  exam_material_id: number;
+  exam_name: string;
+  rankings: StudentExamRanking[];
+  subject_averages: SubjectAverageItem[];
+  class_average_total: number;
+  class_average_percentage: number;
+}
