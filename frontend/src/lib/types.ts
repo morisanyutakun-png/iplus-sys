@@ -146,22 +146,26 @@ export interface DashboardStats {
   recent_activity: ProgressEntry[];
 }
 
+export interface MaterialZoneItem {
+  key: string;
+  name: string;
+  total_nodes: number;
+  pointer?: number;
+  max_node?: number;
+  percent?: number;
+  word_book_id?: number;
+  total_words?: number;
+  exam_material_id?: number;
+  exam_type?: "common_test" | "university_past";
+  exam_name?: string;
+  exam_year?: number;
+  exam_university?: string;
+  exam_faculty?: string;
+}
+
 export interface MaterialZones {
-  assigned: {
-    key: string;
-    name: string;
-    total_nodes: number;
-    pointer?: number;
-    max_node?: number;
-    percent?: number;
-  }[];
-  source: {
-    key: string;
-    name: string;
-    total_nodes: number;
-    word_book_id?: number;
-    total_words?: number;
-  }[];
+  assigned: MaterialZoneItem[];
+  source: MaterialZoneItem[];
 }
 
 export interface PrintLogEntry {

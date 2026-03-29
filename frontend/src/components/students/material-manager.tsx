@@ -44,7 +44,10 @@ import {
   Eye,
   ChevronDown,
   ChevronUp,
+  GraduationCap,
+  School,
 } from "lucide-react";
+import type { MaterialZoneItem } from "@/lib/types";
 
 function NodePreviewPanel({
   studentId,
@@ -286,6 +289,32 @@ export function MaterialManager({ studentId }: Props) {
   const assigned = zones?.assigned || [];
   const source = zones?.source || [];
 
+  // Split assigned into regular vs exam
+  const assignedRegular = useMemo(() => assigned.filter((m) => !m.exam_material_id), [assigned]);
+  const assignedExam = useMemo(() => assigned.filter((m) => !!m.exam_material_id), [assigned]);
+
+  // Split source into regular vs exam, group exams by exam_name + exam_type
+  const sourceRegular = useMemo(() => source.filter((m) => !m.exam_material_id), [source]);
+  const sourceExamGroups = useMemo(() => {
+    const exams = source.filter((m) => !!m.exam_material_id);
+    const groups: Record<string, { exam_name: string; exam_type: string; exam_year?: number; exam_university?: string; exam_faculty?: string; items: MaterialZoneItem[] }> = {};
+    for (const m of exams) {
+      const groupKey = `${m.exam_material_id}`;
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          exam_name: m.exam_name || m.name,
+          exam_type: m.exam_type || "common_test",
+          exam_year: m.exam_year,
+          exam_university: m.exam_university,
+          exam_faculty: m.exam_faculty,
+          items: [],
+        };
+      }
+      groups[groupKey].items.push(m);
+    }
+    return Object.values(groups);
+  }, [source]);
+
   // Filter nearly complete items for this student from dashboard data
   const nearlyComplete = (dashboard?.nearly_complete || []).filter(
     (item) => item.student_id === studentId
@@ -306,9 +335,9 @@ export function MaterialManager({ studentId }: Props) {
               <BookOpen className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
             </div>
             <h3 className="text-sm font-semibold">教材一覧</h3>
-            {assigned.length > 0 && (
+            {assignedRegular.length > 0 && (
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
-                {assigned.length}
+                {assignedRegular.length}
               </Badge>
             )}
           </div>
@@ -326,7 +355,7 @@ export function MaterialManager({ studentId }: Props) {
         </div>
 
         <div className="space-y-2">
-          {assigned.map((mat) => {
+          {assignedRegular.map((mat) => {
             const currentPointer = editedPointers[mat.key] ?? mat.pointer ?? 1;
             const completed = currentPointer - 1;
             const total = mat.max_node || mat.total_nodes;
@@ -467,7 +496,7 @@ export function MaterialManager({ studentId }: Props) {
             );
           })}
 
-          {assigned.length === 0 && (
+          {assignedRegular.length === 0 && assignedExam.length === 0 && (
             <div className="flex flex-col items-center justify-center py-8 text-center rounded-xl border border-dashed border-border/50 bg-muted/20">
               <div className="flex items-center justify-center h-10 w-10 rounded-full bg-muted/50 mb-3">
                 <BookOpen className="h-5 w-5 text-muted-foreground/40" />
@@ -480,6 +509,57 @@ export function MaterialManager({ studentId }: Props) {
           )}
         </div>
       </div>
+
+      {/* ── Assigned Exam Materials ── */}
+      {assignedExam.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
+              <GraduationCap className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+            </div>
+            <h3 className="text-sm font-semibold">実施中の試験</h3>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
+              {assignedExam.length}
+            </Badge>
+          </div>
+          <div className="space-y-1.5">
+            {assignedExam.map((mat) => (
+              <div
+                key={mat.key}
+                className="group flex items-center gap-3 rounded-xl border border-violet-200/60 dark:border-violet-800/40 bg-violet-50/30 dark:bg-violet-950/20 px-3 py-2.5"
+              >
+                <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-violet-100 dark:bg-violet-900/50 shrink-0">
+                  {mat.exam_type === "university_past" ? (
+                    <School className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                  ) : (
+                    <GraduationCap className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium truncate block">{mat.name}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {mat.exam_type === "common_test" ? "共通テスト" : "大学過去問"}
+                    {mat.exam_year ? ` ${mat.exam_year}年` : ""}
+                    {mat.exam_university ? ` ${mat.exam_university}` : ""}
+                    {mat.exam_faculty ? ` ${mat.exam_faculty}` : ""}
+                  </span>
+                </div>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 rounded-full border-violet-300 text-violet-600 dark:text-violet-400 shrink-0">
+                  反映待ち
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
+                  onClick={() => handleToggle(mat.key, "remove")}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Reminders Section ── */}
       {(nearlyComplete.length > 0 || lowAccuracy.length > 0) && (
@@ -616,8 +696,8 @@ export function MaterialManager({ studentId }: Props) {
         </div>
       )}
 
-      {/* ── Available Materials ── */}
-      {source.length > 0 && (
+      {/* ── Available Regular Materials ── */}
+      {sourceRegular.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-3">
             <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
@@ -625,12 +705,12 @@ export function MaterialManager({ studentId }: Props) {
             </div>
             <h3 className="text-sm font-semibold">追加可能な教材</h3>
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
-              {source.length}
+              {sourceRegular.length}
             </Badge>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {source.map((mat) => (
+            {sourceRegular.map((mat) => (
               <button
                 key={mat.key}
                 type="button"
@@ -669,6 +749,111 @@ export function MaterialManager({ studentId }: Props) {
                 </div>
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Available Exam Materials (grouped by exam) ── */}
+      {sourceExamGroups.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
+              <GraduationCap className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+            </div>
+            <h3 className="text-sm font-semibold">追加可能な試験教材</h3>
+          </div>
+
+          <div className="space-y-3">
+            {sourceExamGroups.map((group) => {
+              const isCommon = group.exam_type === "common_test";
+              return (
+                <div
+                  key={group.exam_name}
+                  className={cn(
+                    "rounded-xl border overflow-hidden",
+                    isCommon
+                      ? "border-blue-200/60 dark:border-blue-800/40"
+                      : "border-orange-200/60 dark:border-orange-800/40"
+                  )}
+                >
+                  {/* Card header */}
+                  <div
+                    className={cn(
+                      "flex items-center gap-2.5 px-4 py-2.5 border-b",
+                      isCommon
+                        ? "bg-blue-50/50 dark:bg-blue-950/20 border-blue-200/40 dark:border-blue-800/30"
+                        : "bg-orange-50/50 dark:bg-orange-950/20 border-orange-200/40 dark:border-orange-800/30"
+                    )}
+                  >
+                    <div className={cn(
+                      "flex items-center justify-center h-7 w-7 rounded-lg shrink-0",
+                      isCommon
+                        ? "bg-blue-100 dark:bg-blue-900/50"
+                        : "bg-orange-100 dark:bg-orange-900/50"
+                    )}>
+                      {isCommon ? (
+                        <GraduationCap className={cn("h-4 w-4", isCommon ? "text-blue-600 dark:text-blue-400" : "text-orange-600 dark:text-orange-400")} />
+                      ) : (
+                        <School className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-semibold">{group.exam_name}</span>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[10px] px-1.5 py-0 rounded-full",
+                            isCommon
+                              ? "border-blue-300 text-blue-600 dark:text-blue-400"
+                              : "border-orange-300 text-orange-600 dark:text-orange-400"
+                          )}
+                        >
+                          {isCommon ? "共通テスト" : "大学過去問"}
+                        </Badge>
+                        {group.exam_year && (
+                          <span className="text-[10px] text-muted-foreground">{group.exam_year}年</span>
+                        )}
+                        {group.exam_university && (
+                          <span className="text-[10px] text-muted-foreground">{group.exam_university}</span>
+                        )}
+                        {group.exam_faculty && (
+                          <span className="text-[10px] text-muted-foreground">{group.exam_faculty}</span>
+                        )}
+                      </div>
+                    </div>
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full shrink-0">
+                      {group.items.length}科目
+                    </Badge>
+                  </div>
+
+                  {/* Subject buttons */}
+                  <div className="p-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {group.items.map((mat) => {
+                      // Extract subject name from full name (e.g., "2024共テ 英語" -> "英語")
+                      const subjectName = mat.name.replace(group.exam_name, "").trim() || mat.name;
+                      return (
+                        <button
+                          key={mat.key}
+                          type="button"
+                          onClick={() => handleToggle(mat.key, "assign")}
+                          disabled={toggleMutation.isPending}
+                          className={cn(
+                            "flex items-center gap-2 rounded-lg border border-border/40 px-2.5 py-2",
+                            "bg-card hover:border-primary/40 hover:bg-primary/[0.03] hover:shadow-sm",
+                            "transition-all duration-200 text-left cursor-pointer",
+                            "disabled:opacity-50 disabled:cursor-not-allowed"
+                          )}
+                        >
+                          <Plus className="h-3 w-3 text-primary shrink-0" />
+                          <span className="text-xs font-medium truncate">{subjectName}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -791,7 +976,7 @@ export function MaterialManager({ studentId }: Props) {
       </Dialog>
 
       {/* All assigned state */}
-      {source.length === 0 && assigned.length > 0 && (
+      {source.length === 0 && (assignedRegular.length > 0 || assignedExam.length > 0) && (
         <div className="flex items-center gap-2 py-3 px-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-800/30">
           <span className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
             全ての教材が割り当て済みです

@@ -10,6 +10,7 @@ from app.models.student_material import StudentMaterial, ProgressHistory, Archiv
 from app.models.material import Material, MaterialNode
 from app.models.print_queue import PrintQueue
 from app.models.word_test import WordBook, Word
+from app.models.exam import ExamMaterial
 from app.schemas.student import StudentOut, StudentCreate, StudentUpdate, StudentListOut, StudentMaterialInfo
 from app.services.pdf_store import pdf_exists, resolve_pdf_for_reading
 from app.services.word_test_material import generate_student_pdfs
@@ -139,6 +140,10 @@ async def get_materials_zones(student_id: str, db: AsyncSession = Depends(get_db
     wb_result = await db.execute(select(WordBook))
     word_books = {wb.material_key: wb for wb in wb_result.scalars().all() if wb.material_key}
 
+    # Get exam material metadata for grouping
+    exam_result = await db.execute(select(ExamMaterial))
+    exam_materials_map = {em.id: em for em in exam_result.scalars().all()}
+
     assigned_list = []
     source_list = []
     for mat in all_materials:
@@ -148,6 +153,17 @@ async def get_materials_zones(student_id: str, db: AsyncSession = Depends(get_db
             "name": mat.name,
             "total_nodes": total,
         }
+
+        # Add exam metadata if linked to an exam
+        if mat.exam_material_id and mat.exam_material_id in exam_materials_map:
+            em = exam_materials_map[mat.exam_material_id]
+            info["exam_material_id"] = em.id
+            info["exam_type"] = em.exam_type
+            info["exam_name"] = em.name
+            info["exam_year"] = em.year
+            info["exam_university"] = em.university
+            info["exam_faculty"] = em.faculty
+
         if mat.key in assigned_map:
             sm = assigned_map[mat.key]
             effective = sm.max_node if sm.max_node else total

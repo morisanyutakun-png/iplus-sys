@@ -219,14 +219,38 @@ async def batch_mastery_input(
                 metadata_={"source": "mastery_input", "score": rec.score, "max_score": rec.max_score, "accuracy_rate": accuracy_rate},
             ))
         elif is_exam:
-            # Exam materials: count as "retried" (no advancement) but still record
+            # Exam materials: single-shot — archive and unassign after recording
             retried_count += 1
         else:
             retried_count += 1
 
-        # 4. Check if material is completed (pointer exceeded total) — never for exam materials
+        # 4. Check if material is completed
         is_completed = False
-        if not is_exam and did_advance and sm.pointer > effective_total:
+
+        # Exam materials: unassign after score is recorded (single-shot)
+        if is_exam and rec.score is not None:
+            is_completed = True
+            completed_count += 1
+            db.add(ArchivedProgress(
+                student_id=rec.student_id,
+                material_key=rec.material_key,
+                pointer=1,
+            ))
+            db.add(ProgressHistory(
+                student_id=rec.student_id,
+                material_key=rec.material_key,
+                action="complete",
+                old_pointer=1,
+                metadata_={"auto_unassign": True, "source": "exam_single_shot", "score": rec.score, "max_score": rec.max_score},
+            ))
+            await db.execute(
+                delete(StudentMaterial).where(
+                    StudentMaterial.student_id == rec.student_id,
+                    StudentMaterial.material_key == rec.material_key,
+                )
+            )
+
+        elif not is_exam and did_advance and sm.pointer > effective_total:
             is_completed = True
             completed_count += 1
             # Archive progress before removing assignment
