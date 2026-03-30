@@ -253,7 +253,7 @@ async def toggle_material(
             db.add(sm)
             db.add(history)
 
-            # Word test material: generate per-student PDFs + queue first node
+            # Queue first node for printing on assignment
             if material_key.startswith("単語:"):
                 student = await db.get(Student, student_id)
                 pdf_list = await generate_student_pdfs(
@@ -296,6 +296,51 @@ async def toggle_material(
                             node_name=first_node.title,
                             generated_pdf=first_a,
                             sort_order=1,
+                            status="pending",
+                            pdf_type="answer",
+                        ))
+
+            # Regular material: queue first node for printing
+            elif not material_key.startswith("試験:"):
+                student = await db.get(Student, student_id)
+                mat = await db.execute(
+                    select(Material)
+                    .where(Material.key == material_key)
+                    .options(selectinload(Material.nodes))
+                )
+                material = mat.scalars().first()
+                if material and material.nodes:
+                    first_node = sorted(material.nodes, key=lambda n: n.sort_order)[0]
+                    max_order_result = await db.execute(
+                        select(sa_func.coalesce(sa_func.max(PrintQueue.sort_order), 0))
+                    )
+                    sort_order = max_order_result.scalar() + 1
+
+                    if first_node.pdf_relpath:
+                        db.add(PrintQueue(
+                            student_id=student_id,
+                            student_name=student.name if student else None,
+                            student_grade=student.grade if student else None,
+                            material_key=material_key,
+                            material_name=material.name,
+                            node_key=first_node.key,
+                            node_name=first_node.title,
+                            sort_order=sort_order,
+                            status="pending",
+                            pdf_type="question",
+                        ))
+                        sort_order += 1
+
+                    if first_node.answer_pdf_relpath:
+                        db.add(PrintQueue(
+                            student_id=student_id,
+                            student_name=student.name if student else None,
+                            student_grade=student.grade if student else None,
+                            material_key=material_key,
+                            material_name=material.name,
+                            node_key=first_node.key,
+                            node_name=first_node.title,
+                            sort_order=sort_order,
                             status="pending",
                             pdf_type="answer",
                         ))

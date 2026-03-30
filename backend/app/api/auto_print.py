@@ -23,6 +23,9 @@ def _find_next_nodes(student: Student) -> list[NextPrintItem]:
         mat = sm.material
         if not mat:
             continue
+        # Skip exam-linked materials — they are queued only at assignment time
+        if mat.exam_material_id is not None:
+            continue
         total = len(mat.nodes)
         if sm.pointer > total:
             continue  # completed
