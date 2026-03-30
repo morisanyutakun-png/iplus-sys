@@ -401,7 +401,7 @@ export function MaterialManager({ studentId }: Props) {
                 <div className="px-3 py-3">
                   <div className="flex items-center gap-3">
                     {/* Circular Progress */}
-                    <svg width={size} height={size} className="shrink-0 -rotate-90">
+                    <svg width={size} height={size} className="shrink-0 -rotate-90" overflow="visible">
                       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeWidth={sw} className="text-muted/40" />
                       <circle
                         cx={size / 2} cy={size / 2} r={r} fill="none"
@@ -413,7 +413,7 @@ export function MaterialManager({ studentId }: Props) {
                         x={size / 2} y={size / 2}
                         textAnchor="middle" dominantBaseline="central"
                         className="fill-foreground rotate-90 origin-center"
-                        fontSize={size * 0.24} fontWeight={600}
+                        fontSize={pct === 100 ? size * 0.2 : size * 0.24} fontWeight={600}
                       >
                         {pct}%
                       </text>
