@@ -3,6 +3,7 @@ export interface StudentMaterialInfo {
   material_name: string;
   pointer: number;
   total_nodes: number;
+  max_node?: number;
   percent: number;
   next_node_title?: string;
 }

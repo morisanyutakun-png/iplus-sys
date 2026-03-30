@@ -364,9 +364,11 @@ export function MaterialManager({ studentId }: Props) {
         <div className="space-y-2">
           {assigned.map((mat) => {
             const currentPointer = editedPointers[mat.key] ?? mat.pointer ?? 1;
-            const completed = currentPointer - 1;
+            const completed = Math.min(currentPointer - 1, mat.max_node || mat.total_nodes);
             const total = mat.max_node || mat.total_nodes;
             const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+            const isWordTest = mat.key.startsWith("単語:");
+            const isReviewMode = isWordTest && currentPointer > total;
             const isEdited = editedPointers[mat.key] !== undefined;
             const strokeColor = pct >= 90 ? "#10b981" : pct >= 50 ? "#3b82f6" : pct > 0 ? "#f59e0b" : "#d1d5db";
             const size = 44;
@@ -417,6 +419,11 @@ export function MaterialManager({ studentId }: Props) {
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-sm font-semibold truncate pr-2">{mat.name}</span>
                         <div className="flex items-center gap-1 shrink-0">
+                          {isReviewMode && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 rounded-full border-violet-300 text-violet-600 dark:text-violet-400">
+                              総復習中
+                            </Badge>
+                          )}
                           {nearlyItem && (
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 rounded-full border-amber-300 text-amber-600 dark:text-amber-400">
                               残り{nearlyItem.remaining}

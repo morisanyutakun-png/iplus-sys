@@ -68,7 +68,8 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
                     total_nodes=total,
                     percent=round(pct, 1),
                 ))
-            if not is_exam and 0 < remaining <= 2 and total > 0:
+            is_word_test = sm.material_key.startswith("単語:")
+            if not is_exam and not is_word_test and 0 < remaining <= 2 and total > 0:
                 nearly_complete.append(NearlyCompleteItem(
                     student_id=student.id,
                     student_name=student.name,

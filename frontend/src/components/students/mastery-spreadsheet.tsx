@@ -109,10 +109,16 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
           nodes.find((n) => n.sort_order === sm.pointer) ?? null;
         const nextNode =
           nodes.find((n) => n.sort_order === sm.pointer + 1) ?? null;
-        const isCompleted = sm.pointer > sm.total_nodes;
+        const isWordTest = sm.material_key.startsWith("単語:");
+        const effectiveTotal = sm.max_node || sm.total_nodes;
+        const isReviewMode = isWordTest && sm.pointer > effectiveTotal;
+        const isCompleted = !isWordTest && sm.pointer > effectiveTotal;
         const isExam = !!material?.exam_material_id;
-        const examMaxScore = currentNode ? examMaxScoreMap.get(currentNode.key) ?? null : null;
-        return { sm, material, nodes, currentNode, nextNode, isCompleted, isExam, examMaxScore };
+        // In review mode, use the last node as reference
+        const reviewNode = isReviewMode && nodes.length > 0 ? nodes[nodes.length - 1] : null;
+        const effectiveCurrentNode = isReviewMode ? reviewNode : currentNode;
+        const examMaxScore = effectiveCurrentNode ? examMaxScoreMap.get(effectiveCurrentNode.key) ?? null : null;
+        return { sm, material, nodes, currentNode: effectiveCurrentNode, nextNode, isCompleted, isExam, examMaxScore, isWordTest, isReviewMode };
       })
       .sort((a, b) => getColumnSortKey(a) - getColumnSortKey(b));
   }, [student.materials, allMaterials, examMaxScoreMap]);
@@ -146,24 +152,36 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
     [columns, inputs]
   );
 
-  const pendingCount = useMemo(() => {
-    let count = 0;
+  // Count columns that have input and total active (non-completed) columns
+  const { pendingCount, activeCount } = useMemo(() => {
+    let pending = 0;
+    let active = 0;
     for (const col of columns) {
+      if (col.isCompleted) continue;
+      active++;
       const input = getInput(col.sm.material_key);
       if (col.isExam) {
-        if (input.score !== null) count++;
+        if (input.score !== null) pending++;
       } else {
-        if (input.passed || input.score !== null) count++;
+        if (input.passed || input.score !== null) pending++;
       }
     }
-    return count;
+    return { pendingCount: pending, activeCount: active };
   }, [inputs, columns]);
+
+  const allFilled = activeCount > 0 && pendingCount === activeCount;
 
   useEffect(() => {
     onPendingChange?.(pendingCount > 0);
   }, [pendingCount, onPendingChange]);
 
   const handleSave = useCallback(() => {
+    // Validation: 全項目入力チェック
+    if (!allFilled) {
+      toast.error("全ての教材の入力を完了してから反映してください");
+      return;
+    }
+
     // Validation: 得点入力時の整合性チェック
     for (const col of columns) {
       if (col.isCompleted) continue;
@@ -230,7 +248,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
       },
       onError: (err) => toast.error(`エラー: ${err.message}`),
     });
-  }, [columns, inputs, student.id, todayStr, masteryMutation]);
+  }, [columns, inputs, student.id, todayStr, masteryMutation, allFilled]);
 
   const handleReset = () => {
     setInputs({});
@@ -305,8 +323,8 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
         <div className="flex items-center gap-2">
           {pendingCount > 0 && (
             <>
-              <Badge variant="secondary" className="text-xs">
-                {pendingCount}件入力済
+              <Badge variant={allFilled ? "secondary" : "outline"} className={cn("text-xs", !allFilled && "text-amber-600 border-amber-300")}>
+                {pendingCount}/{activeCount}件入力済
               </Badge>
               <Button size="sm" variant="ghost" onClick={handleReset}>
                 <RotateCcw className="mr-1 h-3 w-3" />
@@ -315,7 +333,8 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
               <Button
                 size="sm"
                 onClick={handleSave}
-                disabled={masteryMutation.isPending}
+                disabled={!allFilled || masteryMutation.isPending}
+                title={!allFilled ? "全ての教材を入力してください" : ""}
               >
                 <Upload className="mr-1.5 h-4 w-4" />
                 {masteryMutation.isPending ? "処理中..." : "反映 (Ctrl+S)"}
@@ -388,6 +407,13 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                         <span className="text-green-600 font-medium flex items-center gap-1">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           完了
+                        </span>
+                      ) : col.isReviewMode ? (
+                        <span className="text-center leading-tight">
+                          <span className="font-medium text-violet-600">総復習</span>
+                          <span className="block text-[10px] text-muted-foreground">
+                            ランダム出題
+                          </span>
                         </span>
                       ) : col.currentNode ? (
                         <span className="text-center leading-tight">
@@ -554,8 +580,13 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                     } else {
                       nextText = "再実施";
                     }
+                  } else if (col.isReviewMode) {
+                    // Word test review mode: always generates next review
+                    nextText = "→ 総復習（次回）";
                   } else if (input.passed && col.nextNode) {
                     nextText = `→ ${col.nextNode.title}`;
+                  } else if (input.passed && !col.nextNode && col.isWordTest) {
+                    nextText = "→ 総復習へ";
                   } else if (input.passed && !col.nextNode) {
                     nextText = "→ 全範囲完了";
                   } else if (!input.passed && input.score !== null && col.currentNode) {

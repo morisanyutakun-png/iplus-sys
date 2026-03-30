@@ -13,7 +13,7 @@ from app.models.student_material import StudentMaterial, ProgressHistory, Archiv
 from app.models.material import Material, MaterialNode
 from app.models.print_queue import PrintQueue
 from app.models.exam import ExamSubject, ExamScore
-from app.services.word_test_material import regenerate_node_pdfs
+from app.services.word_test_material import regenerate_node_pdfs, generate_review_pdf
 from app.schemas.lesson_record import (
     LessonRecordOut,
     LessonRecordBatchRequest,
@@ -202,8 +202,11 @@ async def batch_mastery_input(
                 sm.low_score_streak = 0
             sm.last_accuracy = accuracy_rate
 
+        is_word_test = rec.material_key.startswith("単語:")
+        is_review_mode = is_word_test and old_pointer > effective_total
+
         # 3. Advance pointer if completed (skip for exam materials — they are single-shot)
-        if not is_exam and rec.status == "completed" and old_pointer <= effective_total:
+        if not is_exam and not is_review_mode and rec.status == "completed" and old_pointer <= effective_total:
             sm.pointer = old_pointer + 1
             did_advance = True
             advanced_count += 1
@@ -218,6 +221,9 @@ async def batch_mastery_input(
                 new_pointer=sm.pointer,
                 metadata_={"source": "mastery_input", "score": rec.score, "max_score": rec.max_score, "accuracy_rate": accuracy_rate},
             ))
+        elif is_review_mode:
+            # Word test review mode: stay at current pointer, count as retry
+            retried_count += 1
         elif is_exam:
             # Exam materials: single-shot — archive and unassign after recording
             retried_count += 1
@@ -250,7 +256,7 @@ async def batch_mastery_input(
                 )
             )
 
-        elif not is_exam and did_advance and sm.pointer > effective_total:
+        elif not is_exam and not is_word_test and did_advance and sm.pointer > effective_total:
             is_completed = True
             completed_count += 1
             # Archive progress before removing assignment
@@ -272,6 +278,17 @@ async def batch_mastery_input(
                     StudentMaterial.material_key == rec.material_key,
                 )
             )
+
+        # 4b. Word test: log entry when entering review mode for the first time
+        if is_word_test and did_advance and sm.pointer > effective_total:
+            db.add(ProgressHistory(
+                student_id=rec.student_id,
+                material_key=rec.material_key,
+                action="review_start",
+                old_pointer=old_pointer,
+                new_pointer=sm.pointer,
+                metadata_={"source": "word_test_review", "total_nodes": total_nodes, "max_node": sm.max_node},
+            ))
 
         # 5. Queue next node for printing (only if not completed, and NOT exam materials)
         new_pointer = sm.pointer
@@ -295,7 +312,6 @@ async def batch_mastery_input(
                 # For word test materials, use per-student PDF paths (question + answer)
                 gen_q_pdf = None
                 gen_a_pdf = None
-                is_word_test = rec.material_key.startswith("単語:")
                 is_word_test_recheck = is_word_test and not did_advance
 
                 if is_word_test_recheck:
@@ -361,6 +377,66 @@ async def batch_mastery_input(
 
                 queued_node_key = next_node.key
                 queued_node_title = next_node.title
+
+        # 5b. Word test review mode: generate 総復習 PDF when pointer exceeds range
+        elif is_word_test and not is_completed and new_pointer > effective_total:
+            # Resolve student info
+            student_result = await db.execute(
+                select(Student.name, Student.grade).where(Student.id == rec.student_id)
+            )
+            student_row = student_result.first()
+            student_name = (student_row[0] if student_row else rec.student_id)
+            student_grade = (student_row[1] if student_row else None)
+
+            # Use the last node as reference for the review PDF key
+            last_node = nodes_sorted[-1] if nodes_sorted else None
+            if last_node:
+                review_result = await generate_review_pdf(
+                    db, rec.student_id, student_name,
+                    rec.material_key,
+                    start_node=1,
+                    end_node=sm.max_node or len(nodes_sorted),
+                    questions_per_test=sm.questions_per_test or 50,
+                    rows_per_side=sm.rows_per_side or 50,
+                    student_grade=student_grade,
+                )
+                if review_result:
+                    gen_q_pdf, gen_a_pdf = review_result
+                    # Queue review PDF
+                    db.add(PrintQueue(
+                        student_id=rec.student_id,
+                        student_name=student_name,
+                        student_grade=student_grade,
+                        material_key=rec.material_key,
+                        material_name=sm.material.name,
+                        node_key=last_node.key,
+                        node_name="総復習",
+                        sort_order=sort_order,
+                        status="pending",
+                        generated_pdf=gen_q_pdf,
+                        pdf_type="question",
+                    ))
+                    sort_order += 1
+                    queued_count += 1
+
+                    db.add(PrintQueue(
+                        student_id=rec.student_id,
+                        student_name=student_name,
+                        student_grade=student_grade,
+                        material_key=rec.material_key,
+                        material_name=sm.material.name,
+                        node_key=last_node.key,
+                        node_name="総復習",
+                        sort_order=sort_order,
+                        status="pending",
+                        generated_pdf=gen_a_pdf,
+                        pdf_type="answer",
+                    ))
+                    sort_order += 1
+                    queued_count += 1
+
+                    queued_node_key = last_node.key
+                    queued_node_title = "総復習"
 
         results.append(MasteryResultItem(
             student_id=rec.student_id,

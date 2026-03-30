@@ -8,6 +8,7 @@ class StudentMaterialInfo(BaseModel):
     material_name: str
     pointer: int
     total_nodes: int
+    max_node: int | None = None
     percent: float
     next_node_title: str | None = None
 

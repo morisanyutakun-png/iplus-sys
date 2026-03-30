@@ -37,6 +37,7 @@ def _build_student_out(student: Student) -> StudentOut:
                 material_name=mat.name if mat else sm.material_key,
                 pointer=sm.pointer,
                 total_nodes=total,
+                max_node=sm.max_node,
                 percent=round(pct, 1),
                 next_node_title=next_title,
             )
