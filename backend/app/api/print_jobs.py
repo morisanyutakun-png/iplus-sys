@@ -29,6 +29,44 @@ def _normalize_host(value: str | None) -> str:
     return value.strip().rstrip(".").replace(".local", "")
 
 
+def _parse_dnssd_uri(uri: str) -> tuple[str | None, str | None, int]:
+    """Parse a dnssd:// URI and return (instance_name, scheme_hint, port).
+
+    Example URI: dnssd://EPSON%20EW-M754T%20Series._ipps._tcp.local./?uuid=...
+    Returns: ("EPSON EW-M754T Series", "ipps", 631)
+    """
+    from urllib.parse import urlparse, unquote
+    import re
+
+    if not uri.startswith("dnssd://"):
+        return None, None, 0
+
+    # Use netloc directly (not parsed.hostname) to preserve original case
+    parsed = urlparse(uri)
+    netloc = parsed.netloc or ""
+    # Strip port suffix if present
+    if ":" in netloc.rsplit(".", 1)[-1]:
+        netloc, _, port_str = netloc.rpartition(":")
+        port = int(port_str) if port_str.isdigit() else 631
+    else:
+        port = 631
+
+    raw = unquote(netloc)
+    if not raw:
+        return None, None, 0
+
+    # Extract service type to determine ipp vs ipps
+    scheme_hint = "ipp"
+    if "_ipps._tcp" in raw:
+        scheme_hint = "ipps"
+
+    # Instance name is everything before ._ipp(s)._tcp
+    m = re.match(r"^(.+?)\._ipps?\._tcp", raw)
+    instance_name = m.group(1).strip() if m else raw.split(".")[0]
+
+    return instance_name, scheme_hint, port
+
+
 def _parse_cups_device_uri_map() -> dict[str, str]:
     import re
     import subprocess
@@ -44,7 +82,7 @@ def _parse_cups_device_uri_map() -> dict[str, str]:
                 continue
             match = re.match(r"device for\s+(.+?):\s+(.+)$", text)
             if not match:
-                match = re.match(r"(.+?)\s+のデバイス:\s+(.+)$", text)
+                match = re.match(r"(.+?)のデバイス:\s+(.+)$", text)
             if match:
                 device_map[match.group(1).strip()] = match.group(2).strip()
     except Exception:
@@ -68,7 +106,7 @@ def _upsert_discovered_printer(
     if not resolved_hostname:
         return
 
-    resolved_port = port or parsed.port or (631 if parsed.scheme in ("ipp", "ipps") else 0)
+    resolved_port = port or parsed.port or (631 if parsed.scheme in ("ipp", "ipps", "dnssd") else 0)
     key = _normalize_host(resolved_hostname)
     if not key:
         return
@@ -294,38 +332,57 @@ def _discover_lan_printers() -> list[dict]:
             if not line.startswith("network "):
                 continue
             uri = line[len("network "):].strip()
-            if not uri.startswith(("ipp://", "ipps://")):
-                continue
-            parsed = urlparse(uri)
-            hostname = parsed.hostname
-            port = parsed.port or 631
-            if hostname:
-                _upsert_discovered_printer(
-                    discovered,
-                    instance_name=hostname,
-                    hostname=hostname,
-                    port=port,
-                    uri=uri,
-                )
+            if uri.startswith(("ipp://", "ipps://")):
+                parsed = urlparse(uri)
+                hostname = parsed.hostname
+                port = parsed.port or 631
+                if hostname:
+                    _upsert_discovered_printer(
+                        discovered,
+                        instance_name=hostname,
+                        hostname=hostname,
+                        port=port,
+                        uri=uri,
+                    )
+            elif uri.startswith("dnssd://"):
+                inst_name, scheme_hint, dnssd_port = _parse_dnssd_uri(uri)
+                if inst_name:
+                    _upsert_discovered_printer(
+                        discovered,
+                        instance_name=inst_name,
+                        hostname=inst_name,
+                        port=dnssd_port,
+                        uri=uri,
+                    )
     except Exception:
         pass
 
     # 4. Existing CUPS network printers (important fallback for printers visible in macOS settings)
     for cups_name, uri in cups_device_map.items():
         parsed = urlparse(uri)
-        if parsed.scheme not in ("ipp", "ipps"):
-            continue
-        hostname = parsed.hostname
-        if not hostname:
-            continue
-        _upsert_discovered_printer(
-            discovered,
-            instance_name=cups_name,
-            hostname=hostname,
-            port=parsed.port or 631,
-            uri=uri,
-            cups_name=cups_name,
-        )
+        if parsed.scheme in ("ipp", "ipps"):
+            hostname = parsed.hostname
+            if not hostname:
+                continue
+            _upsert_discovered_printer(
+                discovered,
+                instance_name=cups_name,
+                hostname=hostname,
+                port=parsed.port or 631,
+                uri=uri,
+                cups_name=cups_name,
+            )
+        elif parsed.scheme == "dnssd":
+            # dnssd:// URIs — extract instance name, keep the CUPS device URI
+            inst_name, scheme_hint, dnssd_port = _parse_dnssd_uri(uri)
+            _upsert_discovered_printer(
+                discovered,
+                instance_name=inst_name or cups_name,
+                hostname=cups_name,  # Use CUPS name as hostname key
+                port=dnssd_port,
+                uri=uri,
+                cups_name=cups_name,
+            )
 
     return list(discovered.values())
 
@@ -386,8 +443,8 @@ async def register_printer(body: RegisterPrinterRequest, db: AsyncSession = Depe
     import re
 
     # Validate URI
-    if not body.uri.startswith(("ipp://", "ipps://")):
-        raise HTTPException(status_code=422, detail="URIは ipp:// または ipps:// で始まる必要があります")
+    if not body.uri.startswith(("ipp://", "ipps://", "dnssd://")):
+        raise HTTPException(status_code=422, detail="URIは ipp://, ipps://, または dnssd:// で始まる必要があります")
 
     # Sanitize name for CUPS (alphanumeric, hyphens, underscores only)
     safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", body.name)
@@ -401,28 +458,30 @@ async def register_printer(body: RegisterPrinterRequest, db: AsyncSession = Depe
     if existing.scalars().first():
         raise HTTPException(status_code=409, detail="このプリンタは既に登録されています")
 
-    # Register in CUPS via lpadmin
-    registered = False
-    error_msg = ""
-
-    # Try driverless first (-m everywhere)
+    # Check if already registered in CUPS (skip lpadmin if so)
+    already_in_cups = False
     try:
-        result = subprocess.run(
-            ["lpadmin", "-p", safe_name, "-v", body.uri, "-m", "everywhere", "-E"],
-            capture_output=True, text=True, timeout=15,
+        check = subprocess.run(
+            ["lpstat", "-p", safe_name], capture_output=True, text=True, timeout=5,
         )
-        if result.returncode == 0:
-            registered = True
-        else:
-            error_msg = result.stderr.strip()
-    except Exception as e:
-        error_msg = str(e)
+        if check.returncode == 0:
+            already_in_cups = True
+    except Exception:
+        pass
 
-    # Fallback to raw driver
-    if not registered:
+    if already_in_cups:
+        registered = True
+        error_msg = ""
+    else:
+        # Register in CUPS via lpadmin
+        registered = False
+        error_msg = ""
+
+        # For dnssd:// URIs, CUPS can use them directly
+        # Try driverless first (-m everywhere)
         try:
             result = subprocess.run(
-                ["lpadmin", "-p", safe_name, "-v", body.uri, "-m", "raw", "-E"],
+                ["lpadmin", "-p", safe_name, "-v", body.uri, "-m", "everywhere", "-E"],
                 capture_output=True, text=True, timeout=15,
             )
             if result.returncode == 0:
@@ -432,27 +491,40 @@ async def register_printer(body: RegisterPrinterRequest, db: AsyncSession = Depe
         except Exception as e:
             error_msg = str(e)
 
-    if not registered:
-        raise HTTPException(
-            status_code=422,
-            detail=f"CUPSへの登録に失敗しました: {error_msg}",
-        )
+        # Fallback to raw driver
+        if not registered:
+            try:
+                result = subprocess.run(
+                    ["lpadmin", "-p", safe_name, "-v", body.uri, "-m", "raw", "-E"],
+                    capture_output=True, text=True, timeout=15,
+                )
+                if result.returncode == 0:
+                    registered = True
+                else:
+                    error_msg = result.stderr.strip()
+            except Exception as e:
+                error_msg = str(e)
 
-    # Verify with lpstat
-    try:
-        check = subprocess.run(
-            ["lpstat", "-p", safe_name], capture_output=True, text=True, timeout=5,
-        )
-        if check.returncode != 0:
+        if not registered:
             raise HTTPException(
                 status_code=422,
-                detail=f"プリンタは追加されましたが、状態確認に失敗しました: {check.stderr.strip()}",
+                detail=f"CUPSへの登録に失敗しました: {error_msg}",
             )
-    except FileNotFoundError:
-        # lpstat not available in minimal images — allow registration to proceed
-        pass
-    except subprocess.TimeoutExpired:
-        pass  # Printer added but status check timed out — proceed anyway
+
+        # Verify with lpstat
+        try:
+            check = subprocess.run(
+                ["lpstat", "-p", safe_name], capture_output=True, text=True, timeout=5,
+            )
+            if check.returncode != 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"プリンタは追加されましたが、状態確認に失敗しました: {check.stderr.strip()}",
+                )
+        except FileNotFoundError:
+            pass
+        except subprocess.TimeoutExpired:
+            pass
 
     # Save to DB
     if body.is_default:
