@@ -185,7 +185,7 @@ export function previewQueueItemUrl(itemId: number): string {
 export async function fetchMergedPdfBlob(params?: {
   studentIds?: string[];
   pdfTypes?: string[];
-}): Promise<{ blob: Blob; missingCount: number }> {
+}): Promise<{ blob: Blob; missingCount: number; jobId: string }> {
   const res = await fetch(`${API_BASE}/api/jobs/merge-preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -199,6 +199,23 @@ export async function fetchMergedPdfBlob(params?: {
     throw new Error(`PDF結合エラー: ${errorBody}`);
   }
   const missingCount = parseInt(res.headers.get("X-Missing-Count") || "0", 10);
+  const jobId = res.headers.get("X-Job-Id") || "";
   const blob = await res.blob();
-  return { blob, missingCount };
+  return { blob, missingCount, jobId };
+}
+
+export function useUndoPrintJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (jobId: string) =>
+      apiFetch<{ status: string; job_id: string; restored: number }>(
+        `/api/jobs/${encodeURIComponent(jobId)}/undo`,
+        { method: "POST" }
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["queue"] });
+      qc.invalidateQueries({ queryKey: ["students"] });
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
 }

@@ -29,9 +29,13 @@ class MergePreviewRequest(BaseModel):
 
 @router.post("/merge-preview")
 async def merge_preview(body: MergePreviewRequest = None, db: AsyncSession = Depends(get_db)):
-    """Merge all pending queue PDFs into a single PDF and return it."""
+    """Merge pending queue PDFs, advance progress, clear queue, and return the PDF.
+
+    Creates a PrintJob snapshot so that the operation can be undone via /undo.
+    """
     from fastapi.responses import Response
     from pypdf import PdfWriter
+    import io
 
     body = body or MergePreviewRequest()
 
@@ -46,8 +50,10 @@ async def merge_preview(body: MergePreviewRequest = None, db: AsyncSession = Dep
     if not queue_items:
         raise HTTPException(status_code=400, detail="キューが空です")
 
+    # --- PDF merge ---
     writer = PdfWriter()
     missing: list[str] = []
+    pdf_relpaths: dict[int, str] = {}  # qi.id -> resolved relpath
 
     for qi in queue_items:
         pdf_relpath = ""
@@ -79,6 +85,7 @@ async def merge_preview(body: MergePreviewRequest = None, db: AsyncSession = Dep
 
         try:
             writer.append(resolved)
+            pdf_relpaths[qi.id] = pdf_relpath
         except Exception:
             missing.append(f"{qi.student_name}: {qi.material_name}/{qi.node_name} (読み取りエラー)")
 
@@ -88,10 +95,79 @@ async def merge_preview(body: MergePreviewRequest = None, db: AsyncSession = Dep
             detail=f"印刷可能なPDFがありません。不足: {', '.join(missing)}"
         )
 
-    import io
     buf = io.BytesIO()
     writer.write(buf)
     pdf_bytes = buf.getvalue()
+
+    # --- Create PrintJob snapshot (for undo) ---
+    now = datetime.now(timezone.utc)
+    job_id = now.strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
+
+    job = PrintJob(
+        id=job_id,
+        status="printed",
+        item_count=len(queue_items),
+        missing=len(missing),
+    )
+    db.add(job)
+
+    for idx, qi in enumerate(queue_items):
+        db.add(PrintJobItem(
+            job_id=job_id,
+            sort_order=idx,
+            student_id=qi.student_id,
+            student_name=qi.student_name,
+            material_key=qi.material_key,
+            material_name=qi.material_name,
+            node_key=qi.node_key,
+            node_name=qi.node_name,
+            pdf_relpath=pdf_relpaths.get(qi.id, ""),
+            missing_pdf=qi.id not in pdf_relpaths,
+            pdf_type=qi.pdf_type,
+            start_on=qi.start_on,
+        ))
+
+    # --- Advance progress ---
+    # Build answer_keys set: if both question+answer exist, only advance on answer
+    answer_keys = set()
+    for qi in queue_items:
+        if qi.pdf_type in ("answer", "recheck_answer"):
+            answer_keys.add((qi.student_id, qi.material_key, qi.node_key))
+
+    for qi in queue_items:
+        if qi.id not in pdf_relpaths:
+            continue  # skip missing PDFs
+
+        should_advance = True
+        if qi.pdf_type in ("question", "recheck_question") and (qi.student_id, qi.material_key, qi.node_key) in answer_keys:
+            should_advance = False
+
+        if should_advance:
+            sm_result = await db.execute(
+                select(StudentMaterial).where(
+                    StudentMaterial.student_id == qi.student_id,
+                    StudentMaterial.material_key == qi.material_key,
+                )
+            )
+            sm = sm_result.scalars().first()
+            if sm:
+                old_pointer = sm.pointer
+                sm.pointer = old_pointer + 1
+                db.add(ProgressHistory(
+                    student_id=qi.student_id,
+                    material_key=qi.material_key,
+                    node_key=qi.node_key,
+                    action="print",
+                    old_pointer=old_pointer,
+                    new_pointer=old_pointer + 1,
+                    metadata_={"job_id": job_id},
+                ))
+
+    # --- Delete queue items ---
+    queue_ids = [qi.id for qi in queue_items]
+    await db.execute(delete(PrintQueue).where(PrintQueue.id.in_(queue_ids)))
+
+    await db.commit()
 
     return Response(
         content=pdf_bytes,
@@ -99,8 +175,71 @@ async def merge_preview(body: MergePreviewRequest = None, db: AsyncSession = Dep
         headers={
             "Content-Disposition": "inline; filename=print_preview.pdf",
             "X-Missing-Count": str(len(missing)),
+            "X-Job-Id": job_id,
+            "Access-Control-Expose-Headers": "X-Job-Id, X-Missing-Count",
         },
     )
+
+
+@router.post("/{job_id}/undo")
+async def undo_print_job(job_id: str, db: AsyncSession = Depends(get_db)):
+    """Undo a print job: restore queue items and roll back progress."""
+    result = await db.execute(
+        select(PrintJob)
+        .where(PrintJob.id == job_id)
+        .options(selectinload(PrintJob.items))
+    )
+    job = result.scalars().first()
+    if not job:
+        raise HTTPException(status_code=404, detail="ジョブが見つかりません")
+    if job.status != "printed":
+        raise HTTPException(status_code=409, detail="このジョブは元に戻せません（既に取り消し済みまたは別のステータスです）")
+
+    # --- Restore queue items ---
+    restored = 0
+    for item in job.items:
+        db.add(PrintQueue(
+            student_id=item.student_id or "",
+            student_name=item.student_name,
+            material_key=item.material_key or "",
+            material_name=item.material_name,
+            node_key=item.node_key,
+            node_name=item.node_name,
+            sort_order=item.sort_order,
+            pdf_type=item.pdf_type,
+            start_on=item.start_on,
+            status="pending",
+        ))
+        restored += 1
+
+    # --- Roll back progress ---
+    # Find ProgressHistory records for this job
+    ph_result = await db.execute(
+        select(ProgressHistory).where(
+            ProgressHistory.action == "print",
+            ProgressHistory.metadata_["job_id"].as_string() == job_id,
+        )
+    )
+    history_records = ph_result.scalars().all()
+
+    for ph in history_records:
+        sm_result = await db.execute(
+            select(StudentMaterial).where(
+                StudentMaterial.student_id == ph.student_id,
+                StudentMaterial.material_key == ph.material_key,
+            )
+        )
+        sm = sm_result.scalars().first()
+        if sm and ph.old_pointer is not None:
+            sm.pointer = ph.old_pointer
+        await db.delete(ph)
+
+    # --- Mark job as undone ---
+    job.status = "undone"
+
+    await db.commit()
+
+    return {"status": "undone", "job_id": job_id, "restored": restored}
 
 
 @router.get("/preview/queue/{item_id}")

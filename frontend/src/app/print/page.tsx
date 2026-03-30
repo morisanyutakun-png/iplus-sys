@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useQueue,
   useAddToQueue,
@@ -10,6 +11,7 @@ import {
   previewUrl,
   previewQueueItemUrl,
   fetchMergedPdfBlob,
+  useUndoPrintJob,
 } from "@/lib/queries/queue";
 import { useStudents } from "@/lib/queries/students";
 import { useMaterials } from "@/lib/queries/materials";
@@ -67,6 +69,7 @@ import {
   User,
   Eye,
   Loader2,
+  Undo2,
 } from "lucide-react";
 import type { QueueItem } from "@/lib/types";
 
@@ -156,6 +159,7 @@ function QueueItemRow({ item, onRemove, onPreview }: {
 }
 
 export default function PrintPage() {
+  const queryClient = useQueryClient();
   const { data: items } = useQueue();
   const { data: students } = useStudents();
   const { data: materials } = useMaterials();
@@ -166,6 +170,7 @@ export default function PrintPage() {
   const clearQueueMutation = useClearQueue();
   const removeStudentMutation = useRemoveStudentFromQueue();
   const autoQueueMutation = useAutoQueue();
+  const undoMutation = useUndoPrintJob();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState("");
@@ -173,6 +178,7 @@ export default function PrintPage() {
   const [selectedNode, setSelectedNode] = useState("");
   const [merging, setMerging] = useState(false);
   const [mergingKey, setMergingKey] = useState<string | null>(null);
+  const [lastJobId, setLastJobId] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set()
   );
@@ -301,7 +307,7 @@ export default function PrintPage() {
     }
 
     try {
-      const { blob, missingCount } = await fetchMergedPdfBlob({
+      const { blob, missingCount, jobId } = await fetchMergedPdfBlob({
         studentIds: params?.studentIds,
         pdfTypes: params?.pdfTypes,
       });
@@ -309,6 +315,11 @@ export default function PrintPage() {
       if (missingCount > 0) {
         toast.warning(`${missingCount}件のPDFが見つかりませんでした（スキップ済）`);
       }
+
+      // Save job ID for undo, refresh queue
+      if (jobId) setLastJobId(jobId);
+      queryClient.invalidateQueries({ queryKey: ["queue"] });
+      queryClient.invalidateQueries({ queryKey: ["students"] });
 
       const url = URL.createObjectURL(blob);
 
@@ -344,7 +355,7 @@ export default function PrintPage() {
       if (loadingKey === "all") setMerging(false);
       else setMergingKey(null);
     }
-  }, []);
+  }, [queryClient]);
 
   const handlePrintAll = () => {
     openMergedPdf();
@@ -353,6 +364,17 @@ export default function PrintPage() {
   const handlePrintStudent = (studentId: string, studentName: string, pdfTypes?: string[]) => {
     const key = pdfTypes ? `${studentId}:${pdfTypes.join(",")}` : studentId;
     openMergedPdf({ studentIds: [studentId], pdfTypes, key });
+  };
+
+  const handleUndo = () => {
+    if (!lastJobId) return;
+    undoMutation.mutate(lastJobId, {
+      onSuccess: (data) => {
+        toast.success(`印刷キューを復元しました（${data.restored}件）`);
+        setLastJobId(null);
+      },
+      onError: (err: Error) => toast.error(`復元エラー: ${err.message}`),
+    });
   };
 
   return (
@@ -539,7 +561,22 @@ export default function PrintPage() {
               </DialogContent>
             </Dialog>
 
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
+              {lastJobId && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleUndo}
+                  disabled={undoMutation.isPending}
+                >
+                  {undoMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Undo2 className="mr-2 h-4 w-4" />
+                  )}
+                  {undoMutation.isPending ? "復元中..." : "元に戻す"}
+                </Button>
+              )}
               <Button
                 size="sm"
                 onClick={handlePrintAll}
