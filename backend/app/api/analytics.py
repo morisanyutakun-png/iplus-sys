@@ -8,7 +8,8 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.material import Material
 from app.models.student_material import StudentMaterial, ProgressHistory
-from app.schemas.analytics import StudentAnalytics
+from app.models.lesson_record import LessonRecord
+from app.schemas.analytics import StudentAnalytics, StudentAccuracyResponse
 
 router = APIRouter()
 
@@ -101,3 +102,37 @@ async def get_student_analytics(student_id: str, db: AsyncSession = Depends(get_
         completion_rates=completion_rates,
         pace={"nodes_per_week": nodes_per_week, "trend": trend, "weekly_detail": weeks_data},
     )
+
+
+@router.get("/students/{student_id}/accuracy", response_model=StudentAccuracyResponse)
+async def get_student_accuracy(student_id: str, db: AsyncSession = Depends(get_db)):
+    """Return accuracy rates per material per date for a student."""
+    result = await db.execute(
+        select(LessonRecord)
+        .where(
+            LessonRecord.student_id == student_id,
+            LessonRecord.accuracy_rate.isnot(None),
+        )
+        .order_by(LessonRecord.lesson_date.asc())
+    )
+    records = result.scalars().all()
+
+    # Build material name lookup
+    mat_keys = list({r.material_key for r in records})
+    mat_result = await db.execute(
+        select(Material).where(Material.key.in_(mat_keys))
+    )
+    mat_map = {m.key: m.name for m in mat_result.scalars().all()}
+
+    entries = []
+    for r in records:
+        if r.material_key.startswith("試験:"):
+            continue
+        entries.append({
+            "date": r.lesson_date.isoformat(),
+            "material_key": r.material_key,
+            "material_name": mat_map.get(r.material_key, r.material_key),
+            "accuracy_rate": r.accuracy_rate,
+        })
+
+    return StudentAccuracyResponse(entries=entries)

@@ -33,3 +33,14 @@ class StudentAnalytics(BaseModel):
     progress_timeline: list[dict]
     completion_rates: list[dict]
     pace: dict
+
+
+class AccuracyEntry(BaseModel):
+    date: str
+    material_key: str
+    material_name: str
+    accuracy_rate: float
+
+
+class StudentAccuracyResponse(BaseModel):
+    entries: list[AccuracyEntry]

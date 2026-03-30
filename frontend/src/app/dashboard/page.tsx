@@ -10,31 +10,8 @@ import { Users, BookOpen, Zap, Printer, AlertTriangle, TrendingUp, TrendingDown,
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import dynamic from "next/dynamic";
-
-const BarChart = dynamic(() => import("recharts").then((m) => m.BarChart), { ssr: false });
-const Bar = dynamic(() => import("recharts").then((m) => m.Bar), { ssr: false });
-const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), { ssr: false });
-const YAxis = dynamic(() => import("recharts").then((m) => m.YAxis), { ssr: false });
-const CartesianGrid = dynamic(() => import("recharts").then((m) => m.CartesianGrid), { ssr: false });
-const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
-const Legend = dynamic(() => import("recharts").then((m) => m.Legend), { ssr: false });
-const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
-const PieChart = dynamic(() => import("recharts").then((m) => m.PieChart), { ssr: false });
-const Pie = dynamic(() => import("recharts").then((m) => m.Pie), { ssr: false });
-const Cell = dynamic(() => import("recharts").then((m) => m.Cell), { ssr: false });
-const AreaChart = dynamic(() => import("recharts").then((m) => m.AreaChart), { ssr: false });
-const Area = dynamic(() => import("recharts").then((m) => m.Area), { ssr: false });
-
-const COLORS = ["#dc2626", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
-
-const TOOLTIP_STYLE = {
-  borderRadius: "12px",
-  border: "none",
-  boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
-  fontSize: "13px",
-  padding: "10px 14px",
-};
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Cell } from "@/lib/recharts-imports";
+import { TOOLTIP_STYLE, AXIS_TICK_STYLE, GRID_PROPS, BRACKET_COLORS } from "@/lib/chart-config";
 
 // Avatar color palette derived from name hash
 const AVATAR_COLORS = [
@@ -80,10 +57,11 @@ function CircularProgress({ percent, size = 44 }: { percent: number; size?: numb
   );
 }
 
-function StatCard({ title, value, subtitle, icon: Icon, gradient }: {
+function StatCard({ title, value, subtitle, icon: Icon, gradient, trend }: {
   title: string; value: string | number; subtitle?: string;
   icon: React.ComponentType<{ className?: string }>;
   gradient: string;
+  trend?: { value: number; label: string };
 }) {
   return (
     <Card className="card-hover stat-card border-0 shadow-premium overflow-hidden">
@@ -92,7 +70,21 @@ function StatCard({ title, value, subtitle, icon: Icon, gradient }: {
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
             <p className="text-3xl font-bold tracking-tight">{value}</p>
-            {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+            {trend && trend.value !== 0 ? (
+              <div className="flex items-center gap-1">
+                {trend.value > 0 ? (
+                  <TrendingUp className="h-3 w-3 text-emerald-500" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 text-red-500" />
+                )}
+                <span className={cn("text-xs font-medium", trend.value > 0 ? "text-emerald-600" : "text-red-600")}>
+                  {trend.value > 0 ? "+" : ""}{trend.value}%
+                </span>
+                <span className="text-xs text-muted-foreground">{trend.label}</span>
+              </div>
+            ) : subtitle ? (
+              <p className="text-xs text-muted-foreground">{subtitle}</p>
+            ) : null}
           </div>
           <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${gradient}`}>
             <Icon className="h-5 w-5 text-white" />
@@ -166,14 +158,29 @@ export default function DashboardPage() {
     .map((s) => ({ name: s.student_name, percent: s.avg_percent }))
     .sort((a, b) => b.percent - a.percent);
 
-  // Pie chart data: material enrollment counts
-  const materialCounts: Record<string, number> = {};
-  (students || []).forEach((s) => {
-    s.materials.forEach((m) => {
-      materialCounts[m.material_name] = (materialCounts[m.material_name] || 0) + 1;
-    });
+  // Weekly trend calculation for KPI card
+  const weeklyTrend = stats?.weekly_trend || [];
+  const weeklyTrendPercent = (() => {
+    if (weeklyTrend.length < 2) return 0;
+    const current = weeklyTrend[weeklyTrend.length - 1]?.actions ?? 0;
+    const previous = weeklyTrend[weeklyTrend.length - 2]?.actions ?? 0;
+    if (previous === 0) return current > 0 ? 100 : 0;
+    return Math.round(((current - previous) / previous) * 100);
+  })();
+
+  // Progress distribution histogram data
+  const progressBrackets = [
+    { range: "0-25%", count: 0, color: BRACKET_COLORS.low },
+    { range: "26-50%", count: 0, color: BRACKET_COLORS.mid },
+    { range: "51-75%", count: 0, color: BRACKET_COLORS.good },
+    { range: "76-100%", count: 0, color: BRACKET_COLORS.high },
+  ];
+  studentChartData.forEach((s) => {
+    if (s.percent <= 25) progressBrackets[0].count++;
+    else if (s.percent <= 50) progressBrackets[1].count++;
+    else if (s.percent <= 75) progressBrackets[2].count++;
+    else progressBrackets[3].count++;
   });
-  const pieData = Object.entries(materialCounts).map(([name, value]) => ({ name, value }));
 
   // Collect all unique material names for table header
   const allMaterials = new Map<string, string>();
@@ -217,7 +224,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <StatCard title="生徒数" value={stats?.total_students || 0} subtitle="登録済み生徒" icon={Users} gradient="bg-gradient-to-br from-red-600 to-red-800" />
         <StatCard title="教材数" value={stats?.total_materials || 0} subtitle="登録済み教材" icon={BookOpen} gradient="bg-gradient-to-br from-gray-800 to-black" />
-        <StatCard title="今週の学習" value={stats?.weekly_actions || 0} subtitle="advance + print アクション" icon={Zap} gradient="bg-gradient-to-br from-red-500 to-red-700" />
+        <StatCard title="今週の学習" value={stats?.weekly_actions || 0} icon={Zap} gradient="bg-gradient-to-br from-red-500 to-red-700" trend={weeklyTrendPercent !== 0 ? { value: weeklyTrendPercent, label: "先週比" } : undefined} subtitle="advance + print アクション" />
       </div>
 
       {/* Nearly Complete Reminder - Redesigned */}
@@ -400,8 +407,8 @@ export default function DashboardPage() {
             {studentChartData.length > 0 ? (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={studentChartData} layout="vertical" margin={{ top: 8, right: 16, bottom: 0, left: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0 0% 91%)" horizontal={false} />
-                  <XAxis type="number" domain={[0, 100]} unit="%" fontSize={11} tick={{ fill: "hsl(0 0% 45%)" }} />
+                  <CartesianGrid {...GRID_PROPS} horizontal={false} />
+                  <XAxis type="number" domain={[0, 100]} unit="%" fontSize={11} tick={{ fill: AXIS_TICK_STYLE.fill }} />
                   <YAxis type="category" dataKey="name" fontSize={12} tick={{ fill: "hsl(0 0% 35%)" }} width={60} />
                   <Tooltip formatter={(v) => [`${v}%`, "進捗率"]} contentStyle={TOOLTIP_STYLE} />
                   <Bar dataKey="percent" fill="url(#bar-gradient)" radius={[0, 6, 6, 0]} barSize={20} />
@@ -431,9 +438,9 @@ export default function DashboardPage() {
             {(stats?.weekly_trend || []).length > 0 ? (
               <ResponsiveContainer width="100%" height={280}>
                 <AreaChart data={stats?.weekly_trend || []} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0 0% 91%)" />
-                  <XAxis dataKey="week" fontSize={11} tick={{ fill: "hsl(0 0% 45%)" }} />
-                  <YAxis fontSize={11} tick={{ fill: "hsl(0 0% 45%)" }} allowDecimals={false} />
+                  <CartesianGrid {...GRID_PROPS} />
+                  <XAxis dataKey="week" tick={AXIS_TICK_STYLE} />
+                  <YAxis tick={AXIS_TICK_STYLE} allowDecimals={false} />
                   <Tooltip formatter={(v) => [`${v} 件`, "アクション"]} contentStyle={TOOLTIP_STYLE} />
                   <Area type="monotone" dataKey="actions" stroke="#dc2626" fill="url(#area-gradient)" strokeWidth={2.5} />
                   <defs>
@@ -502,30 +509,35 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* Pie Chart + Quick Summary */}
+      {/* Progress Distribution + Quick Summary */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="border-0 shadow-premium overflow-hidden">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">教材別 受講者数</CardTitle>
-            <p className="text-xs text-muted-foreground">教材ごとの生徒割当数</p>
+            <CardTitle className="text-base font-semibold">進捗率分布</CardTitle>
+            <p className="text-xs text-muted-foreground">生徒の平均進捗率の分布（人数）</p>
           </CardHeader>
           <CardContent>
-            {pieData.length > 0 ? (
+            {studentChartData.length > 0 ? (
               <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={65} outerRadius={100} dataKey="value" paddingAngle={3} label={({ name, value }) => `${name}: ${value}`}>
-                    {pieData.map((_, i) => (
-                      <Cell key={`cell-${i}`} fill={COLORS[i % COLORS.length]} />
+                <BarChart data={progressBrackets} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+                  <CartesianGrid {...GRID_PROPS} horizontal={true} vertical={false} />
+                  <XAxis dataKey="range" tick={AXIS_TICK_STYLE} />
+                  <YAxis tick={AXIS_TICK_STYLE} allowDecimals={false} />
+                  <Tooltip
+                    formatter={(v) => [`${v}人`, "生徒数"]}
+                    contentStyle={TOOLTIP_STYLE}
+                  />
+                  <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={48}>
+                    {progressBrackets.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
                     ))}
-                  </Pie>
-                  <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Legend verticalAlign="bottom" height={36} iconType="circle" formatter={(value) => <span className="text-xs text-muted-foreground">{value}</span>} />
-                </PieChart>
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             ) : (
               <div className="flex flex-col items-center py-16 text-muted-foreground">
-                <BookOpen className="mb-3 h-10 w-10 opacity-20" />
-                <p className="text-sm">教材の割当がありません</p>
+                <BarChart3 className="mb-3 h-10 w-10 opacity-20" />
+                <p className="text-sm">データがありません</p>
               </div>
             )}
           </CardContent>
@@ -539,18 +551,20 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="flex items-center justify-between rounded-xl bg-muted/40 p-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600">
-                    <Users className="h-4.5 w-4.5 text-white" />
+              <Link href="/students" className="block">
+                <div className="flex items-center justify-between rounded-xl bg-muted/40 p-4 transition-colors hover:bg-muted/60">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600">
+                      <Users className="h-4.5 w-4.5 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">アクティブ生徒</p>
+                      <p className="text-xs text-muted-foreground">教材割当済み</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">アクティブ生徒</p>
-                    <p className="text-xs text-muted-foreground">教材割当済み</p>
-                  </div>
+                  <span className="text-2xl font-bold tabular-nums">{(students || []).filter(s => s.materials.length > 0).length}</span>
                 </div>
-                <span className="text-2xl font-bold tabular-nums">{(students || []).filter(s => s.materials.length > 0).length}</span>
-              </div>
+              </Link>
               <div className="flex items-center justify-between rounded-xl bg-muted/40 p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-500">

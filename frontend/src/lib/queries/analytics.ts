@@ -10,3 +10,19 @@ export function useStudentAnalytics(studentId: string) {
     enabled: !!studentId,
   });
 }
+
+export type AccuracyEntry = {
+  date: string;
+  material_key: string;
+  material_name: string;
+  accuracy_rate: number;
+};
+
+export function useStudentAccuracy(studentId: string) {
+  return useQuery({
+    queryKey: ["student-accuracy", studentId],
+    queryFn: () =>
+      apiFetch<{ entries: AccuracyEntry[] }>(`/api/analytics/students/${studentId}/accuracy`),
+    enabled: !!studentId,
+  });
+}

@@ -1,40 +1,8 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import type { SubjectScoreDetail } from "@/lib/types";
-
-const ResponsiveContainer = dynamic(
-  () => import("recharts").then((m) => m.ResponsiveContainer),
-  { ssr: false }
-);
-const BarChart = dynamic(
-  () => import("recharts").then((m) => m.BarChart),
-  { ssr: false }
-);
-const Bar = dynamic(
-  () => import("recharts").then((m) => m.Bar),
-  { ssr: false }
-);
-const XAxis = dynamic(
-  () => import("recharts").then((m) => m.XAxis),
-  { ssr: false }
-);
-const YAxis = dynamic(
-  () => import("recharts").then((m) => m.YAxis),
-  { ssr: false }
-);
-const Tooltip = dynamic(
-  () => import("recharts").then((m) => m.Tooltip),
-  { ssr: false }
-);
-const CartesianGrid = dynamic(
-  () => import("recharts").then((m) => m.CartesianGrid),
-  { ssr: false }
-);
-const ReferenceLine = dynamic(
-  () => import("recharts").then((m) => m.ReferenceLine),
-  { ssr: false }
-);
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "@/lib/recharts-imports";
+import { TOOLTIP_STYLE, AXIS_TICK_STYLE, GRID_PROPS } from "@/lib/chart-config";
 
 type Props = {
   subjects: SubjectScoreDetail[];
@@ -55,17 +23,17 @@ export function SubjectScoreChart({ subjects, title }: Props) {
       {title && <p className="text-sm font-medium mb-2">{title}</p>}
       <ResponsiveContainer width="100%" height={280}>
         <BarChart data={data} layout="vertical" margin={{ left: 10 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(0 0% 91%)" />
+          <CartesianGrid {...GRID_PROPS} />
           <XAxis
             type="number"
             domain={[0, 100]}
-            tick={{ fontSize: 11, fill: "hsl(0 0% 45%)" }}
+            tick={AXIS_TICK_STYLE}
             tickFormatter={(v) => `${v}%`}
           />
           <YAxis
             dataKey="name"
             type="category"
-            tick={{ fontSize: 11, fill: "hsl(0 0% 45%)" }}
+            tick={AXIS_TICK_STYLE}
             width={70}
           />
           <Tooltip
@@ -75,13 +43,7 @@ export function SubjectScoreChart({ subjects, title }: Props) {
               if (name === "目標") return [`${value}%`, "目標"];
               return [value, name];
             }}
-            contentStyle={{
-              borderRadius: "12px",
-              border: "none",
-              boxShadow: "0 8px 30px rgba(0,0,0,0.12)",
-              fontSize: "13px",
-              padding: "10px 14px",
-            }}
+            contentStyle={TOOLTIP_STYLE}
           />
           <Bar dataKey="得点率" fill="url(#score-gradient)" radius={[0, 6, 6, 0]} />
           {data.some((d) => d.目標 != null) && (

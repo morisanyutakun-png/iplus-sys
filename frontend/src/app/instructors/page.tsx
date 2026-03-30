@@ -59,7 +59,6 @@ export default function InstructorsPage() {
           placeholder="講師名を入力..."
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleCreate()}
           className="max-w-xs"
         />
         <Button onClick={handleCreate} disabled={createMutation.isPending}>

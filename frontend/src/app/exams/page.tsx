@@ -15,6 +15,10 @@ import { SubjectScoreChart } from "@/components/exams/subject-score-chart";
 import { ScoreTrendChart } from "@/components/exams/score-trend-chart";
 import { TargetComparisonChart } from "@/components/exams/target-comparison-chart";
 import { CompressedScoreCalculator } from "@/components/exams/compressed-score-calculator";
+import { SubjectRadarChart } from "@/components/exams/subject-radar-chart";
+import { ScoreDistributionChart } from "@/components/exams/score-distribution-chart";
+import { ClassSubjectChart } from "@/components/exams/class-subject-chart";
+import { StudentVsClassChart } from "@/components/exams/student-vs-class-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -224,6 +228,7 @@ function AnalyticsTab({ allExams }: { allExams: ExamMaterial[] }) {
               latestAttempt={latestAttempt!}
               selectedStudentId={selectedStudentId}
               selectedExamId={selectedExamId || undefined}
+              overview={overview}
             />
           ) : (
             <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
@@ -245,12 +250,27 @@ function StudentAnalyticsSection({
   latestAttempt,
   selectedStudentId,
   selectedExamId,
+  overview,
 }: {
   summary: NonNullable<ReturnType<typeof useStudentExamSummary>["data"]>;
   latestAttempt: NonNullable<ReturnType<typeof useStudentExamSummary>["data"]>["attempts"][0];
   selectedStudentId: string;
   selectedExamId?: number;
+  overview?: ReturnType<typeof useExamOverview>["data"];
 }) {
+  // Build radar data from latest attempt
+  const radarData = latestAttempt.subjects
+    .filter((s) => s.score != null)
+    .map((s) => {
+      const classAvg = overview?.subject_averages.find((sa) => sa.subject_name === s.subject_name);
+      return {
+        subject: s.subject_name,
+        得点率: Math.round((s.score! / s.max_score) * 100),
+        目標: s.target_score != null ? Math.round((s.target_score / s.max_score) * 100) : null,
+        平均: classAvg ? classAvg.avg_percentage : null,
+      };
+    });
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -277,12 +297,41 @@ function StudentAnalyticsSection({
         </Card>
       </div>
 
-      <Card className="border-0 shadow-premium overflow-hidden">
-        <CardHeader><CardTitle className="text-sm">教科別得点率</CardTitle></CardHeader>
-        <CardContent>
-          <SubjectScoreChart subjects={latestAttempt.subjects} title={latestAttempt.attempt_date} />
-        </CardContent>
-      </Card>
+      {/* Subject Score Bar + Radar side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="border-0 shadow-premium overflow-hidden">
+          <CardHeader><CardTitle className="text-sm">教科別得点率</CardTitle></CardHeader>
+          <CardContent>
+            <SubjectScoreChart subjects={latestAttempt.subjects} title={latestAttempt.attempt_date} />
+          </CardContent>
+        </Card>
+
+        {radarData.length >= 3 && (
+          <Card className="border-0 shadow-premium overflow-hidden">
+            <CardHeader><CardTitle className="text-sm">教科バランス</CardTitle></CardHeader>
+            <CardContent>
+              <SubjectRadarChart
+                data={radarData}
+                showTarget={latestAttempt.subjects.some((s) => s.target_score != null)}
+                showAverage={!!overview?.subject_averages.length}
+              />
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Student vs Class comparison */}
+      {overview && overview.subject_averages.length > 0 && (
+        <Card className="border-0 shadow-premium overflow-hidden">
+          <CardHeader><CardTitle className="text-sm">個人 vs 教室平均</CardTitle></CardHeader>
+          <CardContent>
+            <StudentVsClassChart
+              studentSubjects={latestAttempt.subjects}
+              classAverages={overview.subject_averages}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {latestAttempt.subjects.some((s) => s.target_score != null) && (
         <Card className="border-0 shadow-premium overflow-hidden">
@@ -355,6 +404,12 @@ function ClassOverviewSection({ overview, examSelect }: { overview: ReturnType<t
     );
   }
 
+  // Build radar data from class averages
+  const classRadarData = overview.subject_averages.map((sa) => ({
+    subject: sa.subject_name,
+    得点率: sa.avg_percentage,
+  }));
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -371,6 +426,40 @@ function ClassOverviewSection({ overview, examSelect }: { overview: ReturnType<t
           </CardContent>
         </Card>
       </div>
+
+      {/* Score Distribution + Class Radar side by side */}
+      {overview.rankings.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="border-0 shadow-premium overflow-hidden">
+            <CardHeader><CardTitle className="text-sm">得点分布</CardTitle></CardHeader>
+            <CardContent>
+              <ScoreDistributionChart percentages={overview.rankings.map((r) => r.percentage)} />
+            </CardContent>
+          </Card>
+
+          {classRadarData.length >= 3 && (
+            <Card className="border-0 shadow-premium overflow-hidden">
+              <CardHeader><CardTitle className="text-sm">教科バランス（教室平均）</CardTitle></CardHeader>
+              <CardContent>
+                <SubjectRadarChart data={classRadarData} />
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Subject Averages Chart */}
+      {overview.subject_averages.length > 0 && (
+        <Card className="border-0 shadow-premium overflow-hidden">
+          <CardHeader><CardTitle className="text-sm">教科別平均得点率</CardTitle></CardHeader>
+          <CardContent>
+            <ClassSubjectChart
+              subjectAverages={overview.subject_averages}
+              classAveragePercentage={overview.class_average_percentage}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {overview.rankings.length > 0 && (
         <Card className="border-0 shadow-premium overflow-hidden">
@@ -397,7 +486,7 @@ function ClassOverviewSection({ overview, examSelect }: { overview: ReturnType<t
 
       {overview.subject_averages.length > 0 && (
         <Card className="border-0 shadow-premium overflow-hidden">
-          <CardHeader><CardTitle className="text-sm">教科別平均</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-sm">教科別平均（詳細）</CardTitle></CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

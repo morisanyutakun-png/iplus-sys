@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStudent, useUpdateStudent, useDeleteStudent } from "@/lib/queries/students";
-import { useStudentAnalytics } from "@/lib/queries/analytics";
+import { useStudentAnalytics, useStudentAccuracy } from "@/lib/queries/analytics";
+import { LearningPaceChart } from "./learning-pace-chart";
+import { ProgressTimelineChart } from "./progress-timeline-chart";
+import { AccuracyTrendChart } from "./accuracy-trend-chart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,36 +38,8 @@ import {
   Check,
   X,
 } from "lucide-react";
-import dynamic from "next/dynamic";
-
-const ResponsiveContainer = dynamic(
-  () => import("recharts").then((m) => m.ResponsiveContainer),
-  { ssr: false }
-);
-const BarChart = dynamic(
-  () => import("recharts").then((m) => m.BarChart),
-  { ssr: false }
-);
-const Bar = dynamic(
-  () => import("recharts").then((m) => m.Bar),
-  { ssr: false }
-);
-const XAxis = dynamic(
-  () => import("recharts").then((m) => m.XAxis),
-  { ssr: false }
-);
-const YAxis = dynamic(
-  () => import("recharts").then((m) => m.YAxis),
-  { ssr: false }
-);
-const Tooltip = dynamic(
-  () => import("recharts").then((m) => m.Tooltip),
-  { ssr: false }
-);
-const CartesianGrid = dynamic(
-  () => import("recharts").then((m) => m.CartesianGrid),
-  { ssr: false }
-);
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "@/lib/recharts-imports";
+import { TOOLTIP_STYLE, AXIS_TICK_STYLE, GRID_PROPS } from "@/lib/chart-config";
 
 type Props = {
   studentId: string;
@@ -85,6 +60,7 @@ export function StudentDetailPanel({
 }: Props) {
   const { data: student, isLoading } = useStudent(studentId);
   const { data: analytics } = useStudentAnalytics(studentId);
+  const { data: accuracyData } = useStudentAccuracy(studentId);
   const router = useRouter();
   const updateMutation = useUpdateStudent();
   const deleteMutation = useDeleteStudent();
@@ -348,45 +324,85 @@ export function StudentDetailPanel({
                 </Card>
               </div>
 
-              {/* Completion rates bar chart */}
-              {analytics.completion_rates.length > 0 && (
+              {/* Learning Pace + Completion Rates side by side */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {Object.keys(analytics.pace.weekly_detail).length > 0 && (
+                  <Card className="border-0 shadow-premium overflow-hidden">
+                    <CardHeader>
+                      <CardTitle className="text-sm">学習ペース推移</CardTitle>
+                      <p className="text-xs text-muted-foreground">週ごとのアクション数</p>
+                    </CardHeader>
+                    <CardContent>
+                      <LearningPaceChart weeklyDetail={analytics.pace.weekly_detail} />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {analytics.completion_rates.length > 0 && (
+                  <Card className="border-0 shadow-premium overflow-hidden">
+                    <CardHeader>
+                      <CardTitle className="text-sm">教材別完了率</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={analytics.completion_rates}>
+                          <CartesianGrid {...GRID_PROPS} />
+                          <XAxis
+                            dataKey="material_name"
+                            tick={AXIS_TICK_STYLE}
+                            interval={0}
+                            angle={-20}
+                            textAnchor="end"
+                            height={50}
+                          />
+                          <YAxis domain={[0, 100]} tick={AXIS_TICK_STYLE} />
+                          <Tooltip
+                            formatter={(value) => [`${value}%`, "完了率"]}
+                            contentStyle={TOOLTIP_STYLE}
+                          />
+                          <Bar
+                            dataKey="percent"
+                            fill="url(#completion-gradient)"
+                            radius={[6, 6, 0, 0]}
+                          />
+                          <defs>
+                            <linearGradient id="completion-gradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#dc2626" />
+                              <stop offset="100%" stopColor="#f87171" />
+                            </linearGradient>
+                          </defs>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* Progress Timeline (full width) */}
+              {analytics.progress_timeline.length > 0 && analytics.completion_rates.length > 0 && (
                 <Card className="border-0 shadow-premium overflow-hidden">
                   <CardHeader>
-                    <CardTitle className="text-sm">教材別完了率</CardTitle>
+                    <CardTitle className="text-sm">教材別進捗タイムライン</CardTitle>
+                    <p className="text-xs text-muted-foreground">各教材の累積進捗率の推移</p>
                   </CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={analytics.completion_rates}>
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke="hsl(0 0% 91%)"
-                        />
-                        <XAxis
-                          dataKey="material_name"
-                          tick={{ fontSize: 11, fill: "hsl(0 0% 45%)" }}
-                          interval={0}
-                          angle={-20}
-                          textAnchor="end"
-                          height={50}
-                        />
-                        <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "hsl(0 0% 45%)" }} />
-                        <Tooltip
-                          formatter={(value) => [`${value}%`, "完了率"]}
-                          contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 8px 30px rgba(0,0,0,0.12)", fontSize: "13px", padding: "10px 14px" }}
-                        />
-                        <Bar
-                          dataKey="percent"
-                          fill="url(#completion-gradient)"
-                          radius={[6, 6, 0, 0]}
-                        />
-                        <defs>
-                          <linearGradient id="completion-gradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#dc2626" />
-                            <stop offset="100%" stopColor="#f87171" />
-                          </linearGradient>
-                        </defs>
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <ProgressTimelineChart
+                      timeline={analytics.progress_timeline}
+                      completionRates={analytics.completion_rates}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Accuracy Trend (full width, if data exists) */}
+              {accuracyData && accuracyData.entries.length > 0 && (
+                <Card className="border-0 shadow-premium overflow-hidden">
+                  <CardHeader>
+                    <CardTitle className="text-sm">正答率推移</CardTitle>
+                    <p className="text-xs text-muted-foreground">教材別の正答率（60%以下は注意ライン）</p>
+                  </CardHeader>
+                  <CardContent>
+                    <AccuracyTrendChart data={accuracyData.entries} />
                   </CardContent>
                 </Card>
               )}
