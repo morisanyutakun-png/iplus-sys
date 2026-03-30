@@ -276,7 +276,9 @@ export default function PrintPage() {
     );
   };
 
-  // Open merged PDF in a new tab for printing
+  // Open merged PDF in a new tab for printing.
+  // The window is opened synchronously inside the click handler to avoid
+  // Safari / macOS popup-blocker, then navigated to the blob URL once ready.
   const openMergedPdf = useCallback(async (params?: {
     studentIds?: string[];
     pdfTypes?: string[];
@@ -285,6 +287,15 @@ export default function PrintPage() {
     const loadingKey = params?.key || "all";
     if (loadingKey === "all") setMerging(true);
     else setMergingKey(loadingKey);
+
+    // Open window synchronously (user-gesture context) so it won't be blocked
+    const printWindow = window.open("about:blank", "_blank");
+    if (printWindow) {
+      printWindow.document.title = "PDF 結合中...";
+      printWindow.document.body.style.cssText =
+        "display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:system-ui,sans-serif;color:#666";
+      printWindow.document.body.textContent = "PDF を結合しています...";
+    }
 
     try {
       const { blob, missingCount } = await fetchMergedPdfBlob({
@@ -297,10 +308,18 @@ export default function PrintPage() {
       }
 
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      // Revoke after a delay to allow the tab to load
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      if (printWindow && !printWindow.closed) {
+        printWindow.location.href = url;
+      } else {
+        // Fallback: window was closed or blocked — download instead
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "print_preview.pdf";
+        a.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 120000);
     } catch (err) {
+      if (printWindow && !printWindow.closed) printWindow.close();
       toast.error(err instanceof Error ? err.message : "PDF結合に失敗しました");
     } finally {
       if (loadingKey === "all") setMerging(false);
