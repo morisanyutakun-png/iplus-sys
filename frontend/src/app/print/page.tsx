@@ -291,10 +291,13 @@ export default function PrintPage() {
     // Open window synchronously (user-gesture context) so it won't be blocked
     const printWindow = window.open("about:blank", "_blank");
     if (printWindow) {
-      printWindow.document.title = "PDF 結合中...";
-      printWindow.document.body.style.cssText =
-        "display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:system-ui,sans-serif;color:#666";
-      printWindow.document.body.textContent = "PDF を結合しています...";
+      printWindow.document.title = "PDF を準備中...";
+      printWindow.document.write(`<!DOCTYPE html><html><head><title>PDF を準備中...</title>
+        <style>body{display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:system-ui,sans-serif;color:#666}
+        .spinner{width:24px;height:24px;border:3px solid #e5e7eb;border-top-color:#6366f1;border-radius:50%;animation:spin .6s linear infinite;margin-right:12px}
+        @keyframes spin{to{transform:rotate(360deg)}}</style></head>
+        <body><div class="spinner"></div>PDF を結合しています...</body></html>`);
+      printWindow.document.close();
     }
 
     try {
@@ -308,8 +311,24 @@ export default function PrintPage() {
       }
 
       const url = URL.createObjectURL(blob);
+
       if (printWindow && !printWindow.closed) {
-        printWindow.location.href = url;
+        // Write an HTML page with an embedded PDF iframe that auto-triggers print
+        printWindow.document.open();
+        printWindow.document.write(`<!DOCTYPE html><html><head><title>印刷プレビュー</title>
+          <style>*{margin:0;padding:0}html,body{height:100%;overflow:hidden}
+          iframe{border:none;width:100%;height:100%}</style></head>
+          <body><iframe id="pdf" src="${url}"></iframe>
+          <script>
+            var iframe = document.getElementById("pdf");
+            iframe.onload = function() {
+              setTimeout(function() {
+                try { iframe.contentWindow.print(); }
+                catch(e) { window.print(); }
+              }, 500);
+            };
+          </script></body></html>`);
+        printWindow.document.close();
       } else {
         // Fallback: window was closed or blocked — download instead
         const a = document.createElement("a");
