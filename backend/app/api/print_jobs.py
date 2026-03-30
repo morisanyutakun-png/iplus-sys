@@ -22,6 +22,87 @@ from app.services.pdf_store import pdf_exists, resolve_pdf_for_reading
 router = APIRouter()
 
 
+class MergePreviewRequest(BaseModel):
+    student_ids: Optional[list[str]] = None
+    pdf_types: Optional[list[str]] = None
+
+
+@router.post("/merge-preview")
+async def merge_preview(body: MergePreviewRequest = None, db: AsyncSession = Depends(get_db)):
+    """Merge all pending queue PDFs into a single PDF and return it."""
+    from fastapi.responses import Response
+    from pypdf import PdfWriter
+
+    body = body or MergePreviewRequest()
+
+    query = select(PrintQueue).where(PrintQueue.status == "pending")
+    if body.student_ids:
+        query = query.where(PrintQueue.student_id.in_(body.student_ids))
+    if body.pdf_types:
+        query = query.where(PrintQueue.pdf_type.in_(body.pdf_types))
+
+    result = await db.execute(query.order_by(PrintQueue.sort_order, PrintQueue.id))
+    queue_items = result.scalars().all()
+    if not queue_items:
+        raise HTTPException(status_code=400, detail="キューが空です")
+
+    writer = PdfWriter()
+    missing: list[str] = []
+
+    for qi in queue_items:
+        pdf_relpath = ""
+        if qi.generated_pdf:
+            pdf_relpath = qi.generated_pdf
+        elif qi.node_key:
+            node_result = await db.execute(
+                select(MaterialNode).where(MaterialNode.key == qi.node_key)
+            )
+            node = node_result.scalars().first()
+            if node:
+                if qi.pdf_type == "recheck_question":
+                    pdf_relpath = node.recheck_pdf_relpath
+                elif qi.pdf_type == "recheck_answer":
+                    pdf_relpath = node.recheck_answer_pdf_relpath
+                elif qi.pdf_type == "answer":
+                    pdf_relpath = qi.generated_pdf or node.answer_pdf_relpath
+                else:
+                    pdf_relpath = qi.generated_pdf or node.pdf_relpath
+
+        if not pdf_relpath:
+            missing.append(f"{qi.student_name}: {qi.material_name}/{qi.node_name}")
+            continue
+
+        resolved = await resolve_pdf_for_reading(db, pdf_relpath)
+        if not resolved:
+            missing.append(f"{qi.student_name}: {qi.material_name}/{qi.node_name}")
+            continue
+
+        try:
+            writer.append(resolved)
+        except Exception:
+            missing.append(f"{qi.student_name}: {qi.material_name}/{qi.node_name} (読み取りエラー)")
+
+    if len(writer.pages) == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"印刷可能なPDFがありません。不足: {', '.join(missing)}"
+        )
+
+    import io
+    buf = io.BytesIO()
+    writer.write(buf)
+    pdf_bytes = buf.getvalue()
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "inline; filename=print_preview.pdf",
+            "X-Missing-Count": str(len(missing)),
+        },
+    )
+
+
 @router.get("/preview/queue/{item_id}")
 async def preview_queue_item_pdf(item_id: int, db: AsyncSession = Depends(get_db)):
     """Serve a PDF preview for a specific queue item (supports generated_pdf for word tests)."""

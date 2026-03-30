@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, apiUrl } from "../api";
 import type { QueueItem } from "../types";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export function useQueue() {
   return useQuery({
     queryKey: ["queue"],
@@ -178,4 +180,25 @@ export function previewUrl(nodeKey: string, pdfType: string = "question"): strin
 
 export function previewQueueItemUrl(itemId: number): string {
   return apiUrl(`/api/jobs/preview/queue/${itemId}`);
+}
+
+export async function fetchMergedPdfBlob(params?: {
+  studentIds?: string[];
+  pdfTypes?: string[];
+}): Promise<{ blob: Blob; missingCount: number }> {
+  const res = await fetch(`${API_BASE}/api/jobs/merge-preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      student_ids: params?.studentIds,
+      pdf_types: params?.pdfTypes,
+    }),
+  });
+  if (!res.ok) {
+    const errorBody = await res.text().catch(() => "");
+    throw new Error(`PDF結合エラー: ${errorBody}`);
+  }
+  const missingCount = parseInt(res.headers.get("X-Missing-Count") || "0", 10);
+  const blob = await res.blob();
+  return { blob, missingCount };
 }
