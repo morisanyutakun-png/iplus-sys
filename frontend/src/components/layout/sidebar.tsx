@@ -11,6 +11,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   FileText,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/providers/sidebar-provider";
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/word-test", label: "単語テスト", icon: Languages, description: "単語帳・ミックステスト" },
   { href: "/exams", label: "試験管理", icon: FileText, description: "共テ・過去問管理" },
   { href: "/print", label: "印刷", icon: Printer, description: "キュー・ジョブ・ログ" },
+  { href: "/instructors", label: "講師管理", icon: UserCheck, description: "講師の登録・管理" },
 ];
 
 function IPlusLogo() {

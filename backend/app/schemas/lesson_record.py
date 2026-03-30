@@ -48,6 +48,7 @@ class MasteryInput(BaseModel):
     score: float | None = None
     max_score: float | None = None
     notes: str | None = None
+    instructor_id: int | None = None
 
 
 class MasteryBatchRequest(BaseModel):

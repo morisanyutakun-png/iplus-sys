@@ -370,7 +370,7 @@ export function MaterialManager({ studentId }: Props) {
             const isWordTest = mat.key.startsWith("単語:");
             const isReviewMode = isWordTest && currentPointer > total;
             const isEdited = editedPointers[mat.key] !== undefined;
-            const strokeColor = pct >= 90 ? "#10b981" : pct >= 50 ? "#3b82f6" : pct > 0 ? "#f59e0b" : "#d1d5db";
+            const strokeColor = isReviewMode ? "#8b5cf6" : pct >= 90 ? "#10b981" : pct >= 50 ? "#3b82f6" : pct > 0 ? "#f59e0b" : "#d1d5db";
             const size = 44;
             const sw = 4;
             const r = (size - sw) / 2;
@@ -385,12 +385,17 @@ export function MaterialManager({ studentId }: Props) {
                 key={mat.key}
                 className={cn(
                   "group relative rounded-xl border transition-all duration-200",
-                  "bg-card hover:shadow-md",
+                  "hover:shadow-md",
+                  isReviewMode
+                    ? "bg-violet-50/30 dark:bg-violet-950/20 border-violet-300/60 dark:border-violet-700/40"
+                    : "bg-card",
                   isEdited
                     ? "border-primary/30 bg-primary/[0.02]"
-                    : nearlyItem
+                    : nearlyItem && !isReviewMode
                     ? "border-amber-300/60 dark:border-amber-700/40"
-                    : "border-border/60 hover:border-border"
+                    : !isReviewMode
+                    ? "border-border/60 hover:border-border"
+                    : ""
                 )}
               >
                 <div className="px-3 py-3">
@@ -794,61 +799,68 @@ export function MaterialManager({ studentId }: Props) {
       )}
 
       {/* ── Available Regular Materials ── */}
-      {source.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
-              <Package className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <h3 className="text-sm font-semibold">追加可能な教材</h3>
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
-              {source.length}
-            </Badge>
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+            <Package className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {source.map((mat) => (
-              <button
-                key={mat.key}
-                type="button"
-                onClick={() => handleSourceClick(mat)}
-                disabled={toggleMutation.isPending || assignWordTest.isPending}
-                className={cn(
-                  "group/add flex items-center gap-3 rounded-xl border border-border/50 px-3 py-2.5",
-                  "bg-card hover:border-primary/40 hover:bg-primary/[0.03] hover:shadow-sm",
-                  "transition-all duration-200 text-left cursor-pointer",
-                  "disabled:opacity-50 disabled:cursor-not-allowed"
-                )}
-              >
-                <div className={cn(
-                  "flex items-center justify-center h-7 w-7 rounded-lg shrink-0",
-                  "bg-primary/10 text-primary",
-                  "group-hover/add:bg-primary group-hover/add:text-primary-foreground",
-                  "transition-all duration-200"
-                )}>
-                  <Plus className="h-3.5 w-3.5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <span className="text-sm font-medium truncate block">{mat.name}</span>
-                  <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                    {mat.word_book_id ? (
-                      <>
-                        <FileText className="h-2.5 w-2.5" />
-                        {mat.total_words}語
-                      </>
-                    ) : (
-                      <>
-                        <Layers className="h-2.5 w-2.5" />
-                        {mat.total_nodes} 範囲
-                      </>
-                    )}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
+          <h3 className="text-sm font-semibold">追加可能な教材</h3>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
+            {source.length}
+          </Badge>
         </div>
-      )}
+
+        {source.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-6 text-center rounded-xl border border-dashed border-border/50 bg-muted/10">
+            <Package className="h-6 w-6 text-muted-foreground/30 mb-2" />
+            <p className="text-xs text-muted-foreground">追加可能な教材はありません</p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-emerald-200/50 dark:border-emerald-800/30 overflow-hidden">
+            <div className="divide-y divide-border/40">
+              {source.map((mat) => (
+                <button
+                  key={mat.key}
+                  type="button"
+                  onClick={() => handleSourceClick(mat)}
+                  disabled={toggleMutation.isPending || assignWordTest.isPending}
+                  className={cn(
+                    "group/add flex items-center gap-3 w-full px-3 py-2.5",
+                    "hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20",
+                    "transition-all duration-150 text-left cursor-pointer",
+                    "disabled:opacity-50 disabled:cursor-not-allowed"
+                  )}
+                >
+                  <div className={cn(
+                    "flex items-center justify-center h-8 w-8 rounded-lg shrink-0",
+                    "bg-emerald-100/80 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400",
+                    "group-hover/add:bg-emerald-500 group-hover/add:text-white",
+                    "transition-all duration-200"
+                  )}>
+                    <Plus className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-sm font-medium truncate block">{mat.name}</span>
+                    <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                      {mat.word_book_id ? (
+                        <>
+                          <FileText className="h-2.5 w-2.5" />
+                          {mat.total_words}語
+                        </>
+                      ) : (
+                        <>
+                          <Layers className="h-2.5 w-2.5" />
+                          {mat.total_nodes} 範囲
+                        </>
+                      )}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
 
       {/* ── Available Exam Materials (grouped by exam) ── */}
@@ -952,8 +964,9 @@ export function MaterialManager({ studentId }: Props) {
       )}
 
       {/* All assigned state */}
-      {allSource.length === 0 && allCompleted.length === 0 && (assigned.length > 0 || assignedExam.length > 0) && (
+      {allSource.length === 0 && sourceExamGroups.length === 0 && allCompleted.length === 0 && (assigned.length > 0 || assignedExam.length > 0) && (
         <div className="flex items-center gap-2 py-3 px-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-800/30">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           <span className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
             全ての教材が割り当て済みです
           </span>

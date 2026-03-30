@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import { Check } from "lucide-react";
+import { Check, Minus } from "lucide-react";
 
 /** 全角数字・ピリオドを半角に変換 */
 function toHalfWidth(s: string): string {
@@ -131,6 +131,7 @@ type PassCheckboxProps = {
   onToggle: () => void;
   isFocused: boolean;
   focusTrigger?: number;
+  variant?: "pass" | "skip";
 };
 
 export function PassCheckbox({
@@ -138,12 +139,15 @@ export function PassCheckbox({
   onToggle,
   isFocused,
   focusTrigger,
+  variant = "pass",
 }: PassCheckboxProps) {
   const ref = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (isFocused) ref.current?.focus();
   }, [isFocused, focusTrigger]);
+
+  const isSkip = variant === "skip";
 
   return (
     <button
@@ -155,13 +159,18 @@ export function PassCheckbox({
         "flex h-8 w-8 items-center justify-center rounded-md border-2 transition-all cursor-pointer mx-auto",
         "focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-primary/40",
         checked
-          ? "bg-emerald-600 border-emerald-600 text-white shadow-sm"
+          ? isSkip
+            ? "bg-orange-500 border-orange-500 text-white shadow-sm"
+            : "bg-emerald-600 border-emerald-600 text-white shadow-sm"
           : "bg-white border-gray-300 hover:border-gray-400 hover:bg-gray-50"
       )}
       onClick={onToggle}
       tabIndex={-1}
     >
-      {checked && <Check className="h-4 w-4" strokeWidth={3} />}
+      {checked && (isSkip
+        ? <Minus className="h-4 w-4" strokeWidth={3} />
+        : <Check className="h-4 w-4" strokeWidth={3} />
+      )}
     </button>
   );
 }

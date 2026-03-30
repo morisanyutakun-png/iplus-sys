@@ -9,6 +9,7 @@ from app.models.lesson_record import LessonRecord
 from app.models.configured_printer import ConfiguredPrinter
 from app.models.word_test import WordBook, Word, WordTestSession
 from app.models.pdf_blob import PdfBlob
+from app.models.instructor import Instructor
 from app.models.exam import (
     ExamMaterial,
     ExamSubject,
@@ -42,4 +43,5 @@ __all__ = [
     "ExamScore",
     "UniversityScoreWeight",
     "ExamScoreTarget",
+    "Instructor",
 ]

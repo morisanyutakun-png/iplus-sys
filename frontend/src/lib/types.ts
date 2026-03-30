@@ -224,6 +224,7 @@ export interface MasteryInput {
   score?: number;
   max_score?: number;
   notes?: string;
+  instructor_id?: number;
 }
 
 export interface MasteryResultItem {

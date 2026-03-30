@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { useAllMaterials } from "@/lib/queries/materials";
 import { useMasteryBatch } from "@/lib/queries/lesson-records";
 import { useExamMaterials } from "@/lib/queries/exam-materials";
+import { useInstructors } from "@/lib/queries/instructors";
 import { useSpreadsheetKeyboard } from "@/hooks/use-spreadsheet-keyboard";
 import { ScoreCell, PassCheckbox } from "./mastery-cell";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ type ColInput = {
   score: number | null;
   maxScore: number | null;
   passed: boolean;
+  skipped: boolean;
 };
 
 type Props = {
@@ -71,6 +73,7 @@ type Props = {
 export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPendingChange }: Props) {
   const { data: allMaterials } = useAllMaterials();
   const { data: allExamMaterials } = useExamMaterials();
+  const { data: instructors } = useInstructors();
   const masteryMutation = useMasteryBatch();
 
   // Build node_key → max_score map from exam subjects
@@ -88,6 +91,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
 
   const [inputs, setInputs] = useState<Record<string, ColInput>>({});
   const [lastResult, setLastResult] = useState<MasteryBatchResponse | null>(null);
+  const [selectedInstructorId, setSelectedInstructorId] = useState<number | null>(null);
 
   const todayStr = new Date().toISOString().split("T")[0];
 
@@ -133,7 +137,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
   }, [columns]);
 
   const getInput = (materialKey: string): ColInput =>
-    inputs[materialKey] ?? { score: null, maxScore: null, passed: false };
+    inputs[materialKey] ?? { score: null, maxScore: null, passed: false, skipped: false };
 
   const setInput = (materialKey: string, update: Partial<ColInput>) => {
     setInputs((prev) => ({
@@ -147,7 +151,24 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
       const col = columns[colIndex];
       if (!col || col.isCompleted) return;
       const current = getInput(col.sm.material_key);
+      if (current.skipped) return; // Can't toggle pass when skipped
       setInput(col.sm.material_key, { passed: !current.passed });
+    },
+    [columns, inputs]
+  );
+
+  const toggleSkip = useCallback(
+    (colIndex: number) => {
+      const col = columns[colIndex];
+      if (!col || col.isCompleted) return;
+      const current = getInput(col.sm.material_key);
+      const newSkipped = !current.skipped;
+      // When marking as skipped, clear other inputs
+      if (newSkipped) {
+        setInput(col.sm.material_key, { skipped: true, score: null, maxScore: null, passed: false });
+      } else {
+        setInput(col.sm.material_key, { skipped: false });
+      }
     },
     [columns, inputs]
   );
@@ -160,7 +181,9 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
       if (col.isCompleted) continue;
       active++;
       const input = getInput(col.sm.material_key);
-      if (col.isExam) {
+      if (input.skipped) {
+        pending++;
+      } else if (col.isExam) {
         if (input.score !== null) pending++;
       } else {
         if (input.passed || input.score !== null) pending++;
@@ -176,6 +199,12 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
   }, [pendingCount, onPendingChange]);
 
   const handleSave = useCallback(() => {
+    // Validation: 講師選択チェック
+    if (!selectedInstructorId) {
+      toast.error("講師を選択してから反映してください");
+      return;
+    }
+
     // Validation: 全項目入力チェック
     if (!allFilled) {
       toast.error("全ての教材の入力を完了してから反映してください");
@@ -186,7 +215,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
     for (const col of columns) {
       if (col.isCompleted) continue;
       const input = getInput(col.sm.material_key);
-      if (input.score === null) continue;
+      if (input.skipped || input.score === null) continue;
 
       // Exam materials: max_score is auto-filled from exam subject definition
       const effectiveMax = col.isExam && col.examMaxScore ? col.examMaxScore : input.maxScore;
@@ -209,6 +238,21 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
     for (const col of columns) {
       if (col.isCompleted) continue;
       const input = getInput(col.sm.material_key);
+
+      // Skipped: send as retry with no score (same range repeats)
+      if (input.skipped) {
+        if (!col.currentNode) continue;
+        records.push({
+          student_id: student.id,
+          material_key: col.sm.material_key,
+          node_key: col.currentNode.key,
+          lesson_date: todayStr,
+          status: "retry",
+          instructor_id: selectedInstructorId ?? undefined,
+        });
+        continue;
+      }
+
       // For exam materials: only need score, max_score is fixed from exam subject
       if (col.isExam) {
         if (input.score === null) continue;
@@ -221,6 +265,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
           status: "completed",
           score: input.score ?? undefined,
           max_score: col.examMaxScore ?? input.maxScore ?? undefined,
+          instructor_id: selectedInstructorId ?? undefined,
         });
       } else {
         if (!input.passed && input.score === null) continue;
@@ -233,6 +278,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
           status: input.passed ? "completed" : "retry",
           score: input.score ?? undefined,
           max_score: input.maxScore ?? undefined,
+          instructor_id: selectedInstructorId ?? undefined,
         });
       }
     }
@@ -248,7 +294,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
       },
       onError: (err) => toast.error(`エラー: ${err.message}`),
     });
-  }, [columns, inputs, student.id, todayStr, masteryMutation, allFilled]);
+  }, [columns, inputs, student.id, todayStr, masteryMutation, allFilled, selectedInstructorId]);
 
   const handleReset = () => {
     setInputs({});
@@ -302,6 +348,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
   const rows = [
     { key: "name",    label: "教材名",     editable: false },
     { key: "current", label: "現在の範囲", editable: false },
+    { key: "skip",    label: "未実施",     editable: true, editRow: 3 },
     { key: "score",   label: "得点",       editable: true, editRow: 0 },
     { key: "max",     label: "満点",       editable: true, editRow: 1 },
     { key: "pass",    label: "合格",       editable: true, editRow: 2 },
@@ -319,6 +366,20 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
           <span className="text-xs text-muted-foreground">
             {student.materials.length}教材
           </span>
+          <span className="text-xs text-muted-foreground">|</span>
+          <select
+            className={cn(
+              "text-xs rounded-md border px-2 py-1 bg-background",
+              !selectedInstructorId && "text-muted-foreground border-amber-300"
+            )}
+            value={selectedInstructorId ?? ""}
+            onChange={(e) => setSelectedInstructorId(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">講師を選択...</option>
+            {instructors?.map((inst) => (
+              <option key={inst.id} value={inst.id}>{inst.name}</option>
+            ))}
+          </select>
         </div>
         <div className="flex items-center gap-2">
           {pendingCount > 0 && (
@@ -433,6 +494,31 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                   );
                 }
 
+                // ── Row: Skip (未実施) checkbox ──
+                if (rowDef.key === "skip") {
+                  return (
+                    <div
+                      key={`${rowIdx}-${colIdx}`}
+                      className={cn(
+                        "flex items-center justify-center px-2 py-1.5 border-b border-r border-border transition-colors",
+                        input.skipped
+                          ? "bg-orange-50"
+                          : "bg-white"
+                      )}
+                      onClick={() => !col.isCompleted && toggleSkip(colIdx)}
+                    >
+                      {!col.isCompleted && (
+                        <PassCheckbox
+                          checked={input.skipped}
+                          onToggle={() => toggleSkip(colIdx)}
+                          isFocused={false}
+                          variant="skip"
+                        />
+                      )}
+                    </div>
+                  );
+                }
+
                 // ── Row: Score input ──
                 if (rowDef.key === "score") {
                   const isFocused = isActiveCol && activeCell.row === 0;
@@ -441,15 +527,17 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                       key={`${rowIdx}-${colIdx}`}
                       className={cn(
                         "flex items-center justify-center px-2 py-1.5 border-b border-r border-border transition-colors",
-                        isFocused
+                        input.skipped
+                          ? "bg-orange-50/50 opacity-40"
+                          : isFocused
                           ? "bg-primary/5 ring-inset ring-1 ring-primary/20"
                           : isActiveCol
                           ? "bg-amber-50/50"
                           : "bg-white"
                       )}
-                      onClick={() => handleCellClick(colIdx, 0)}
+                      onClick={() => !input.skipped && handleCellClick(colIdx, 0)}
                     >
-                      {!col.isCompleted && (
+                      {!col.isCompleted && !input.skipped && (
                         <ScoreCell
                           value={input.score}
                           onChange={(val) =>
@@ -473,7 +561,10 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                     return (
                       <div
                         key={`${rowIdx}-${colIdx}`}
-                        className="flex items-center justify-center px-2 py-1.5 border-b border-r border-border bg-gray-50"
+                        className={cn(
+                          "flex items-center justify-center px-2 py-1.5 border-b border-r border-border bg-gray-50",
+                          input.skipped && "opacity-40"
+                        )}
                       >
                         <span className="text-sm font-medium text-muted-foreground tabular-nums">
                           {col.examMaxScore}
@@ -487,15 +578,17 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                       key={`${rowIdx}-${colIdx}`}
                       className={cn(
                         "flex items-center justify-center px-2 py-1.5 border-b border-r border-border transition-colors",
-                        isFocused
+                        input.skipped
+                          ? "bg-orange-50/50 opacity-40"
+                          : isFocused
                           ? "bg-primary/5 ring-inset ring-1 ring-primary/20"
                           : isActiveCol
                           ? "bg-amber-50/50"
                           : "bg-white"
                       )}
-                      onClick={() => handleCellClick(colIdx, 1)}
+                      onClick={() => !input.skipped && handleCellClick(colIdx, 1)}
                     >
-                      {!col.isCompleted && (
+                      {!col.isCompleted && !input.skipped && (
                         <ScoreCell
                           value={input.maxScore}
                           onChange={(val) =>
@@ -518,8 +611,8 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                       key={`${rowIdx}-${colIdx}`}
                       className={cn(
                         "flex items-center justify-center px-2 py-1.5 border-b border-r border-border transition-colors",
-                        col.isExam
-                          ? "bg-gray-50"
+                        col.isExam || input.skipped
+                          ? input.skipped ? "bg-orange-50/50 opacity-40" : "bg-gray-50"
                           : input.passed
                           ? "bg-emerald-50"
                           : isFocused
@@ -528,9 +621,9 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                           ? "bg-amber-50/50"
                           : "bg-white"
                       )}
-                      onClick={() => !col.isExam && handleCellClick(colIdx, 2)}
+                      onClick={() => !col.isExam && !input.skipped && handleCellClick(colIdx, 2)}
                     >
-                      {!col.isCompleted && !col.isExam && (
+                      {!col.isCompleted && !col.isExam && !input.skipped && (
                         <PassCheckbox
                           checked={input.passed}
                           onToggle={() => togglePass(colIdx)}
@@ -538,7 +631,7 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                           focusTrigger={focusTrigger}
                         />
                       )}
-                      {col.isExam && (
+                      {(col.isExam || input.skipped) && (
                         <span className="text-[10px] text-muted-foreground">—</span>
                       )}
                     </div>
@@ -580,6 +673,8 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
                     } else {
                       nextText = "再実施";
                     }
+                  } else if (input.skipped) {
+                    nextText = `↻ 同じ範囲を再実施`;
                   } else if (col.isReviewMode) {
                     // Word test review mode: always generates next review
                     nextText = "→ 総復習（次回）";

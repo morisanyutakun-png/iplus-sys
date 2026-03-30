@@ -131,6 +131,7 @@ async def batch_mastery_input(
             max_score=rec.max_score,
             accuracy_rate=accuracy_rate,
             notes=rec.notes,
+            instructor_id=rec.instructor_id,
         )
         stmt = stmt.on_conflict_do_update(
             constraint="uq_lesson_record",
@@ -140,6 +141,7 @@ async def batch_mastery_input(
                 "max_score": stmt.excluded.max_score,
                 "accuracy_rate": stmt.excluded.accuracy_rate,
                 "notes": stmt.excluded.notes,
+                "instructor_id": stmt.excluded.instructor_id,
                 "updated_at": func.now(),
             },
         )
