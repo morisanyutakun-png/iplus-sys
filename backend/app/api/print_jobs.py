@@ -13,7 +13,6 @@ from app.config import settings
 from app.database import get_db
 from app.models.print_queue import PrintQueue
 from app.models.print_job import PrintJob, PrintJobItem
-from app.models.print_log import PrintLog
 from app.models.student_material import StudentMaterial, ProgressHistory
 from app.models.material import MaterialNode
 from app.schemas.job import PrintJobOut, PrintJobListOut
@@ -572,20 +571,6 @@ async def execute_print(body: ExecuteRequest = None, db: AsyncSession = Depends(
         else:
             message = f"PDF not found: {item.pdf_relpath}"
 
-        log_entry = PrintLog(
-            type="printed" if success else "failed",
-            job_id=job_id,
-            student_id=item.student_id,
-            student_name=item.student_name,
-            material_key=item.material_key,
-            material_name=item.material_name,
-            node_key=item.node_key,
-            node_name=item.node_name,
-            success=success,
-            message=message,
-        )
-        db.add(log_entry)
-
         if success:
             success_ids.append(queue_ids[idx])
             # Only advance pointer on the last item for this node
@@ -699,20 +684,6 @@ async def agent_ack(body: AgentAckRequest, db: AsyncSession = Depends(get_db)):
         item = items_by_id.get(res.item_id)
         if not item:
             continue
-        log_entry = PrintLog(
-            type="printed" if res.success else "failed",
-            job_id=job.id,
-            student_id=item.student_id,
-            student_name=item.student_name,
-            material_key=item.material_key,
-            material_name=item.material_name,
-            node_key=item.node_key,
-            node_name=item.node_name,
-            success=res.success,
-            message=res.message,
-        )
-        db.add(log_entry)
-
         if res.success:
             # Only advance pointer on the last item for this node
             should_advance = True

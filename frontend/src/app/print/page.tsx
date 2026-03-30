@@ -15,7 +15,7 @@ import {
 } from "@/lib/queries/queue";
 import { useStudents } from "@/lib/queries/students";
 import { useMaterials } from "@/lib/queries/materials";
-import { useJobs, useLogs } from "@/lib/queries/progress";
+import { useJobs } from "@/lib/queries/progress";
 import { useAutoQueue } from "@/lib/queries/auto-print";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,9 +61,6 @@ import {
   Printer,
   Zap,
   ClipboardList,
-  CheckCircle,
-  XCircle,
-  ScrollText,
   ChevronDown,
   ChevronRight,
   User,
@@ -164,7 +161,6 @@ export default function PrintPage() {
   const { data: students } = useStudents();
   const { data: materials } = useMaterials();
   const { data: jobs } = useJobs();
-  const { data: logs } = useLogs();
   const addMutation = useAddToQueue();
   const removeMutation = useRemoveFromQueue();
   const clearQueueMutation = useClearQueue();
@@ -398,7 +394,6 @@ export default function PrintPage() {
             )}
           </TabsTrigger>
           <TabsTrigger value="jobs">ジョブ履歴</TabsTrigger>
-          <TabsTrigger value="logs">ログ</TabsTrigger>
         </TabsList>
 
         {/* Queue Tab */}
@@ -866,86 +861,6 @@ export default function PrintPage() {
           </Card>
         </TabsContent>
 
-        {/* Logs Tab */}
-        <TabsContent value="logs">
-          <Card className="border-0 shadow-premium overflow-hidden">
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/30">
-                    <TableHead className="w-12 text-xs font-semibold uppercase tracking-wider">
-                      状態
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wider">
-                      生徒
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wider">
-                      教材
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wider">
-                      範囲
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wider">
-                      タイプ
-                    </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wider">
-                      日時
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(logs || []).map((log, idx) => (
-                    <TableRow
-                      key={log.id}
-                      className="stagger-item hover:bg-muted/20 transition-colors"
-                      style={{ animationDelay: `${idx * 20}ms` }}
-                    >
-                      <TableCell>
-                        {log.success ? (
-                          <CheckCircle className="h-4 w-4 text-emerald-500" />
-                        ) : log.success === false ? (
-                          <XCircle className="h-4 w-4 text-destructive" />
-                        ) : (
-                          <span className="text-muted-foreground/40">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {log.student_name || log.student_id || "-"}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {log.material_name || log.material_key || "-"}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {log.node_name || log.node_key || "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className="rounded-full text-xs"
-                        >
-                          {log.type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(log.created_at).toLocaleString("ja-JP")}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {(!logs || logs.length === 0) && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="py-16 text-center">
-                        <ScrollText className="mx-auto mb-3 h-10 w-10 text-muted-foreground/20" />
-                        <p className="text-sm text-muted-foreground">
-                          ログはまだありません
-                        </p>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       {/* PDF Preview Dialog */}

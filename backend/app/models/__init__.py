@@ -4,7 +4,6 @@ from app.models.material import Material, MaterialNode
 from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
 from app.models.print_queue import PrintQueue
 from app.models.print_job import PrintJob, PrintJobItem
-from app.models.print_log import PrintLog
 from app.models.lesson_record import LessonRecord
 from app.models.configured_printer import ConfiguredPrinter
 from app.models.word_test import WordBook, Word, WordTestSession
@@ -30,7 +29,6 @@ __all__ = [
     "PrintQueue",
     "PrintJob",
     "PrintJobItem",
-    "PrintLog",
     "LessonRecord",
     "ConfiguredPrinter",
     "WordBook",

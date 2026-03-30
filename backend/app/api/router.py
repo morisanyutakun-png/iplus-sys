@@ -6,7 +6,6 @@ from app.api.queue import router as queue_router
 from app.api.print_jobs import router as jobs_router
 from app.api.printers import router as printers_router
 from app.api.progress import router as progress_router
-from app.api.logs import router as logs_router
 from app.api.gas_webhook import router as gas_router
 from app.api.pdfs import router as pdfs_router
 from app.api.lesson_records import router as lesson_records_router
@@ -28,7 +27,6 @@ api_router.include_router(queue_router, prefix="/queue", tags=["queue"])
 api_router.include_router(printers_router, prefix="/jobs/printers", tags=["printers"])
 api_router.include_router(jobs_router, prefix="/jobs", tags=["jobs"])
 api_router.include_router(progress_router, prefix="/progress", tags=["progress"])
-api_router.include_router(logs_router, prefix="/logs", tags=["logs"])
 api_router.include_router(gas_router, prefix="/gas", tags=["gas"])
 api_router.include_router(pdfs_router, prefix="/pdfs", tags=["pdfs"])
 api_router.include_router(lesson_records_router, prefix="/lesson-records", tags=["lesson-records"])
