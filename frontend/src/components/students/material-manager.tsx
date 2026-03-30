@@ -46,6 +46,7 @@ import {
   ChevronUp,
   GraduationCap,
   School,
+  Archive,
 } from "lucide-react";
 import type { MaterialZoneItem } from "@/lib/types";
 
@@ -292,6 +293,12 @@ export function MaterialManager({ studentId }: Props) {
   // Split assigned into regular vs exam
   const assigned = useMemo(() => allAssigned.filter((m) => !m.exam_material_id), [allAssigned]);
   const assignedExam = useMemo(() => allAssigned.filter((m) => !!m.exam_material_id), [allAssigned]);
+
+  const allCompleted = zones?.completed || [];
+
+  // Split completed into regular vs exam
+  const completedRegular = useMemo(() => allCompleted.filter((m) => !m.exam_material_id), [allCompleted]);
+  const completedExam = useMemo(() => allCompleted.filter((m) => !!m.exam_material_id), [allCompleted]);
 
   // Split source into regular vs exam, group exams by exam_name
   const source = useMemo(() => allSource.filter((m) => !m.exam_material_id), [allSource]);
@@ -696,6 +703,89 @@ export function MaterialManager({ studentId }: Props) {
         </div>
       )}
 
+      {/* ── Completed Materials (実施済み教材) ── */}
+      {(completedRegular.length > 0 || completedExam.length > 0) && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center justify-center h-6 w-6 rounded-md bg-slate-500/10">
+              <Archive className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
+            </div>
+            <h3 className="text-sm font-semibold">実施済み教材</h3>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
+              {completedRegular.length + completedExam.length}
+            </Badge>
+          </div>
+
+          <div className="space-y-1.5">
+            {completedExam.map((mat) => (
+              <div
+                key={mat.key}
+                className="group flex items-center gap-3 rounded-xl border border-slate-200/60 dark:border-slate-700/40 bg-slate-50/30 dark:bg-slate-900/20 px-3 py-2.5"
+              >
+                <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800/50 shrink-0">
+                  {mat.exam_type === "university_past" ? (
+                    <School className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                  ) : (
+                    <GraduationCap className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium truncate block text-muted-foreground">{mat.name}</span>
+                  <span className="text-[10px] text-muted-foreground/70">
+                    {mat.exam_type === "common_test" ? "共通テスト" : "大学過去問"}
+                    {mat.exam_year ? ` ${mat.exam_year}年` : ""}
+                    {mat.exam_university ? ` ${mat.exam_university}` : ""}
+                    {mat.exam_faculty ? ` ${mat.exam_faculty}` : ""}
+                  </span>
+                </div>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 rounded-full border-slate-300 text-slate-500 dark:text-slate-400 shrink-0">
+                  実施済み
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary shrink-0"
+                  onClick={() => handleToggle(mat.key, "assign")}
+                  title="再割り当て"
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+            {completedRegular.map((mat) => (
+              <div
+                key={mat.key}
+                className="group flex items-center gap-3 rounded-xl border border-slate-200/60 dark:border-slate-700/40 bg-slate-50/30 dark:bg-slate-900/20 px-3 py-2.5"
+              >
+                <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800/50 shrink-0">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500/70" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium truncate block text-muted-foreground">{mat.name}</span>
+                  <span className="text-[10px] text-muted-foreground/70">
+                    <Layers className="h-2.5 w-2.5 inline mr-0.5" />
+                    {mat.archived_pointer || mat.total_nodes} / {mat.total_nodes} 範囲完了
+                    {mat.archived_at && ` \u00B7 ${new Date(mat.archived_at).toLocaleDateString("ja-JP")}`}
+                  </span>
+                </div>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 rounded-full border-slate-300 text-slate-500 dark:text-slate-400 shrink-0">
+                  実施済み
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary shrink-0"
+                  onClick={() => handleSourceClick(mat)}
+                  title="再割り当て"
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Available Regular Materials ── */}
       {source.length > 0 && (
         <div>
@@ -855,7 +945,7 @@ export function MaterialManager({ studentId }: Props) {
       )}
 
       {/* All assigned state */}
-      {allSource.length === 0 && (assigned.length > 0 || assignedExam.length > 0) && (
+      {allSource.length === 0 && allCompleted.length === 0 && (assigned.length > 0 || assignedExam.length > 0) && (
         <div className="flex items-center gap-2 py-3 px-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-800/30">
           <span className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
             全ての教材が割り当て済みです

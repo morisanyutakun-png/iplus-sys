@@ -587,7 +587,7 @@ export default function PrintPage() {
                 ) : (
                   <Printer className="mr-2 h-4 w-4" />
                 )}
-                {merging ? "PDF結合中..." : "印刷する"}
+                {merging ? "PDF結合中..." : "全て印刷"}
               </Button>
             </div>
           </div>

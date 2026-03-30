@@ -144,8 +144,19 @@ async def get_materials_zones(student_id: str, db: AsyncSession = Depends(get_db
     exam_result = await db.execute(select(ExamMaterial))
     exam_materials_map = {em.id: em for em in exam_result.scalars().all()}
 
+    # Get archived progress for this student (completed materials)
+    archived_result = await db.execute(
+        select(ArchivedProgress).where(ArchivedProgress.student_id == student_id)
+    )
+    archived_map: dict[str, ArchivedProgress] = {}
+    for ap in archived_result.scalars().all():
+        # Keep the latest archive per material_key
+        if ap.material_key not in archived_map or ap.archived_at > archived_map[ap.material_key].archived_at:
+            archived_map[ap.material_key] = ap
+
     assigned_list = []
     source_list = []
+    completed_list = []
     for mat in all_materials:
         total = len(mat.nodes)
         info: dict = {
@@ -171,6 +182,12 @@ async def get_materials_zones(student_id: str, db: AsyncSession = Depends(get_db
             info["max_node"] = sm.max_node
             info["percent"] = round((sm.pointer - 1) / effective * 100, 1) if effective > 0 else 0
             assigned_list.append(info)
+        elif mat.key in archived_map:
+            # Completed material — not currently assigned but has archive record
+            ap = archived_map[mat.key]
+            info["archived_pointer"] = ap.pointer
+            info["archived_at"] = ap.archived_at.isoformat() if ap.archived_at else None
+            completed_list.append(info)
         else:
             # Add word book info for assignment dialog
             wb = word_books.get(mat.key)
@@ -179,7 +196,7 @@ async def get_materials_zones(student_id: str, db: AsyncSession = Depends(get_db
                 info["total_words"] = wb.total_words
             source_list.append(info)
 
-    return {"assigned": assigned_list, "source": source_list}
+    return {"assigned": assigned_list, "source": source_list, "completed": completed_list}
 
 
 @router.post("/{student_id}/materials")

@@ -161,11 +161,14 @@ export interface MaterialZoneItem {
   exam_year?: number;
   exam_university?: string;
   exam_faculty?: string;
+  archived_pointer?: number;
+  archived_at?: string;
 }
 
 export interface MaterialZones {
   assigned: MaterialZoneItem[];
   source: MaterialZoneItem[];
+  completed: MaterialZoneItem[];
 }
 
 export interface PrintLogEntry {
