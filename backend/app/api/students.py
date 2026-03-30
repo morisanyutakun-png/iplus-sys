@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.student import Student
-from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
+from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress, LowAccuracyAcknowledgment
 from app.models.material import Material, MaterialNode
 from app.models.print_queue import PrintQueue
 from app.models.word_test import WordBook, Word
@@ -376,9 +376,20 @@ async def save_pointers(
                 action="manual_set",
                 old_pointer=sm.pointer,
                 new_pointer=new_pointer,
+                metadata_={"reset_streak": True, "old_streak": sm.low_score_streak},
             )
             db.add(history)
             sm.pointer = new_pointer
+            sm.low_score_streak = 0
+            sm.last_accuracy = None
+
+            # Clear stale low-accuracy acknowledgments for this material
+            await db.execute(
+                delete(LowAccuracyAcknowledgment).where(
+                    LowAccuracyAcknowledgment.student_id == student_id,
+                    LowAccuracyAcknowledgment.material_key == material_key,
+                )
+            )
 
     await db.commit()
     return {"status": "ok"}
