@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useStudent, useUpdateStudent, useDeleteStudent } from "@/lib/queries/students";
 import { useStudentAnalytics, useStudentAccuracy } from "@/lib/queries/analytics";
+import { useDashboard } from "@/lib/queries/progress";
 import { LearningPaceChart } from "./learning-pace-chart";
 import { ProgressTimelineChart } from "./progress-timeline-chart";
 import { AccuracyTrendChart } from "./accuracy-trend-chart";
@@ -34,6 +35,8 @@ import {
   Trash2,
   Check,
   X,
+  AlertTriangle,
+  TrendingDown,
 } from "lucide-react";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "@/lib/recharts-imports";
 import { TOOLTIP_STYLE, AXIS_TICK_STYLE, GRID_PROPS } from "@/lib/chart-config";
@@ -58,6 +61,14 @@ export function StudentDetailPanel({
   const { data: student, isLoading } = useStudent(studentId);
   const { data: analytics } = useStudentAnalytics(studentId);
   const { data: accuracyData } = useStudentAccuracy(studentId);
+  const { data: dashboard } = useDashboard();
+
+  const nearlyComplete = (dashboard?.nearly_complete || []).filter(
+    (item) => item.student_id === studentId
+  );
+  const lowAccuracy = (dashboard?.low_accuracy || []).filter(
+    (item) => item.student_id === studentId
+  );
   const router = useRouter();
   const updateMutation = useUpdateStudent();
   const deleteMutation = useDeleteStudent();
@@ -235,22 +246,52 @@ export function StudentDetailPanel({
         </AlertDialog>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs + Reminder banners */}
       <Tabs defaultValue={initialTab}>
-        <TabsList>
-          <TabsTrigger value="mastery">
-            <ClipboardCheck className="mr-1.5 h-4 w-4" />
-            定着度入力
-          </TabsTrigger>
-          <TabsTrigger value="materials">
-            <BookOpen className="mr-1.5 h-4 w-4" />
-            割り当て管理
-          </TabsTrigger>
-          <TabsTrigger value="analytics">
-            <BarChart3 className="mr-1.5 h-4 w-4" />
+        <div className="flex items-center gap-3 flex-wrap">
+          <TabsList className="shrink-0">
+            <TabsTrigger value="mastery">
+              <ClipboardCheck className="mr-1.5 h-4 w-4" />
+              定着度入力
+            </TabsTrigger>
+            <TabsTrigger value="materials">
+              <BookOpen className="mr-1.5 h-4 w-4" />
+              割り当て管理
+            </TabsTrigger>
+            <TabsTrigger value="analytics">
+              <BarChart3 className="mr-1.5 h-4 w-4" />
             分析
-          </TabsTrigger>
-        </TabsList>
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Reminder banners inline with tabs */}
+          {nearlyComplete.length > 0 && (
+            <div className="flex items-center gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 px-3 py-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+              <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                完了間近 {nearlyComplete.length}件
+              </span>
+              <div className="flex items-center gap-1">
+                {nearlyComplete.slice(0, 3).map((item) => (
+                  <Badge key={item.material_key} variant="outline" className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-600 dark:text-amber-400">
+                    {item.material_name} 残{item.remaining}
+                  </Badge>
+                ))}
+                {nearlyComplete.length > 3 && (
+                  <span className="text-[10px] text-amber-500">+{nearlyComplete.length - 3}</span>
+                )}
+              </div>
+            </div>
+          )}
+          {lowAccuracy.length > 0 && (
+            <div className="flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200/60 dark:border-red-800/40 px-3 py-1.5">
+              <TrendingDown className="h-3.5 w-3.5 text-red-600 shrink-0" />
+              <span className="text-xs font-medium text-red-700 dark:text-red-300">
+                定着度不足 {lowAccuracy.length}件
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* Tab 1: Mastery Spreadsheet */}
         <TabsContent value="mastery">

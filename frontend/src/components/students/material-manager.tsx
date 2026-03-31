@@ -9,13 +9,7 @@ import {
   useStudentMaterialNodes,
   studentPdfPreviewUrl,
 } from "@/lib/queries/students";
-import {
-  useAcknowledgeReminder,
-  useUnacknowledgeReminder,
-  useAcknowledgeLowAccuracy,
-  useUnacknowledgeLowAccuracy,
-  useDashboard,
-} from "@/lib/queries/progress";
+import { useDashboard } from "@/lib/queries/progress";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -35,10 +29,8 @@ import {
   Package,
   X,
   Layers,
-  AlertTriangle,
   CheckCircle2,
   Circle,
-  TrendingDown,
   FileText,
   Eye,
   ChevronDown,
@@ -179,10 +171,6 @@ export function MaterialManager({ studentId }: Props) {
   const toggleMutation = useToggleMaterial(studentId);
   const saveMutation = useSavePointers(studentId);
   const assignWordTest = useAssignWordTest(studentId);
-  const ackMutation = useAcknowledgeReminder();
-  const unackMutation = useUnacknowledgeReminder();
-  const ackLowMutation = useAcknowledgeLowAccuracy();
-  const unackLowMutation = useUnacknowledgeLowAccuracy();
 
   const [editedPointers, setEditedPointers] = useState<
     Record<string, number>
@@ -326,25 +314,21 @@ export function MaterialManager({ studentId }: Props) {
     (item) => item.student_id === studentId
   );
 
-  // Filter low accuracy items for this student
-  const lowAccuracy = (dashboard?.low_accuracy || []).filter(
-    (item) => item.student_id === studentId
-  );
 
   return (
     <div className="space-y-8">
       {/* ── Assigned Materials (Grid Cards) ── */}
-      <div>
+      <div className="rounded-2xl border-2 border-blue-200/60 dark:border-blue-800/40 bg-blue-50/20 dark:bg-blue-950/10 p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-blue-500/10">
+            <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-blue-500/15">
               <BookOpen className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h3 className="text-base font-bold">教材一覧</h3>
+              <h3 className="text-base font-bold text-blue-800 dark:text-blue-300">割り当て中</h3>
               <p className="text-[11px] text-muted-foreground">
-                {assigned.length}教材 割り当て中
-                {assignedExam.length > 0 && ` / ${assignedExam.length}試験 実施中`}
+                {assigned.length}教材
+                {assignedExam.length > 0 && ` / ${assignedExam.length}試験`}
               </p>
             </div>
           </div>
@@ -591,149 +575,6 @@ export function MaterialManager({ studentId }: Props) {
           </div>
         )}
       </div>
-
-      {/* ── Reminders Section ── */}
-      {(nearlyComplete.length > 0 || lowAccuracy.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Nearly Complete Reminder */}
-          {nearlyComplete.length > 0 && (
-            <div className="rounded-2xl border border-amber-200/60 dark:border-amber-800/40 bg-gradient-to-br from-amber-50/60 to-amber-100/20 dark:from-amber-950/30 dark:to-amber-900/10 overflow-hidden">
-              <div className="flex items-center gap-2.5 px-4 py-3 border-b border-amber-200/40 dark:border-amber-800/30">
-                <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-amber-100 dark:bg-amber-900/50">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                </div>
-                <div className="flex-1">
-                  <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
-                    完了間近リマインド
-                  </span>
-                </div>
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
-                  {nearlyComplete.length} 件
-                </Badge>
-              </div>
-              <div className="p-3 space-y-2">
-                {nearlyComplete.map((item) => (
-                  <div
-                    key={`${item.student_id}-${item.material_key}`}
-                    className={cn(
-                      "flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all",
-                      item.acknowledged
-                        ? "bg-amber-100/30 dark:bg-amber-900/10 opacity-50"
-                        : "bg-white/60 dark:bg-white/5 border border-amber-200/40 dark:border-amber-800/30"
-                    )}
-                  >
-                    <button
-                      type="button"
-                      className="shrink-0 transition-colors"
-                      onClick={() => {
-                        if (item.acknowledged) {
-                          unackMutation.mutate({ student_id: item.student_id, material_key: item.material_key });
-                        } else {
-                          ackMutation.mutate({ student_id: item.student_id, material_key: item.material_key });
-                        }
-                      }}
-                      title={item.acknowledged ? "対処済みを取消" : "対処済みにする"}
-                    >
-                      {item.acknowledged ? (
-                        <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
-                      ) : (
-                        <Circle className="h-4.5 w-4.5 text-muted-foreground/40 hover:text-amber-500" />
-                      )}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <span className={cn("text-sm font-medium", item.acknowledged && "line-through")}>{item.material_name}</span>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="rounded-full bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
-                          残り {item.remaining}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground tabular-nums">
-                          {item.pointer} / {item.total_nodes}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Low Accuracy Reminder */}
-          {lowAccuracy.length > 0 && (
-            <div className="rounded-2xl border border-red-200/60 dark:border-red-800/40 bg-gradient-to-br from-red-50/60 to-red-100/20 dark:from-red-950/30 dark:to-red-900/10 overflow-hidden">
-              <div className="flex items-center gap-2.5 px-4 py-3 border-b border-red-200/40 dark:border-red-800/30">
-                <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-red-100 dark:bg-red-900/50">
-                  <TrendingDown className="h-4 w-4 text-red-600" />
-                </div>
-                <div className="flex-1">
-                  <span className="text-xs font-bold text-red-700 dark:text-red-300">
-                    定着度不足リマインド
-                  </span>
-                  <span className="text-[10px] text-red-500/70 dark:text-red-400/70 ml-1.5">
-                    2回連続6割未満
-                  </span>
-                </div>
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">
-                  {lowAccuracy.length} 件
-                </Badge>
-              </div>
-              <div className="p-3 space-y-2">
-                {lowAccuracy.map((item) => (
-                  <div
-                    key={`${item.student_id}-${item.material_key}-${item.node_key}`}
-                    className={cn(
-                      "flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all",
-                      item.acknowledged
-                        ? "bg-red-100/30 dark:bg-red-900/10 opacity-50"
-                        : "bg-white/60 dark:bg-white/5 border border-red-200/40 dark:border-red-800/30"
-                    )}
-                  >
-                    <button
-                      type="button"
-                      className="shrink-0 transition-colors"
-                      onClick={() => {
-                        if (item.acknowledged) {
-                          unackLowMutation.mutate({
-                            student_id: item.student_id,
-                            material_key: item.material_key,
-                            node_key: item.node_key,
-                          });
-                        } else {
-                          ackLowMutation.mutate({
-                            student_id: item.student_id,
-                            material_key: item.material_key,
-                            node_key: item.node_key,
-                          });
-                        }
-                      }}
-                      title={item.acknowledged ? "対処済みを取消" : "対処済みにする"}
-                    >
-                      {item.acknowledged ? (
-                        <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500" />
-                      ) : (
-                        <Circle className="h-4.5 w-4.5 text-muted-foreground/40 hover:text-red-500" />
-                      )}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <span className={cn("text-sm font-medium", item.acknowledged && "line-through")}>
-                        {item.material_name}
-                      </span>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="rounded-full bg-red-100 dark:bg-red-900/50 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:text-red-300">
-                          {item.node_title || item.node_key}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground tabular-nums">
-                          {item.streak}回連続6割未満
-                          {item.latest_rates.length > 0 && ` (直近: ${Math.round(item.latest_rates[0] * 100)}%)`}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* ── Available Regular Materials (Grid) ── */}
       {source.length > 0 && (
