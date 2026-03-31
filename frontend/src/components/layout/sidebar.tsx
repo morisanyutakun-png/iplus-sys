@@ -94,6 +94,7 @@ export function Sidebar() {
                     return saved ? `/students?${saved}` : "/students";
                   })()
                 : item.href}
+              onClick={isActive && item.href === "/students" ? (e) => e.preventDefault() : undefined}
               title={collapsed ? item.label : undefined}
               className={cn(
                 "group flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200",

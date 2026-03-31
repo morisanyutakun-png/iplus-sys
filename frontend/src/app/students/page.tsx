@@ -4,27 +4,8 @@ import { Suspense, useState, useCallback, useMemo, useRef, useEffect } from "rea
 import { useSearchParams, useRouter } from "next/navigation";
 import { useStudents } from "@/lib/queries/students";
 import { StudentDetailPanel } from "@/components/students/student-detail-panel";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { Users, Search } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Users } from "lucide-react";
 import { StudentCreateDialog } from "@/components/students/student-create-dialog";
-
-const AVATAR_COLORS = [
-  "from-rose-500 to-red-600",
-  "from-blue-500 to-indigo-600",
-  "from-emerald-500 to-green-600",
-  "from-amber-500 to-orange-600",
-  "from-violet-500 to-purple-600",
-  "from-cyan-500 to-teal-600",
-];
-
-function nameToColor(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
 
 function StudentsContent() {
   const searchParams = useSearchParams();
@@ -105,147 +86,45 @@ function StudentsContent() {
     setFocusZone("list");
   }, []);
 
-  // When a student is selected, show detail panel with student switcher
-  if (selectedStudentId && selectedStudent) {
-    return (
-      <div className="space-y-4">
-        <StudentDetailPanel
-          studentId={selectedStudentId}
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          instructorId={instructorId ? Number(instructorId) : null}
-          onInstructorChange={handleInstructorChange}
-          students={students || []}
-          onSelectStudent={handleSelectStudent}
-          spreadsheetActive={focusZone === "spreadsheet"}
-          onEnterSpreadsheet={handleEnterSpreadsheet}
-          onEscapeSpreadsheet={handleEscapeSpreadsheet}
-          onPendingChange={handlePendingChange}
-        />
-      </div>
-    );
-  }
+  // Auto-select first student if none selected
+  useEffect(() => {
+    if (!selectedStudentId && students && students.length > 0) {
+      updateParams({ student: students[0].id, tab: "mastery" });
+    }
+  }, [selectedStudentId, students, updateParams]);
 
-  // Student selection view (no student selected yet)
-  return <StudentListView
-    students={students || []}
-    isLoading={isLoading}
-    onSelectStudent={handleSelectStudent}
-  />;
-}
-
-function StudentListView({
-  students,
-  isLoading,
-  onSelectStudent,
-}: {
-  students: { id: string; name: string; grade?: string | null; materials: { percent: number }[] }[];
-  isLoading: boolean;
-  onSelectStudent: (id: string) => void;
-}) {
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const filteredStudents = useMemo(() => {
-    if (!searchQuery.trim()) return students;
-    const q = searchQuery.toLowerCase();
-    return students.filter(
-      (s) => s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)
-    );
-  }, [students, searchQuery]);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight">生徒</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {students.length}名の生徒
-          </p>
-        </div>
-        <div className="shrink-0">
-          <StudentCreateDialog />
-        </div>
-      </div>
-
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="名前またはIDで検索..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
-      </div>
-
-      {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="h-24 rounded-2xl skeleton-pulse" />
-          ))}
-        </div>
-      ) : filteredStudents.length === 0 ? (
+  // Show loading or empty state while students load / auto-select
+  if (!selectedStudent) {
+    if (isLoading) {
+      return <div className="flex h-64 items-center justify-center text-muted-foreground">読み込み中...</div>;
+    }
+    if (!students || students.length === 0) {
+      return (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
           <Users className="h-10 w-10 opacity-20 mb-3" />
-          <p className="text-sm">
-            {searchQuery ? "該当する生徒が見つかりません" : "生徒が登録されていません"}
-          </p>
+          <p className="text-sm mb-4">生徒が登録されていません</p>
+          <StudentCreateDialog />
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredStudents.map((student) => {
-            const avgPercent =
-              student.materials.length > 0
-                ? Math.round(
-                    student.materials.reduce((a, m) => a + m.percent, 0) /
-                      student.materials.length
-                  )
-                : 0;
-            return (
-              <Card
-                key={student.id}
-                className="border-0 shadow-premium overflow-hidden cursor-pointer transition-all hover:shadow-lg hover:-translate-y-0.5"
-                onClick={() => onSelectStudent(student.id)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={cn(
-                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white text-base font-bold shadow-sm",
-                        nameToColor(student.name)
-                      )}
-                    >
-                      {student.name.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold truncate">{student.name}</span>
-                        {student.grade && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
-                            {student.grade}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 mt-1">
-                        <span className="text-xs text-muted-foreground">
-                          {student.materials.length}教材
-                        </span>
-                        {student.materials.length > 0 && (
-                          <Badge
-                            variant={avgPercent >= 75 ? "default" : avgPercent >= 40 ? "secondary" : "outline"}
-                            className="text-[10px] px-1.5 py-0"
-                          >
-                            進捗 {avgPercent}%
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+      );
+    }
+    return null; // auto-select will fire
+  }
+
+  return (
+    <div className="space-y-4">
+      <StudentDetailPanel
+        studentId={selectedStudent.id}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        instructorId={instructorId ? Number(instructorId) : null}
+        onInstructorChange={handleInstructorChange}
+        students={students || []}
+        onSelectStudent={handleSelectStudent}
+        spreadsheetActive={focusZone === "spreadsheet"}
+        onEnterSpreadsheet={handleEnterSpreadsheet}
+        onEscapeSpreadsheet={handleEscapeSpreadsheet}
+        onPendingChange={handlePendingChange}
+      />
     </div>
   );
 }
