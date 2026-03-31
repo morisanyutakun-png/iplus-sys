@@ -63,7 +63,10 @@ function StudentsContent() {
         if (value === null) params.delete(key);
         else params.set(key, value);
       }
-      router.replace(`/students?${params.toString()}`);
+      const paramStr = params.toString();
+      // Immediately persist to sessionStorage so sidebar picks it up
+      if (paramStr) sessionStorage.setItem("students_params", paramStr);
+      router.replace(`/students?${paramStr}`);
     },
     [searchParams, router]
   );

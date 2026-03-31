@@ -374,18 +374,6 @@ export function MasterySpreadsheet({ student, active, onActivate, onEscape, onPe
       {/* Toolbar */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          {/* Student switcher */}
-          {students && students.length > 0 && onSelectStudent && (
-            <select
-              className="text-xs font-semibold rounded-md border px-2 py-1 bg-background max-w-[140px]"
-              value={student.id}
-              onChange={(e) => onSelectStudent(e.target.value)}
-            >
-              {students.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}{s.grade ? ` (${s.grade})` : ""}</option>
-              ))}
-            </select>
-          )}
           <Badge variant="outline" className="text-xs">
             {todayStr}
           </Badge>

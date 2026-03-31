@@ -13,18 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { MasterySpreadsheet } from "./mastery-spreadsheet";
 import { MaterialManager } from "./material-manager";
 import {
@@ -37,7 +27,9 @@ import {
   X,
   AlertTriangle,
   TrendingDown,
+  Users,
 } from "lucide-react";
+import { StudentCreateDialog } from "./student-create-dialog";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "@/lib/recharts-imports";
 import { TOOLTIP_STYLE, AXIS_TICK_STYLE, GRID_PROPS } from "@/lib/chart-config";
 
@@ -88,7 +80,6 @@ export function StudentDetailPanel({
   );
   const router = useRouter();
   const updateMutation = useUpdateStudent();
-  const deleteMutation = useDeleteStudent();
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState("");
   const [editGrade, setEditGrade] = useState("");
@@ -155,112 +146,63 @@ export function StudentDetailPanel({
     );
   };
 
-  const handleDelete = () => {
-    deleteMutation.mutate(student.id, {
-      onSuccess: () => {
-        toast.success(`${student.name} を削除しました`);
-        router.replace("/students");
-      },
-      onError: () => toast.error("削除に失敗しました"),
-    });
-  };
 
   return (
     <div className="space-y-4">
-      {/* Student header */}
-      <div className="flex items-center justify-between">
-        <div className="min-w-0 flex-1">
-          {isEditingName ? (
-            <div className="flex items-center gap-2">
-              <Input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveName();
-                  if (e.key === "Escape") setIsEditingName(false);
-                }}
-                className="h-8 w-48 text-lg font-bold"
-                placeholder="生徒名"
-                autoFocus
-              />
-              <Input
-                value={editGrade}
-                onChange={(e) => setEditGrade(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveName();
-                  if (e.key === "Escape") setIsEditingName(false);
-                }}
-                className="h-8 w-24 text-sm"
-                placeholder="学年"
-              />
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 text-green-600 hover:text-green-700"
-                onClick={handleSaveName}
-                disabled={updateMutation.isPending}
-              >
-                <Check className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7"
-                onClick={() => setIsEditingName(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold">{student.name}</h2>
-              {student.grade && (
-                <Badge variant="outline" className="text-xs">{student.grade}</Badge>
-              )}
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                onClick={handleStartEdit}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground">
-            ID: {student.id} · {student.materials.length}教材 · 平均進捗{" "}
-            {avgPercent}%
-          </p>
-        </div>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-muted-foreground hover:text-destructive shrink-0"
-            >
-              <Trash2 className="mr-1.5 h-4 w-4" />
-              削除
+      {/* Student switcher header */}
+      <div className="flex items-center gap-3 min-w-0">
+        {students && students.length > 0 && onSelectStudent && (
+          <select
+            className="text-sm font-bold rounded-lg border px-3 py-1.5 bg-background max-w-[180px] truncate"
+            value={student.id}
+            onChange={(e) => onSelectStudent(e.target.value)}
+          >
+            {students.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}{s.grade ? ` (${s.grade})` : ""}</option>
+            ))}
+          </select>
+        )}
+        {!students && (
+          <h2 className="text-xl font-bold">{student.name}</h2>
+        )}
+        {isEditingName ? (
+          <div className="flex items-center gap-2">
+            <Input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveName();
+                if (e.key === "Escape") setIsEditingName(false);
+              }}
+              className="h-8 w-36 text-sm"
+              placeholder="生徒名"
+              autoFocus
+            />
+            <Input
+              value={editGrade}
+              onChange={(e) => setEditGrade(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveName();
+                if (e.key === "Escape") setIsEditingName(false);
+              }}
+              className="h-8 w-20 text-sm"
+              placeholder="学年"
+            />
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600" onClick={handleSaveName} disabled={updateMutation.isPending}>
+              <Check className="h-4 w-4" />
             </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>生徒を削除しますか？</AlertDialogTitle>
-              <AlertDialogDescription>
-                「{student.name}」を完全に削除します。割り当て中の教材データ・進捗履歴もすべて削除されます。この操作は元に戻せません。
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>キャンセル</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDelete}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                削除する
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setIsEditingName(false)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0" onClick={handleStartEdit} title="名前・学年を編集">
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        )}
+        <span className="text-xs text-muted-foreground shrink-0">
+          {student.materials.length}教材 · 進捗{avgPercent}%
+        </span>
       </div>
 
       {/* Tabs + Reminder banners */}
@@ -277,7 +219,11 @@ export function StudentDetailPanel({
             </TabsTrigger>
             <TabsTrigger value="analytics">
               <BarChart3 className="mr-1.5 h-4 w-4" />
-            分析
+              分析
+            </TabsTrigger>
+            <TabsTrigger value="students">
+              <Users className="mr-1.5 h-4 w-4" />
+              生徒一覧
             </TabsTrigger>
           </TabsList>
 
@@ -451,7 +397,122 @@ export function StudentDetailPanel({
           )}
 
         </TabsContent>
+
+        {/* Tab 4: Student List */}
+        <TabsContent value="students" className="space-y-4">
+          <StudentListTab
+            students={students || []}
+            currentStudentId={studentId}
+            onSelectStudent={onSelectStudent}
+            onTabChange={onTabChange}
+          />
+        </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+/* ── Student List Tab ── */
+function StudentListTab({
+  students,
+  currentStudentId,
+  onSelectStudent,
+  onTabChange,
+}: {
+  students: StudentListItem[];
+  currentStudentId: string;
+  onSelectStudent?: (id: string) => void;
+  onTabChange?: (tab: string) => void;
+}) {
+  const router = useRouter();
+  const deleteMutation = useDeleteStudent();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filtered = students.filter((s) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q);
+  });
+
+  const handleDelete = (student: StudentListItem) => {
+    if (!window.confirm(`「${student.name}」を削除しますか？この操作は元に戻せません。`)) return;
+    deleteMutation.mutate(student.id, {
+      onSuccess: () => {
+        if (student.id === currentStudentId && students.length > 1) {
+          const next = students.find((s) => s.id !== student.id);
+          if (next && onSelectStudent) onSelectStudent(next.id);
+        }
+      },
+    });
+  };
+
+  const goTo = (studentId: string, tab: string) => {
+    onSelectStudent?.(studentId);
+    onTabChange?.(tab);
+  };
+
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            placeholder="名前またはIDで検索..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full text-sm rounded-lg border px-3 py-2 bg-background pl-9"
+          />
+          <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        </div>
+        <StudentCreateDialog />
+      </div>
+
+      <div className="space-y-2">
+        {filtered.map((s) => {
+          const avgPercent = s.materials.length > 0
+            ? Math.round(s.materials.reduce((a, m) => a + m.percent, 0) / s.materials.length)
+            : 0;
+          const isCurrent = s.id === currentStudentId;
+          return (
+            <div
+              key={s.id}
+              className={cn(
+                "flex items-center gap-3 rounded-xl border px-4 py-3 transition-all",
+                isCurrent ? "border-primary/40 bg-primary/5" : "border-border/60 hover:border-border hover:shadow-sm"
+              )}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold">{s.name}</span>
+                  {s.grade && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{s.grade}</Badge>}
+                  {isCurrent && <Badge className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-0">表示中</Badge>}
+                </div>
+                <span className="text-xs text-muted-foreground">{s.materials.length}教材 · 進捗{avgPercent}%</span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => goTo(s.id, "mastery")}>
+                  <ClipboardCheck className="mr-1 h-3 w-3" />入力
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => goTo(s.id, "materials")}>
+                  <BookOpen className="mr-1 h-3 w-3" />割当
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => goTo(s.id, "analytics")}>
+                  <BarChart3 className="mr-1 h-3 w-3" />分析
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  onClick={() => handleDelete(s)}
+                  disabled={deleteMutation.isPending}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
