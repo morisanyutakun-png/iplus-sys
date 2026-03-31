@@ -735,106 +735,24 @@ export function MaterialManager({ studentId }: Props) {
         </div>
       )}
 
-      {/* ── Completed Materials ── */}
-      {(completedRegular.length > 0 || completedExam.length > 0) && (
-        <div>
+      {/* ── Available Regular Materials (Grid) ── */}
+      {source.length > 0 && (
+        <div className="rounded-2xl border-2 border-emerald-200/60 dark:border-emerald-800/40 bg-emerald-50/20 dark:bg-emerald-950/10 p-5">
           <div className="flex items-center gap-2.5 mb-4">
-            <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-slate-500/10">
-              <Archive className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+            <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-emerald-500/15">
+              <Package className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <h3 className="text-base font-bold">実施済み教材</h3>
+              <h3 className="text-base font-bold text-emerald-800 dark:text-emerald-300">追加可能な教材</h3>
               <p className="text-[11px] text-muted-foreground">
-                {completedRegular.length + completedExam.length}教材 完了
+                クリックで割り当て
               </p>
             </div>
+            <Badge className="text-[10px] px-2 py-0.5 rounded-full ml-auto bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 border-0">
+              {source.length}件
+            </Badge>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {completedExam.map((mat) => (
-              <div
-                key={mat.key}
-                className="group flex items-center gap-3 rounded-xl border border-slate-200/60 dark:border-slate-700/40 bg-slate-50/30 dark:bg-slate-900/20 px-3 py-3 transition-all hover:shadow-sm hover:border-slate-300"
-              >
-                <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-800/50 shrink-0">
-                  {mat.exam_type === "university_past" ? (
-                    <School className="h-5 w-5 text-slate-500 dark:text-slate-400" />
-                  ) : (
-                    <GraduationCap className="h-5 w-5 text-slate-500 dark:text-slate-400" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium truncate block text-muted-foreground">{mat.name}</span>
-                  <span className="text-[10px] text-muted-foreground/70">
-                    {mat.exam_type === "common_test" ? "共通テスト" : "大学過去問"}
-                    {mat.exam_year ? ` ${mat.exam_year}年` : ""}
-                  </span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary shrink-0"
-                  onClick={() => handleToggle(mat.key, "assign")}
-                  title="再割り当て"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
-            {completedRegular.map((mat) => (
-              <div
-                key={mat.key}
-                className="group flex items-center gap-3 rounded-xl border border-slate-200/60 dark:border-slate-700/40 bg-slate-50/30 dark:bg-slate-900/20 px-3 py-3 transition-all hover:shadow-sm hover:border-slate-300"
-              >
-                <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-800/50 shrink-0">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-500/70" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium truncate block text-muted-foreground">{mat.name}</span>
-                  <span className="text-[10px] text-muted-foreground/70">
-                    <Layers className="h-2.5 w-2.5 inline mr-0.5" />
-                    {mat.archived_pointer || mat.total_nodes} / {mat.total_nodes} 完了
-                    {mat.archived_at && ` · ${new Date(mat.archived_at).toLocaleDateString("ja-JP")}`}
-                  </span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary shrink-0"
-                  onClick={() => handleSourceClick(mat)}
-                  title="再割り当て"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Available Regular Materials (Grid) ── */}
-      <div>
-        <div className="flex items-center gap-2.5 mb-4">
-          <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-emerald-500/10">
-            <Package className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-          </div>
-          <div>
-            <h3 className="text-base font-bold">追加可能な教材</h3>
-            <p className="text-[11px] text-muted-foreground">
-              クリックで割り当て
-            </p>
-          </div>
-          <Badge variant="secondary" className="text-[10px] px-2 py-0.5 rounded-full ml-auto">
-            {source.length}
-          </Badge>
-        </div>
-
-        {source.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center rounded-2xl border-2 border-dashed border-border/50 bg-muted/10">
-            <Package className="h-7 w-7 text-muted-foreground/30 mb-2" />
-            <p className="text-xs text-muted-foreground">追加可能な教材はありません</p>
-          </div>
-        ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {source.map((mat) => (
               <button
@@ -843,17 +761,17 @@ export function MaterialManager({ studentId }: Props) {
                 onClick={() => handleSourceClick(mat)}
                 disabled={toggleMutation.isPending || assignWordTest.isPending}
                 className={cn(
-                  "group/add relative flex flex-col items-center gap-2 rounded-xl border-2 border-dashed px-3 py-4",
-                  "border-emerald-200/60 dark:border-emerald-800/40",
-                  "hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20",
-                  "hover:shadow-md hover:-translate-y-0.5",
+                  "group/add relative flex flex-col items-center gap-2 rounded-xl border-2 px-3 py-4",
+                  "border-emerald-300/70 dark:border-emerald-700/50 bg-white dark:bg-card",
+                  "hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/30",
+                  "hover:shadow-lg hover:-translate-y-0.5",
                   "transition-all duration-200 text-center cursor-pointer",
                   "disabled:opacity-50 disabled:cursor-not-allowed"
                 )}
               >
                 <div className={cn(
                   "flex items-center justify-center h-10 w-10 rounded-xl shrink-0",
-                  "bg-emerald-100/80 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400",
+                  "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400",
                   "group-hover/add:bg-emerald-500 group-hover/add:text-white group-hover/add:scale-110",
                   "transition-all duration-200"
                 )}>
@@ -878,8 +796,8 @@ export function MaterialManager({ studentId }: Props) {
               </button>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── Available Exam Materials (grouped by exam) ── */}
       {sourceExamGroups.length > 0 && (
@@ -982,6 +900,83 @@ export function MaterialManager({ studentId }: Props) {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Completed Materials ── */}
+      {(completedRegular.length > 0 || completedExam.length > 0) && (
+        <div>
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-slate-500/10">
+              <Archive className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold">実施済み教材</h3>
+              <p className="text-[11px] text-muted-foreground">
+                {completedRegular.length + completedExam.length}教材 完了
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {completedExam.map((mat) => (
+              <div
+                key={mat.key}
+                className="group flex items-center gap-3 rounded-xl border border-slate-200/60 dark:border-slate-700/40 bg-slate-50/30 dark:bg-slate-900/20 px-3 py-3 transition-all hover:shadow-sm hover:border-slate-300"
+              >
+                <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-800/50 shrink-0">
+                  {mat.exam_type === "university_past" ? (
+                    <School className="h-5 w-5 text-slate-500 dark:text-slate-400" />
+                  ) : (
+                    <GraduationCap className="h-5 w-5 text-slate-500 dark:text-slate-400" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium truncate block text-muted-foreground">{mat.name}</span>
+                  <span className="text-[10px] text-muted-foreground/70">
+                    {mat.exam_type === "common_test" ? "共通テスト" : "大学過去問"}
+                    {mat.exam_year ? ` ${mat.exam_year}年` : ""}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary shrink-0"
+                  onClick={() => handleToggle(mat.key, "assign")}
+                  title="再割り当て"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+            {completedRegular.map((mat) => (
+              <div
+                key={mat.key}
+                className="group flex items-center gap-3 rounded-xl border border-slate-200/60 dark:border-slate-700/40 bg-slate-50/30 dark:bg-slate-900/20 px-3 py-3 transition-all hover:shadow-sm hover:border-slate-300"
+              >
+                <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-800/50 shrink-0">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-500/70" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium truncate block text-muted-foreground">{mat.name}</span>
+                  <span className="text-[10px] text-muted-foreground/70">
+                    <Layers className="h-2.5 w-2.5 inline mr-0.5" />
+                    {mat.archived_pointer || mat.total_nodes} / {mat.total_nodes} 完了
+                    {mat.archived_at && ` · ${new Date(mat.archived_at).toLocaleDateString("ja-JP")}`}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary shrink-0"
+                  onClick={() => handleSourceClick(mat)}
+                  title="再割り当て"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine } from "@/lib/recharts-imports";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ReferenceArea } from "@/lib/recharts-imports";
 import { TOOLTIP_STYLE, AXIS_TICK_STYLE, GRID_PROPS, CHART_COLORS, SEMANTIC_COLORS } from "@/lib/chart-config";
 
 type AccuracyEntry = {
@@ -48,6 +48,13 @@ export function AccuracyTrendChart({ data }: Props) {
           contentStyle={TOOLTIP_STYLE}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           formatter={(value: any, name: any) => [`${value}%`, name]}
+        />
+        <ReferenceArea
+          y1={70}
+          y2={80}
+          fill={SEMANTIC_COLORS.success}
+          fillOpacity={0.1}
+          label={{ value: "適正帯", position: "insideTopRight", fontSize: 10, fill: SEMANTIC_COLORS.success }}
         />
         <ReferenceLine
           y={60}

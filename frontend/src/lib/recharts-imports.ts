@@ -101,3 +101,7 @@ export const ReferenceLine = dynamic(
   () => import("recharts").then((m) => m.ReferenceLine),
   { ssr: false }
 );
+export const ReferenceArea = dynamic(
+  () => import("recharts").then((m) => m.ReferenceArea),
+  { ssr: false }
+);

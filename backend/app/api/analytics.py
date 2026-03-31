@@ -125,6 +125,8 @@ async def get_student_accuracy(student_id: str, db: AsyncSession = Depends(get_d
     mat_map = {m.key: m.name for m in mat_result.scalars().all()}
 
     entries = []
+    total_count = 0
+    fit_count = 0
     for r in records:
         if r.material_key.startswith("試験:"):
             continue
@@ -134,5 +136,10 @@ async def get_student_accuracy(student_id: str, db: AsyncSession = Depends(get_d
             "material_name": mat_map.get(r.material_key, r.material_key),
             "accuracy_rate": r.accuracy_rate,
         })
+        total_count += 1
+        if 0.8 <= r.accuracy_rate < 1.0:
+            fit_count += 1
 
-    return StudentAccuracyResponse(entries=entries)
+    fitness_rate = round(fit_count / total_count * 100, 1) if total_count > 0 else None
+
+    return StudentAccuracyResponse(entries=entries, fitness_rate=fitness_rate)

@@ -22,7 +22,7 @@ export function useStudentAccuracy(studentId: string) {
   return useQuery({
     queryKey: ["student-accuracy", studentId],
     queryFn: () =>
-      apiFetch<{ entries: AccuracyEntry[] }>(`/api/analytics/students/${studentId}/accuracy`),
+      apiFetch<{ entries: AccuracyEntry[]; fitness_rate: number | null }>(`/api/analytics/students/${studentId}/accuracy`),
     enabled: !!studentId,
   });
 }

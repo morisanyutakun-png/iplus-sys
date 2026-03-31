@@ -30,9 +30,6 @@ import {
   ClipboardCheck,
   BookOpen,
   BarChart3,
-  TrendingUp,
-  TrendingDown,
-  Minus as MinusIcon,
   Pencil,
   Trash2,
   Check,
@@ -275,108 +272,84 @@ export function StudentDetailPanel({
         <TabsContent value="analytics" className="space-y-4">
           {analytics ? (
             <>
-              {/* Pace summary cards */}
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <Card className="border-0 shadow-premium">
-                  <CardContent className="pt-5">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold">
-                        {analytics.pace.nodes_per_week}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        範囲/週
-                      </p>
+              {/* Fitness Rate Card */}
+              <Card className="border-0 shadow-premium">
+                <CardContent className="py-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">教材適合度</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">正答率80%〜100%未満の割合（満点・未実施除外）</p>
                     </div>
-                  </CardContent>
-                </Card>
-                <Card className="border-0 shadow-premium">
-                  <CardContent className="pt-5">
-                    <div className="flex items-center justify-center gap-2">
-                      {analytics.pace.trend === "improving" ? (
-                        <TrendingUp className="h-5 w-5 text-emerald-500" />
-                      ) : analytics.pace.trend === "declining" ? (
-                        <TrendingDown className="h-5 w-5 text-destructive" />
+                    <div className="text-right">
+                      {accuracyData?.fitness_rate != null ? (
+                        <div className="text-3xl font-bold tabular-nums">
+                          {accuracyData.fitness_rate}
+                          <span className="text-lg text-muted-foreground font-normal">%</span>
+                        </div>
                       ) : (
-                        <MinusIcon className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">データなし</span>
                       )}
-                      <span className="text-sm font-medium">
-                        {analytics.pace.trend === "improving"
-                          ? "上昇中"
-                          : analytics.pace.trend === "declining"
-                          ? "低下中"
-                          : "安定"}
-                      </span>
                     </div>
-                    <p className="text-center text-xs text-muted-foreground mt-1">
-                      学習ペース
-                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Completion Rates - Horizontal Bar, full width */}
+              {analytics.completion_rates.length > 0 && (
+                <Card className="border-0 shadow-premium overflow-hidden">
+                  <CardHeader>
+                    <CardTitle className="text-sm">教材別完了率</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={Math.max(200, analytics.completion_rates.length * 40)}>
+                      <BarChart data={analytics.completion_rates} layout="vertical" margin={{ left: 10 }}>
+                        <CartesianGrid {...GRID_PROPS} />
+                        <XAxis
+                          type="number"
+                          domain={[0, 100]}
+                          tick={AXIS_TICK_STYLE}
+                          tickFormatter={(v) => `${v}%`}
+                        />
+                        <YAxis
+                          dataKey="material_name"
+                          type="category"
+                          tick={{ fontSize: 11, fill: "hsl(0 0% 35%)" }}
+                          width={120}
+                        />
+                        <Tooltip
+                          formatter={(value) => [`${value}%`, "完了率"]}
+                          contentStyle={TOOLTIP_STYLE}
+                        />
+                        <Bar
+                          dataKey="percent"
+                          fill="url(#completion-gradient)"
+                          radius={[0, 6, 6, 0]}
+                          barSize={20}
+                        />
+                        <defs>
+                          <linearGradient id="completion-gradient" x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0%" stopColor="#dc2626" />
+                            <stop offset="100%" stopColor="#f87171" />
+                          </linearGradient>
+                        </defs>
+                      </BarChart>
+                    </ResponsiveContainer>
                   </CardContent>
                 </Card>
-                <Card className="border-0 shadow-premium">
-                  <CardContent className="pt-5">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold">{avgPercent}%</div>
-                      <p className="text-xs text-muted-foreground">
-                        平均進捗率
-                      </p>
-                    </div>
+              )}
+
+              {/* Learning Pace - full width */}
+              {Object.keys(analytics.pace.weekly_detail).length > 0 && (
+                <Card className="border-0 shadow-premium overflow-hidden">
+                  <CardHeader>
+                    <CardTitle className="text-sm">学習ペース推移</CardTitle>
+                    <p className="text-xs text-muted-foreground">週ごとのアクション数</p>
+                  </CardHeader>
+                  <CardContent>
+                    <LearningPaceChart weeklyDetail={analytics.pace.weekly_detail} />
                   </CardContent>
                 </Card>
-              </div>
-
-              {/* Learning Pace + Completion Rates side by side */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {Object.keys(analytics.pace.weekly_detail).length > 0 && (
-                  <Card className="border-0 shadow-premium overflow-hidden">
-                    <CardHeader>
-                      <CardTitle className="text-sm">学習ペース推移</CardTitle>
-                      <p className="text-xs text-muted-foreground">週ごとのアクション数</p>
-                    </CardHeader>
-                    <CardContent>
-                      <LearningPaceChart weeklyDetail={analytics.pace.weekly_detail} />
-                    </CardContent>
-                  </Card>
-                )}
-
-                {analytics.completion_rates.length > 0 && (
-                  <Card className="border-0 shadow-premium overflow-hidden">
-                    <CardHeader>
-                      <CardTitle className="text-sm">教材別完了率</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={220}>
-                        <BarChart data={analytics.completion_rates}>
-                          <CartesianGrid {...GRID_PROPS} />
-                          <XAxis
-                            dataKey="material_name"
-                            tick={AXIS_TICK_STYLE}
-                            interval={0}
-                            angle={-20}
-                            textAnchor="end"
-                            height={50}
-                          />
-                          <YAxis domain={[0, 100]} tick={AXIS_TICK_STYLE} />
-                          <Tooltip
-                            formatter={(value) => [`${value}%`, "完了率"]}
-                            contentStyle={TOOLTIP_STYLE}
-                          />
-                          <Bar
-                            dataKey="percent"
-                            fill="url(#completion-gradient)"
-                            radius={[6, 6, 0, 0]}
-                          />
-                          <defs>
-                            <linearGradient id="completion-gradient" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#dc2626" />
-                              <stop offset="100%" stopColor="#f87171" />
-                            </linearGradient>
-                          </defs>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
+              )}
 
               {/* Progress Timeline (full width) */}
               {analytics.progress_timeline.length > 0 && analytics.completion_rates.length > 0 && (

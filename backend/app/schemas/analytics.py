@@ -44,3 +44,4 @@ class AccuracyEntry(BaseModel):
 
 class StudentAccuracyResponse(BaseModel):
     entries: list[AccuracyEntry]
+    fitness_rate: float | None = None
