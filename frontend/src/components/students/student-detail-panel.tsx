@@ -477,9 +477,10 @@ function StudentListTab({
             <div
               key={s.id}
               className={cn(
-                "flex items-center gap-3 rounded-xl border px-4 py-3 transition-all",
+                "flex items-center gap-3 rounded-xl border px-4 py-3 transition-all cursor-pointer",
                 isCurrent ? "border-primary/40 bg-primary/5" : "border-border/60 hover:border-border hover:shadow-sm"
               )}
+              onClick={() => onSelectStudent?.(s.id)}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -489,7 +490,7 @@ function StudentListTab({
                 </div>
                 <span className="text-xs text-muted-foreground">{s.materials.length}教材 · 進捗{avgPercent}%</span>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                 <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => goTo(s.id, "mastery")}>
                   <ClipboardCheck className="mr-1 h-3 w-3" />入力
                 </Button>
