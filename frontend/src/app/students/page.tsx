@@ -96,23 +96,23 @@ function StudentsContent() {
     return (
       <div className="space-y-4">
         {/* Header with back button */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <Button
             variant="ghost"
             size="sm"
             onClick={handleBack}
-            className="text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground shrink-0"
           >
             <ChevronLeft className="h-4 w-4 mr-1" />
             生徒一覧
           </Button>
           {selectedStudent && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{selectedStudent.name}</span>
-              <span>·</span>
-              <span>{selectedStudent.materials.length}教材</span>
-              <span>·</span>
-              <span>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0 flex-1">
+              <span className="font-medium text-foreground truncate">{selectedStudent.name}</span>
+              <span className="shrink-0">·</span>
+              <span className="shrink-0">{selectedStudent.materials.length}教材</span>
+              <span className="shrink-0">·</span>
+              <span className="shrink-0">
                 平均進捗{" "}
                 {selectedStudent.materials.length > 0
                   ? Math.round(
@@ -124,7 +124,7 @@ function StudentsContent() {
               </span>
             </div>
           )}
-          <div className="ml-auto">
+          <div className="ml-auto shrink-0">
             <StudentCreateDialog />
           </div>
         </div>
@@ -145,14 +145,16 @@ function StudentsContent() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">生徒</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {students ? `${students.length}名の生徒` : "読み込み中..."}
           </p>
         </div>
-        <StudentCreateDialog />
+        <div className="shrink-0">
+          <StudentCreateDialog />
+        </div>
       </div>
 
       {/* Search bar */}

@@ -54,7 +54,6 @@ export function AccuracyTrendChart({ data }: Props) {
           y2={80}
           fill={SEMANTIC_COLORS.success}
           fillOpacity={0.1}
-          label={{ value: "適正帯", position: "insideTopRight", fontSize: 10, fill: SEMANTIC_COLORS.success }}
         />
         <ReferenceLine
           y={60}

@@ -278,7 +278,7 @@ export function StudentDetailPanel({
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">教材適合度</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">正答率80%〜100%未満の割合（満点・未実施除外）</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">正答率80%〜100%未満の割合（未実施除外）</p>
                     </div>
                     <div className="text-right">
                       {accuracyData?.fitness_rate != null ? (
