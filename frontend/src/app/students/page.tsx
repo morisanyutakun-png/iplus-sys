@@ -1,14 +1,13 @@
 "use client";
 
-import { Suspense, useState, useCallback, useMemo, useRef } from "react";
+import { Suspense, useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useStudents } from "@/lib/queries/students";
 import { StudentDetailPanel } from "@/components/students/student-detail-panel";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Users, Search, UserPlus, ChevronLeft } from "lucide-react";
+import { Users, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StudentCreateDialog } from "@/components/students/student-create-dialog";
 
@@ -32,7 +31,6 @@ function StudentsContent() {
   const router = useRouter();
   const { data: students, isLoading } = useStudents();
 
-  const [searchQuery, setSearchQuery] = useState("");
   const [focusZone, setFocusZone] = useState<"list" | "spreadsheet">("list");
   const hasPendingRef = useRef(false);
 
@@ -41,21 +39,34 @@ function StudentsContent() {
   }, []);
 
   const selectedStudentId = searchParams.get("student");
-  const initialTab = searchParams.get("tab") || "mastery";
+  const activeTab = searchParams.get("tab") || "mastery";
+  const instructorId = searchParams.get("instructor");
 
   const selectedStudent = useMemo(
     () => students?.find((s) => s.id === selectedStudentId),
     [students, selectedStudentId]
   );
 
-  const filteredStudents = useMemo(() => {
-    if (!students) return [];
-    if (!searchQuery.trim()) return students;
-    const q = searchQuery.toLowerCase();
-    return students.filter(
-      (s) => s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)
-    );
-  }, [students, searchQuery]);
+  // Persist URL params to sessionStorage so sidebar can restore them
+  useEffect(() => {
+    const params = searchParams.toString();
+    if (params) {
+      sessionStorage.setItem("students_params", params);
+    }
+  }, [searchParams]);
+
+  // Helper to update URL params without losing others
+  const updateParams = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === null) params.delete(key);
+        else params.set(key, value);
+      }
+      router.replace(`/students?${params.toString()}`);
+    },
+    [searchParams, router]
+  );
 
   const handleSelectStudent = useCallback(
     (studentId: string) => {
@@ -64,24 +75,24 @@ function StudentsContent() {
           return;
         }
       }
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("student", studentId);
-      router.replace(`/students?${params.toString()}`);
+      updateParams({ student: studentId });
     },
-    [searchParams, router, selectedStudentId]
+    [updateParams, selectedStudentId]
   );
 
-  const handleBack = useCallback(() => {
-    if (hasPendingRef.current) {
-      if (!window.confirm("未反映の入力があります。破棄してよろしいですか？")) {
-        return;
-      }
-    }
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("student");
-    params.delete("tab");
-    router.replace(`/students?${params.toString()}`);
-  }, [searchParams, router]);
+  const handleTabChange = useCallback(
+    (tab: string) => {
+      updateParams({ tab });
+    },
+    [updateParams]
+  );
+
+  const handleInstructorChange = useCallback(
+    (id: number | null) => {
+      updateParams({ instructor: id !== null ? String(id) : null });
+    },
+    [updateParams]
+  );
 
   const handleEnterSpreadsheet = useCallback(() => {
     setFocusZone("spreadsheet");
@@ -91,47 +102,18 @@ function StudentsContent() {
     setFocusZone("list");
   }, []);
 
-  // When a student is selected, show detail panel
-  if (selectedStudentId) {
+  // When a student is selected, show detail panel with student switcher
+  if (selectedStudentId && selectedStudent) {
     return (
       <div className="space-y-4">
-        {/* Header with back button */}
-        <div className="flex items-center gap-3 min-w-0">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleBack}
-            className="text-muted-foreground hover:text-foreground shrink-0"
-          >
-            <ChevronLeft className="h-4 w-4 mr-1" />
-            生徒一覧
-          </Button>
-          {selectedStudent && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0 flex-1">
-              <span className="font-medium text-foreground truncate">{selectedStudent.name}</span>
-              <span className="shrink-0">·</span>
-              <span className="shrink-0">{selectedStudent.materials.length}教材</span>
-              <span className="shrink-0">·</span>
-              <span className="shrink-0">
-                平均進捗{" "}
-                {selectedStudent.materials.length > 0
-                  ? Math.round(
-                      selectedStudent.materials.reduce((a, m) => a + m.percent, 0) /
-                        selectedStudent.materials.length
-                    )
-                  : 0}
-                %
-              </span>
-            </div>
-          )}
-          <div className="ml-auto shrink-0">
-            <StudentCreateDialog />
-          </div>
-        </div>
-
         <StudentDetailPanel
           studentId={selectedStudentId}
-          initialTab={initialTab}
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          instructorId={instructorId ? Number(instructorId) : null}
+          onInstructorChange={handleInstructorChange}
+          students={students || []}
+          onSelectStudent={handleSelectStudent}
           spreadsheetActive={focusZone === "spreadsheet"}
           onEnterSpreadsheet={handleEnterSpreadsheet}
           onEscapeSpreadsheet={handleEscapeSpreadsheet}
@@ -141,15 +123,40 @@ function StudentsContent() {
     );
   }
 
-  // Student selection view
+  // Student selection view (no student selected yet)
+  return <StudentListView
+    students={students || []}
+    isLoading={isLoading}
+    onSelectStudent={handleSelectStudent}
+  />;
+}
+
+function StudentListView({
+  students,
+  isLoading,
+  onSelectStudent,
+}: {
+  students: { id: string; name: string; grade?: string | null; materials: { percent: number }[] }[];
+  isLoading: boolean;
+  onSelectStudent: (id: string) => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredStudents = useMemo(() => {
+    if (!searchQuery.trim()) return students;
+    const q = searchQuery.toLowerCase();
+    return students.filter(
+      (s) => s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)
+    );
+  }, [students, searchQuery]);
+
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">生徒</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {students ? `${students.length}名の生徒` : "読み込み中..."}
+            {students.length}名の生徒
           </p>
         </div>
         <div className="shrink-0">
@@ -157,7 +164,6 @@ function StudentsContent() {
         </div>
       </div>
 
-      {/* Search bar */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -168,7 +174,6 @@ function StudentsContent() {
         />
       </div>
 
-      {/* Student cards grid */}
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -196,7 +201,7 @@ function StudentsContent() {
               <Card
                 key={student.id}
                 className="border-0 shadow-premium overflow-hidden cursor-pointer transition-all hover:shadow-lg hover:-translate-y-0.5"
-                onClick={() => handleSelectStudent(student.id)}
+                onClick={() => onSelectStudent(student.id)}
               >
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">

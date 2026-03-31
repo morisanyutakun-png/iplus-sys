@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -46,6 +46,7 @@ function IPlusLogo() {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { collapsed, toggle } = useSidebar();
 
   return (
@@ -88,7 +89,17 @@ export function Sidebar() {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={item.href === "/students"
+                ? (() => {
+                    // Preserve students page state across navigation
+                    if (pathname === "/students" && searchParams.toString()) {
+                      return `/students?${searchParams.toString()}`;
+                    }
+                    // Restore saved state when navigating back from other pages
+                    const saved = typeof window !== "undefined" ? sessionStorage.getItem("students_params") : null;
+                    return saved ? `/students?${saved}` : "/students";
+                  })()
+                : item.href}
               title={collapsed ? item.label : undefined}
               className={cn(
                 "group flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-200",

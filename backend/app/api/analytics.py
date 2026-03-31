@@ -124,6 +124,12 @@ async def get_student_accuracy(student_id: str, db: AsyncSession = Depends(get_d
     )
     mat_map = {m.key: m.name for m in mat_result.scalars().all()}
 
+    # Get currently assigned material keys for fitness_rate calculation
+    assigned_result = await db.execute(
+        select(StudentMaterial.material_key).where(StudentMaterial.student_id == student_id)
+    )
+    assigned_keys = {row[0] for row in assigned_result.all()}
+
     entries = []
     total_count = 0
     fit_count = 0
@@ -136,9 +142,11 @@ async def get_student_accuracy(student_id: str, db: AsyncSession = Depends(get_d
             "material_name": mat_map.get(r.material_key, r.material_key),
             "accuracy_rate": r.accuracy_rate,
         })
-        total_count += 1
-        if 0.8 <= r.accuracy_rate < 1.0:
-            fit_count += 1
+        # fitness_rate: only count records for currently assigned materials
+        if r.material_key in assigned_keys:
+            total_count += 1
+            if 0.8 <= r.accuracy_rate < 1.0:
+                fit_count += 1
 
     fitness_rate = round(fit_count / total_count * 100, 1) if total_count > 0 else None
 

@@ -41,9 +41,21 @@ import {
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "@/lib/recharts-imports";
 import { TOOLTIP_STYLE, AXIS_TICK_STYLE, GRID_PROPS } from "@/lib/chart-config";
 
+type StudentListItem = {
+  id: string;
+  name: string;
+  grade?: string | null;
+  materials: { percent: number }[];
+};
+
 type Props = {
   studentId: string;
-  initialTab?: string;
+  activeTab?: string;
+  onTabChange?: (tab: string) => void;
+  instructorId?: number | null;
+  onInstructorChange?: (id: number | null) => void;
+  students?: StudentListItem[];
+  onSelectStudent?: (id: string) => void;
   spreadsheetActive: boolean;
   onEnterSpreadsheet: () => void;
   onEscapeSpreadsheet: () => void;
@@ -52,7 +64,12 @@ type Props = {
 
 export function StudentDetailPanel({
   studentId,
-  initialTab = "mastery",
+  activeTab = "mastery",
+  onTabChange,
+  instructorId,
+  onInstructorChange,
+  students,
+  onSelectStudent,
   spreadsheetActive,
   onEnterSpreadsheet,
   onEscapeSpreadsheet,
@@ -247,7 +264,7 @@ export function StudentDetailPanel({
       </div>
 
       {/* Tabs + Reminder banners */}
-      <Tabs defaultValue={initialTab}>
+      <Tabs value={activeTab} onValueChange={onTabChange}>
         <div className="flex items-center gap-3 flex-wrap">
           <TabsList className="shrink-0">
             <TabsTrigger value="mastery">
@@ -301,6 +318,10 @@ export function StudentDetailPanel({
             onActivate={onEnterSpreadsheet}
             onEscape={onEscapeSpreadsheet}
             onPendingChange={onPendingChange}
+            instructorId={instructorId ?? null}
+            onInstructorChange={onInstructorChange}
+            students={students}
+            onSelectStudent={onSelectStudent}
           />
         </TabsContent>
 
