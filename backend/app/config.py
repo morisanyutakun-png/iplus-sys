@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # Cloud deployment
     environment: str = "development"  # development | production
     use_print_agent: bool = False  # If true, queue jobs for an on-prem agent to execute
+    # Auth
+    jwt_secret: str = "CHANGE_ME_IN_PRODUCTION_USE_LONG_RANDOM_STRING"
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 30
 
     @property
     def cors_origins_list(self) -> list[str]:

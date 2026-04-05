@@ -1,4 +1,5 @@
 from app.models.base import Base
+from app.models.user import User, UserRole
 from app.models.student import Student
 from app.models.material import Material, MaterialNode
 from app.models.student_material import StudentMaterial, ProgressHistory, ArchivedProgress
@@ -42,4 +43,6 @@ __all__ = [
     "UniversityScoreWeight",
     "ExamScoreTarget",
     "Instructor",
+    "User",
+    "UserRole",
 ]

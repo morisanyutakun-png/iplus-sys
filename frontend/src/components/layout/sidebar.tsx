@@ -12,19 +12,23 @@ import {
   PanelLeftOpen,
   FileText,
   UserCheck,
+  LogOut,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/providers/sidebar-provider";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/auth-context";
 
 const navItems = [
-  { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard, description: "概要とクイックアクション" },
-  { href: "/students", label: "生徒", icon: Users, description: "生徒管理・定着度入力" },
-  { href: "/materials", label: "教材管理", icon: BookOpen, description: "教材と範囲" },
-  { href: "/word-test", label: "単語テスト", icon: Languages, description: "単語帳・ミックステスト" },
-  { href: "/exams", label: "試験管理", icon: FileText, description: "共テ・過去問管理" },
-  { href: "/print", label: "印刷", icon: Printer, description: "キュー・ジョブ・ログ" },
-  { href: "/instructors", label: "講師管理", icon: UserCheck, description: "講師の登録・管理" },
+  { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard, description: "概要とクイックアクション", adminOnly: true },
+  { href: "/students", label: "生徒", icon: Users, description: "生徒管理・定着度入力", adminOnly: false },
+  { href: "/materials", label: "教材管理", icon: BookOpen, description: "教材と範囲", adminOnly: true },
+  { href: "/word-test", label: "単語テスト", icon: Languages, description: "単語帳・ミックステスト", adminOnly: true },
+  { href: "/exams", label: "試験管理", icon: FileText, description: "共テ・過去問管理", adminOnly: true },
+  { href: "/print", label: "印刷", icon: Printer, description: "キュー・ジョブ・ログ", adminOnly: true },
+  { href: "/instructors", label: "講師管理", icon: UserCheck, description: "講師の登録・管理", adminOnly: true },
+  { href: "/settings", label: "アカウント管理", icon: Shield, description: "トレーナー管理", adminOnly: true },
 ];
 
 function IPlusLogo() {
@@ -47,6 +51,13 @@ function IPlusLogo() {
 export function Sidebar() {
   const pathname = usePathname();
   const { collapsed, toggle } = useSidebar();
+  const { user, logout } = useAuth();
+
+  const visibleNavItems = navItems.filter((item) => {
+    if (!user) return false;
+    if (user.role === "admin") return true;
+    return !item.adminOnly;
+  });
 
   return (
     <aside
@@ -82,7 +93,7 @@ export function Sidebar() {
             メニュー
           </p>
         )}
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive =
             pathname === item.href || pathname.startsWith(item.href + "/");
           return (
@@ -129,7 +140,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Toggle + Footer */}
+      {/* Toggle + User info + Logout */}
       <div className="border-t border-sidebar-border p-2 space-y-2">
         <Button
           variant="ghost"
@@ -146,12 +157,29 @@ export function Sidebar() {
             </>
           )}
         </Button>
-        {!collapsed && (
+
+        {user && !collapsed && (
           <div className="rounded-xl bg-gradient-to-r from-primary/5 to-primary/10 p-3">
-            <p className="text-xs font-semibold text-foreground">iPlus Sys v2.0</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">教材管理システム</p>
+            <p className="text-xs font-semibold text-foreground">{user.username}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {user.role === "admin" ? "管理者" : "トレーナー"}
+            </p>
           </div>
         )}
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={logout}
+          title={collapsed ? "ログアウト" : undefined}
+          className={cn(
+            "w-full text-muted-foreground hover:text-foreground",
+            collapsed ? "px-2 justify-center" : "justify-start gap-2"
+          )}
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          {!collapsed && <span className="text-xs">ログアウト</span>}
+        </Button>
       </div>
     </aside>
   );
