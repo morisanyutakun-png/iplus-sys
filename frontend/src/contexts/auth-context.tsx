@@ -8,13 +8,14 @@ export type UserRole = "admin" | "trainer";
 export interface AuthUser {
   id: number;
   username: string;
+  google_email: string | null;
   role: UserRole;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  loginWithGoogle: (credential: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -39,10 +40,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, [fetchMe]);
 
-  const login = async (username: string, password: string) => {
-    const me = await apiFetch<AuthUser>("/api/auth/login", {
+  const loginWithGoogle = async (credential: string) => {
+    const me = await apiFetch<AuthUser>("/api/auth/google", {
       method: "POST",
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ credential }),
     });
     setUser(me);
   };
@@ -54,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );

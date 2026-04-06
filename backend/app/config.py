@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     jwt_secret: str = "CHANGE_ME_IN_PRODUCTION_USE_LONG_RANDOM_STRING"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
+    google_client_id: str = ""  # Google OAuth Client ID (required for Google login)
 
     @property
     def cors_origins_list(self) -> list[str]:

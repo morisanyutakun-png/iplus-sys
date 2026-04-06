@@ -12,3 +12,4 @@ certifi>=2024.0
 reportlab>=4.0
 python-jose[cryptography]>=3.3
 passlib[bcrypt]>=1.7
+google-auth>=2.0

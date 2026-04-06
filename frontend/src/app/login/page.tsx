@@ -1,13 +1,37 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { apiFetch } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Lock } from "lucide-react";
+
+// Declare Google Identity Services types
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: {
+            client_id: string;
+            callback: (response: { credential: string }) => void;
+            use_fedcm_for_prompt?: boolean;
+          }) => void;
+          renderButton: (
+            parent: HTMLElement,
+            options: {
+              theme?: string;
+              size?: string;
+              width?: number | string;
+              text?: string;
+              locale?: string;
+            }
+          ) => void;
+        };
+      };
+    };
+  }
+}
 
 function IPlusLogo() {
   return (
@@ -27,17 +51,16 @@ function IPlusLogo() {
 }
 
 function LoginForm() {
-  const { login, user, isLoading } = useAuth();
+  const { loginWithGoogle, user, isLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const from = searchParams.get("from") || "/dashboard";
+  const buttonRef = useRef<HTMLDivElement>(null);
 
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [silentRefreshing, setSilentRefreshing] = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
 
-  // Attempt silent refresh on mount (handles page reload with valid refresh token)
+  // Attempt silent refresh on mount
   useEffect(() => {
     apiFetch("/api/auth/refresh", { method: "POST" })
       .then(() => {
@@ -56,6 +79,68 @@ function LoginForm() {
     }
   }, [user, isLoading, router, from]);
 
+  // Load Google Identity Services and render button
+  useEffect(() => {
+    if (silentRefreshing) return;
+
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      console.error("NEXT_PUBLIC_GOOGLE_CLIENT_ID is not set");
+      return;
+    }
+
+    const handleCredential = async (response: { credential: string }) => {
+      setSigningIn(true);
+      try {
+        await loginWithGoogle(response.credential);
+        router.replace(from);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("403")) {
+          toast.error("このGoogleアカウントはアクセスが許可されていません");
+        } else {
+          toast.error("ログインに失敗しました");
+        }
+        setSigningIn(false);
+      }
+    };
+
+    const initGoogle = () => {
+      if (!window.google || !buttonRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleCredential,
+        use_fedcm_for_prompt: true,
+      });
+      window.google.accounts.id.renderButton(buttonRef.current, {
+        theme: "outline",
+        size: "large",
+        width: "100%",
+        text: "signin_with",
+        locale: "ja",
+      });
+    };
+
+    if (window.google) {
+      initGoogle();
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = initGoogle;
+    document.head.appendChild(script);
+
+    return () => {
+      if (document.head.contains(script)) {
+        document.head.removeChild(script);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [silentRefreshing]);
+
   if (silentRefreshing) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -63,19 +148,6 @@ function LoginForm() {
       </div>
     );
   }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      await login(username, password);
-      router.replace(from);
-    } catch {
-      toast.error("ユーザー名またはパスワードが正しくありません");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
@@ -89,53 +161,22 @@ function LoginForm() {
               </span>
               <span className="ml-1">Sys</span>
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">ログインしてください</p>
+            <p className="text-sm text-muted-foreground mt-1">Googleアカウントでログイン</p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="username">
-              ユーザー名
-            </label>
-            <Input
-              id="username"
-              placeholder="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              autoFocus
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="password">
-              パスワード
-            </label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </div>
-          <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? (
-              <span className="flex items-center gap-2">
-                <Lock className="h-4 w-4 animate-pulse" />
-                ログイン中...
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <Lock className="h-4 w-4" />
-                ログイン
-              </span>
-            )}
-          </Button>
-        </form>
+        <div className="space-y-3">
+          {signingIn ? (
+            <div className="flex h-10 items-center justify-center text-sm text-muted-foreground">
+              ログイン中...
+            </div>
+          ) : (
+            <div ref={buttonRef} className="flex justify-center" />
+          )}
+          <p className="text-center text-[11px] text-muted-foreground">
+            許可されたGoogleアカウントのみアクセスできます
+          </p>
+        </div>
       </div>
     </div>
   );

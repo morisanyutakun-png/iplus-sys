@@ -4,6 +4,7 @@ import { apiFetch } from "../api";
 export interface AppUser {
   id: number;
   username: string;
+  google_email: string | null;
   role: "admin" | "trainer";
 }
 
@@ -14,25 +15,15 @@ export function useUsers() {
   });
 }
 
-export function useCreateTrainer() {
+export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { username: string; password: string }) =>
+    mutationFn: (body: { display_name: string; google_email: string; role: "admin" | "trainer" }) =>
       apiFetch<AppUser>("/api/auth/users", {
         method: "POST",
         body: JSON.stringify(body),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
-  });
-}
-
-export function useUpdatePassword() {
-  return useMutation({
-    mutationFn: ({ id, password }: { id: number; password: string }) =>
-      apiFetch(`/api/auth/users/${id}/password`, {
-        method: "PUT",
-        body: JSON.stringify({ password }),
-      }),
   });
 }
 
