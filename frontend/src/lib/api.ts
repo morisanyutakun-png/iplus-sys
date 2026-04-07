@@ -1,4 +1,7 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Use relative URLs so requests go through Next.js rewrites (see next.config.ts).
+// This makes cookies same-origin from the browser's POV, which is required for the
+// edge middleware to read auth cookies.
+const API_BASE = "";
 
 let isRefreshing = false;
 let pendingQueue: Array<{ resolve: () => void; reject: (e: Error) => void }> = [];
