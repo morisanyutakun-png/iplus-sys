@@ -74,15 +74,6 @@ FONT_CELL_LARGE_SMALL = (_FONT_NAME, 8)
 FONT_CELL_LARGE_TINY = (_FONT_NAME, 7)
 _MIN_COMPACT_FONT_SIZE = 2.5
 _COMPACT_FONT_STEP = 0.25
-_COMPACT_SPLIT_CANDIDATES = (
-    0.62,
-    0.68,
-    0.56,
-    0.72,
-    0.52,
-    0.76,
-    0.48,
-)
 
 _WORD_MAX_W = COL_WORD - 6
 _ANSWER_MAX_W = COL_ANSWER - 6
@@ -277,83 +268,24 @@ def _choose_font_and_wrap_by_height(
     return fallback_font, fallback_lines
 
 
-def _pick_compact_box_layout(
+def _estimate_compact_split_ratio(
     question: str,
     answer: str,
-    max_width: float,
-    content_height: float,
-    question_fonts: list[tuple[str, float]],
-    answer_fonts: list[tuple[str, float]],
     show_answers: bool,
-) -> tuple[
-    tuple[str, float],
-    list[str],
-    tuple[str, float],
-    list[str],
-    float | None,
-]:
-    if not show_answers or not _sanitize_pdf_text(answer, preserve_line_breaks=True):
-        question_font, question_lines = _choose_font_and_wrap_by_height(
-            question,
-            max_width,
-            content_height,
-            question_fonts,
-        )
-        return question_font, question_lines, answer_fonts[0], [], None
+) -> float | None:
+    if not show_answers:
+        return None
 
-    best_layout: tuple[
-        tuple[str, float],
-        list[str],
-        tuple[str, float],
-        list[str],
-        float,
-        tuple[float, float, float],
-    ] | None = None
+    sanitized_answer = _sanitize_pdf_text(answer, preserve_line_breaks=True)
+    if not sanitized_answer:
+        return None
 
-    for question_ratio in _COMPACT_SPLIT_CANDIDATES:
-        question_height = max(content_height * question_ratio - 2, 8)
-        answer_height = max(content_height - question_height - 2, 8)
-
-        question_font, question_lines = _choose_font_and_wrap_by_height(
-            question,
-            max_width,
-            question_height,
-            question_fonts,
-        )
-        answer_font, answer_lines = _choose_font_and_wrap_by_height(
-            answer,
-            max_width,
-            answer_height,
-            answer_fonts,
-        )
-
-        question_fits = _fits_within_height(question_lines, question_font[1], question_height)
-        answer_fits = _fits_within_height(answer_lines, answer_font[1], answer_height)
-        score = (
-            1.0 if question_fits and answer_fits else 0.0,
-            min(question_font[1], answer_font[1]),
-            question_font[1] + answer_font[1],
-        )
-
-        candidate = (
-            question_font,
-            question_lines,
-            answer_font,
-            answer_lines,
-            question_height,
-            score,
-        )
-        if best_layout is None or score > best_layout[-1]:
-            best_layout = candidate
-
-    assert best_layout is not None
-    return (
-        best_layout[0],
-        best_layout[1],
-        best_layout[2],
-        best_layout[3],
-        best_layout[4],
-    )
+    sanitized_question = _sanitize_pdf_text(question, preserve_line_breaks=True)
+    question_weight = len(sanitized_question.replace("\n", "")) + sanitized_question.count("\n") * 10
+    answer_weight = len(sanitized_answer.replace("\n", "")) + sanitized_answer.count("\n") * 10
+    total_weight = max(question_weight + answer_weight, 1)
+    ratio = question_weight / total_weight
+    return min(max(ratio, 0.52), 0.74)
 
 
 # ── Public API ──
@@ -750,22 +682,32 @@ def _draw_compact_group(
         inner_bottom = y_bottom + 3
         question_max_w = max(inner_right - inner_left, 1)
         content_height = max(inner_top - inner_bottom, 8)
+        split_ratio = _estimate_compact_split_ratio(question, answer, show_answers)
 
-        (
-            question_font,
-            question_lines,
-            answer_font,
-            answer_lines,
-            question_height,
-        ) = _pick_compact_box_layout(
-            question,
-            answer,
-            question_max_w,
-            content_height,
-            question_fonts,
-            answer_fonts,
-            show_answers,
-        )
+        if split_ratio is None:
+            question_height = None
+            question_font, question_lines = _choose_font_and_wrap_by_height(
+                question,
+                question_max_w,
+                content_height,
+                question_fonts,
+            )
+            answer_font, answer_lines = answer_fonts[0], []
+        else:
+            question_height = max(content_height * split_ratio - 2, 8)
+            answer_height = max(content_height - question_height - 2, 8)
+            question_font, question_lines = _choose_font_and_wrap_by_height(
+                question,
+                question_max_w,
+                question_height,
+                question_fonts,
+            )
+            answer_font, answer_lines = _choose_font_and_wrap_by_height(
+                answer,
+                question_max_w,
+                answer_height,
+                answer_fonts,
+            )
 
         if question_lines:
             c.setFont(*question_font)
@@ -781,11 +723,7 @@ def _draw_compact_group(
                 q_y -= q_line_h
 
         if question_height is not None:
-            answer_block_h = len(answer_lines) * _compact_line_height(answer_font[1])
-            answer_height = min(
-                max(content_height - question_height - 2, answer_block_h),
-                max(content_height - 6, 8),
-            )
+            answer_height = max(content_height - question_height - 2, 8)
             split_y = inner_bottom + answer_height + 2
 
             c.setStrokeColorRGB(0.75, 0.75, 0.75)
