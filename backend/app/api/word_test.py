@@ -29,6 +29,18 @@ _DOUBLE_QUOTES = {'"', "“", "”", "„", "‟", "＂"}
 _SINGLE_QUOTES = {"'", "‘", "’", "＇"}
 _ZERO_WIDTH_CHARS = {"\u200b", "\u200c", "\u200d", "\u2060"}
 _TRIMMABLE_CHARS = " \t\u00a0\u3000"
+_NUMBER_HEADER_ALIASES = {
+    "no", "no.", "number", "問題番号", "設問番号", "問番号", "番号",
+}
+_QUESTION_HEADER_ALIASES = {
+    "question", "問題", "設問", "問い", "英文", "英単語",
+}
+_ANSWER_HEADER_ALIASES = {
+    "answer", "ans", "解答", "答え", "回答", "正答", "訳", "意味",
+}
+_IGNORE_HEADER_ALIASES = {
+    "章", "単元", "修正内容", "備考", "メモ", "comment", "comments",
+}
 
 
 def _normalize_csv_source(text: str) -> str:
@@ -49,6 +61,35 @@ def _quote_family(ch: str | None) -> str | None:
 
 def _clean_parsed_cell(value: str) -> str:
     return value.strip(_TRIMMABLE_CHARS)
+
+
+def _normalize_header_label(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value)
+    normalized = normalized.lower()
+    return re.sub(r"[\s\u00a0\u3000_\-:：/／()（）.,、，。]+", "", normalized)
+
+
+def _detect_header_role(value: str) -> str | None:
+    normalized = _normalize_header_label(value)
+    if not normalized:
+        return "ignore"
+    if normalized in {_normalize_header_label(alias) for alias in _NUMBER_HEADER_ALIASES}:
+        return "number"
+    if normalized in {_normalize_header_label(alias) for alias in _QUESTION_HEADER_ALIASES}:
+        return "word"
+    if normalized in {_normalize_header_label(alias) for alias in _ANSWER_HEADER_ALIASES}:
+        return "translation"
+    if normalized in {_normalize_header_label(alias) for alias in _IGNORE_HEADER_ALIASES}:
+        return "ignore"
+    return None
+
+
+def _detect_header_roles(row: list[str]) -> list[str] | None:
+    roles = [_detect_header_role(value) for value in row]
+    recognized = [role for role in roles if role is not None]
+    if len(recognized) < 2:
+        return None
+    return [role or "ignore" for role in roles]
 
 
 def _next_meaningful_char(text: str, start: int) -> str | None:
@@ -705,9 +746,11 @@ async def detect_columns(body: CsvImportRequest):
 
     parts = rows[0]
     num_cols = len(parts)
+    header_roles = _detect_header_roles(parts)
+    has_header = header_roles is not None
 
     # Analyze multiple lines
-    sample_rows = rows[:min(10, len(rows))]
+    sample_rows = rows[1:min(11, len(rows))] if has_header else rows[:min(10, len(rows))]
     col_scores: list[dict[str, float]] = [
         {"number": 0, "word": 0, "translation": 0} for _ in range(num_cols)
     ]
@@ -731,15 +774,18 @@ async def detect_columns(body: CsvImportRequest):
     n_lines = len(sample_rows)
     columns = []
     for j in range(num_cols):
-        scores = col_scores[j]
-        if scores["number"] >= n_lines * 0.7:
-            role = "number"
-        elif scores["word"] >= n_lines * 0.5:
-            role = "word"
-        elif scores["translation"] >= n_lines * 0.5:
-            role = "translation"
+        if header_roles:
+            role = header_roles[j]
         else:
-            role = "ignore"
+            scores = col_scores[j]
+            if scores["number"] >= n_lines * 0.7:
+                role = "number"
+            elif scores["word"] >= n_lines * 0.5:
+                role = "word"
+            elif scores["translation"] >= n_lines * 0.5:
+                role = "translation"
+            else:
+                role = "ignore"
         columns.append({"index": j, "sample": parts[j], "suggested_role": role})
 
     # Build suggested mapping
@@ -753,7 +799,7 @@ async def detect_columns(body: CsvImportRequest):
             "number_col": number_col,
             "word_col": word_col,
             "translation_col": trans_col,
-            "skip_header": False,
+            "skip_header": has_header,
         }
 
     return {"columns": columns, "suggested_mapping": suggested}

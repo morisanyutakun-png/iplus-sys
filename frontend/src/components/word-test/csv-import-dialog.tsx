@@ -43,6 +43,10 @@ const PARSE_MODE_LABELS: Record<CsvParseMode, string> = {
 
 const DOUBLE_QUOTES = new Set(['"', "“", "”", "„", "‟", "＂"]);
 const SINGLE_QUOTES = new Set(["'", "‘", "’", "＇"]);
+const NUMBER_HEADER_ALIASES = ["no", "no.", "number", "問題番号", "設問番号", "問番号", "番号"];
+const QUESTION_HEADER_ALIASES = ["question", "問題", "設問", "問い", "英文", "英単語"];
+const ANSWER_HEADER_ALIASES = ["answer", "ans", "解答", "答え", "回答", "正答", "訳", "意味"];
+const IGNORE_HEADER_ALIASES = ["章", "単元", "修正内容", "備考", "メモ", "comment", "comments"];
 
 interface ParsedRow {
   number: number;
@@ -67,6 +71,34 @@ function quoteFamily(ch?: string): QuoteFamily | null {
 
 function cleanParsedCell(value: string): string {
   return value.replace(/^[\s\u00A0\u3000]+|[\s\u00A0\u3000]+$/g, "");
+}
+
+function normalizeHeaderLabel(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s\u00A0\u3000_\-:：/／()（）.,、，。]+/g, "");
+}
+
+function detectHeaderRole(value: string): ColRole | null {
+  const normalized = normalizeHeaderLabel(value);
+  if (!normalized) return "ignore";
+
+  const matches = (aliases: string[]) =>
+    aliases.some((alias) => normalizeHeaderLabel(alias) === normalized);
+
+  if (matches(NUMBER_HEADER_ALIASES)) return "number";
+  if (matches(QUESTION_HEADER_ALIASES)) return "word";
+  if (matches(ANSWER_HEADER_ALIASES)) return "translation";
+  if (matches(IGNORE_HEADER_ALIASES)) return "ignore";
+  return null;
+}
+
+function detectHeaderRoles(columns: string[]): ColRole[] | null {
+  const roles = columns.map((column) => detectHeaderRole(column));
+  const recognized = roles.filter((role) => role !== null);
+  if (recognized.length < 2) return null;
+  return roles.map((role) => role ?? "ignore");
 }
 
 function nextMeaningfulChar(text: string, start: number): string | null {
@@ -341,15 +373,25 @@ function parseWithMapping(
   return parsedRows;
 }
 
-function buildFallbackRoles(columns: string[]): ColRole[] {
-  if (columns.length === 0) return [];
+function buildFallbackDetection(columns: string[]): {
+  roles: ColRole[];
+  skipHeader: boolean;
+} {
+  if (columns.length === 0) {
+    return { roles: [], skipHeader: false };
+  }
+
+  const headerRoles = detectHeaderRoles(columns);
+  if (headerRoles) {
+    return { roles: headerRoles, skipHeader: true };
+  }
 
   const roles: ColRole[] = Array(columns.length).fill("ignore");
   if (columns.length >= 3 && /^\d+$/.test(columns[0] ?? "")) {
     roles[0] = "number";
     roles[1] = "word";
     roles[2] = "translation";
-    return roles;
+    return { roles, skipHeader: false };
   }
 
   if (columns.length >= 2) {
@@ -357,7 +399,7 @@ function buildFallbackRoles(columns: string[]): ColRole[] {
     roles[columns.length - 1] = "translation";
   }
 
-  return roles;
+  return { roles, skipHeader: false };
 }
 
 export function CsvImportDialog({ bookId, bookName }: Props) {
@@ -386,6 +428,7 @@ export function CsvImportDialog({ bookId, bookName }: Props) {
 
   const resetDetection = useCallback(() => {
     setColRoles([]);
+    setSkipHeader(false);
     setDetected(false);
   }, []);
 
@@ -410,6 +453,7 @@ export function CsvImportDialog({ bookId, bookName }: Props) {
           setColRoles(
             result.columns.map((column) => column.suggested_role as ColRole)
           );
+          setSkipHeader(Boolean(result.suggested_mapping?.skip_header));
           setDetected(true);
           return;
         }
@@ -419,9 +463,10 @@ export function CsvImportDialog({ bookId, bookName }: Props) {
 
       if (detectionRunId.current !== runId) return;
       const fallbackSampleColumns = parseCsvRows(text, mode)[0] ?? [];
-      const fallbackRoles = buildFallbackRoles(fallbackSampleColumns);
-      setColRoles(fallbackRoles);
-      setDetected(fallbackRoles.length > 0);
+      const fallback = buildFallbackDetection(fallbackSampleColumns);
+      setColRoles(fallback.roles);
+      setSkipHeader(fallback.skipHeader);
+      setDetected(fallback.roles.length > 0);
     },
     [detectColumns, resetDetection]
   );
