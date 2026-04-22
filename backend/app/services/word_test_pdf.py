@@ -52,8 +52,6 @@ COL_NO = 28
 COL_WORD = 115
 COL_ANSWER = GROUP_W - COL_NO - COL_WORD
 COL_NO_COMPACT = 22
-COMPACT_CONTENT_W = GROUP_W - COL_NO_COMPACT
-COMPACT_BOX_SPLIT_RATIO = 0.62
 
 BODY_TOP = PAGE_H - MARGIN_TOP
 HEADER_HEIGHT = 22
@@ -74,6 +72,17 @@ FONT_COL_HEADER_LARGE = (_FONT_NAME, 7.5)
 FONT_CELL_LARGE = (_FONT_NAME, 9)
 FONT_CELL_LARGE_SMALL = (_FONT_NAME, 8)
 FONT_CELL_LARGE_TINY = (_FONT_NAME, 7)
+_MIN_COMPACT_FONT_SIZE = 2.5
+_COMPACT_FONT_STEP = 0.25
+_COMPACT_SPLIT_CANDIDATES = (
+    0.62,
+    0.68,
+    0.56,
+    0.72,
+    0.52,
+    0.76,
+    0.48,
+)
 
 _WORD_MAX_W = COL_WORD - 6
 _ANSWER_MAX_W = COL_ANSWER - 6
@@ -179,6 +188,29 @@ def _wrap_lines(text: str, max_width: float, font_name: str, font_size: float) -
     return lines or [sanitized]
 
 
+def _wrap_lines_with_breaks(
+    text: str,
+    max_width: float,
+    font_name: str,
+    font_size: float,
+) -> list[str]:
+    """Split text into lines while preserving explicit line breaks."""
+    sanitized = _sanitize_pdf_text(text, preserve_line_breaks=True)
+    if not sanitized:
+        return []
+
+    lines: list[str] = []
+    for raw_line in sanitized.split("\n"):
+        if not raw_line:
+            lines.append("")
+            continue
+        lines.extend(_wrap_lines(raw_line, max_width, font_name, font_size))
+
+    while lines and not lines[-1]:
+        lines.pop()
+    return lines
+
+
 def _choose_font_and_wrap(
     text: str, max_width: float, fonts: list[tuple[str, float]],
 ) -> tuple[tuple[str, float], list[str]]:
@@ -194,23 +226,26 @@ def _choose_font_and_wrap(
     return fonts[-1], _wrap_lines(text, max_width, *fonts[-1])
 
 
-def _truncate_lines(
-    lines: list[str],
-    max_lines: int,
-    max_width: float,
-    font_name: str,
-    font_size: float,
-) -> list[str]:
-    if len(lines) <= max_lines:
-        return lines
+def _compact_line_height(font_size: float) -> float:
+    return max(font_size * 1.12, font_size + 0.2)
 
-    truncated = lines[:max_lines]
-    ellipsis = "..."
-    last_line = truncated[-1]
-    while last_line and _text_width(last_line + ellipsis, font_name, font_size) > max_width:
-        last_line = last_line[:-1]
-    truncated[-1] = f"{last_line}{ellipsis}" if last_line else ellipsis
-    return truncated
+
+def _compact_font_sizes(fonts: list[tuple[str, float]]) -> list[float]:
+    max_size = max(font_size for _, font_size in fonts)
+    sizes: list[float] = []
+    current = max_size
+    while current >= _MIN_COMPACT_FONT_SIZE:
+        sizes.append(round(current, 2))
+        current -= _COMPACT_FONT_STEP
+    if not sizes or sizes[-1] != _MIN_COMPACT_FONT_SIZE:
+        sizes.append(_MIN_COMPACT_FONT_SIZE)
+    return sizes
+
+
+def _fits_within_height(lines: list[str], font_size: float, max_height: float) -> bool:
+    if not lines:
+        return True
+    return len(lines) * _compact_line_height(font_size) <= max_height + 0.1
 
 
 def _choose_font_and_wrap_by_height(
@@ -219,22 +254,106 @@ def _choose_font_and_wrap_by_height(
     max_height: float,
     fonts: list[tuple[str, float]],
 ) -> tuple[tuple[str, float], list[str]]:
-    sanitized = _sanitize_pdf_text(text)
+    sanitized = _sanitize_pdf_text(text, preserve_line_breaks=True)
     if not sanitized:
         return fonts[0], []
 
-    fallback_font = fonts[-1]
-    fallback_lines: list[str] = []
-    for font_name, font_size in fonts:
-        line_height = font_size + 1.5
-        max_lines = max(1, int(max_height // line_height))
-        lines = _wrap_lines(sanitized, max_width, font_name, font_size)
-        if len(lines) <= max_lines:
+    font_name = fonts[0][0]
+    fallback_font = (font_name, _MIN_COMPACT_FONT_SIZE)
+    fallback_lines = _wrap_lines_with_breaks(
+        sanitized,
+        max_width,
+        font_name,
+        _MIN_COMPACT_FONT_SIZE,
+    )
+
+    for font_size in _compact_font_sizes(fonts):
+        lines = _wrap_lines_with_breaks(sanitized, max_width, font_name, font_size)
+        if _fits_within_height(lines, font_size, max_height):
             return (font_name, font_size), lines
         fallback_font = (font_name, font_size)
-        fallback_lines = _truncate_lines(lines, max_lines, max_width, font_name, font_size)
+        fallback_lines = lines
 
     return fallback_font, fallback_lines
+
+
+def _pick_compact_box_layout(
+    question: str,
+    answer: str,
+    max_width: float,
+    content_height: float,
+    question_fonts: list[tuple[str, float]],
+    answer_fonts: list[tuple[str, float]],
+    show_answers: bool,
+) -> tuple[
+    tuple[str, float],
+    list[str],
+    tuple[str, float],
+    list[str],
+    float | None,
+]:
+    if not show_answers or not _sanitize_pdf_text(answer, preserve_line_breaks=True):
+        question_font, question_lines = _choose_font_and_wrap_by_height(
+            question,
+            max_width,
+            content_height,
+            question_fonts,
+        )
+        return question_font, question_lines, answer_fonts[0], [], None
+
+    best_layout: tuple[
+        tuple[str, float],
+        list[str],
+        tuple[str, float],
+        list[str],
+        float,
+        tuple[float, float, float],
+    ] | None = None
+
+    for question_ratio in _COMPACT_SPLIT_CANDIDATES:
+        question_height = max(content_height * question_ratio - 2, 8)
+        answer_height = max(content_height - question_height - 2, 8)
+
+        question_font, question_lines = _choose_font_and_wrap_by_height(
+            question,
+            max_width,
+            question_height,
+            question_fonts,
+        )
+        answer_font, answer_lines = _choose_font_and_wrap_by_height(
+            answer,
+            max_width,
+            answer_height,
+            answer_fonts,
+        )
+
+        question_fits = _fits_within_height(question_lines, question_font[1], question_height)
+        answer_fits = _fits_within_height(answer_lines, answer_font[1], answer_height)
+        score = (
+            1.0 if question_fits and answer_fits else 0.0,
+            min(question_font[1], answer_font[1]),
+            question_font[1] + answer_font[1],
+        )
+
+        candidate = (
+            question_font,
+            question_lines,
+            answer_font,
+            answer_lines,
+            question_height,
+            score,
+        )
+        if best_layout is None or score > best_layout[-1]:
+            best_layout = candidate
+
+    assert best_layout is not None
+    return (
+        best_layout[0],
+        best_layout[1],
+        best_layout[2],
+        best_layout[3],
+        best_layout[4],
+    )
 
 
 # ── Public API ──
@@ -596,7 +715,6 @@ def _draw_compact_group(
     answer_fonts = fonts["cell_fonts"]
     row_h = TABLE_HEIGHT / max(rows_per_side, 1)
     content_x = x_start + COL_NO_COMPACT
-    content_w = COMPACT_CONTENT_W
 
     c.setFont(*fonts["col_header"])
     c.setFillColorRGB(0.4, 0.4, 0.4)
@@ -626,48 +744,61 @@ def _draw_compact_group(
             num_y = y_bottom + (row_h - number_font[1]) / 2 + 1
             c.drawRightString(content_x - 4, num_y, str(num))
 
-        split_y = y_bottom + row_h * (1 - COMPACT_BOX_SPLIT_RATIO)
         inner_left = content_x + 3
         inner_right = x_start + GROUP_W - 3
         inner_top = y_top - 4
         inner_bottom = y_bottom + 3
         question_max_w = max(inner_right - inner_left, 1)
-        answer_max_w = question_max_w
-        question_max_h = max(inner_top - split_y - 3, 8)
-        answer_max_h = max(split_y - inner_bottom - 3, 8)
+        content_height = max(inner_top - inner_bottom, 8)
 
-        question_font, question_lines = _choose_font_and_wrap_by_height(
+        (
+            question_font,
+            question_lines,
+            answer_font,
+            answer_lines,
+            question_height,
+        ) = _pick_compact_box_layout(
             question,
+            answer,
             question_max_w,
-            question_max_h,
+            content_height,
             question_fonts,
-        )
-        answer_font, answer_lines = _choose_font_and_wrap_by_height(
-            answer if show_answers else "",
-            answer_max_w,
-            answer_max_h,
             answer_fonts,
+            show_answers,
         )
 
         if question_lines:
             c.setFont(*question_font)
-            q_line_h = question_font[1] + 1.5
-            q_y = inner_top - question_font[1]
+            q_line_h = _compact_line_height(question_font[1])
+            question_block_h = len(question_lines) * q_line_h
+            if question_height is None:
+                q_top = inner_bottom + (content_height + question_block_h) / 2
+            else:
+                q_top = inner_top
+            q_y = q_top - question_font[1]
             for line in question_lines:
                 c.drawString(inner_left, q_y, line)
                 q_y -= q_line_h
 
-        c.setStrokeColorRGB(0.75, 0.75, 0.75)
-        c.setLineWidth(0.3)
-        c.line(content_x, split_y, x_start + GROUP_W, split_y)
+        if question_height is not None:
+            answer_block_h = len(answer_lines) * _compact_line_height(answer_font[1])
+            answer_height = min(
+                max(content_height - question_height - 2, answer_block_h),
+                max(content_height - 6, 8),
+            )
+            split_y = inner_bottom + answer_height + 2
 
-        if answer_lines:
-            c.setFont(*answer_font)
-            a_line_h = answer_font[1] + 1.5
-            a_y = split_y - 3 - answer_font[1]
-            for line in answer_lines:
-                c.drawString(inner_left, a_y, line)
-                a_y -= a_line_h
+            c.setStrokeColorRGB(0.75, 0.75, 0.75)
+            c.setLineWidth(0.3)
+            c.line(content_x, split_y, x_start + GROUP_W, split_y)
+
+            if answer_lines:
+                c.setFont(*answer_font)
+                a_line_h = _compact_line_height(answer_font[1])
+                a_y = split_y - 3 - answer_font[1]
+                for line in answer_lines:
+                    c.drawString(inner_left, a_y, line)
+                    a_y -= a_line_h
 
         c.setStrokeColorRGB(0.75, 0.75, 0.75)
         c.setLineWidth(0.3)
