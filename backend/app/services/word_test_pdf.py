@@ -6,6 +6,7 @@ Layout:
 """
 
 import random
+import unicodedata
 from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
@@ -63,9 +64,21 @@ FONT_COL_HEADER = (_FONT_NAME, 6.5)
 FONT_CELL = (_FONT_NAME, 7)
 FONT_CELL_SMALL = (_FONT_NAME, 6)
 FONT_CELL_TINY = (_FONT_NAME, 5)
+FONT_NAME_LINE_LARGE = (_FONT_NAME, 10)
+FONT_HEADER_LARGE = (_FONT_NAME, 13)
+FONT_SECTION_LABEL_LARGE = (_FONT_NAME, 9)
+FONT_COL_HEADER_LARGE = (_FONT_NAME, 7.5)
+FONT_CELL_LARGE = (_FONT_NAME, 9)
+FONT_CELL_LARGE_SMALL = (_FONT_NAME, 8)
+FONT_CELL_LARGE_TINY = (_FONT_NAME, 7)
 
 _WORD_MAX_W = COL_WORD - 6
 _ANSWER_MAX_W = COL_ANSWER - 6
+_SPACE_EQUIVALENTS = {
+    "\u00a0", "\u1680", "\u180e", "\u2000", "\u2001", "\u2002", "\u2003",
+    "\u2004", "\u2005", "\u2006", "\u2007", "\u2008", "\u2009", "\u200a",
+    "\u202f", "\u205f", "\u3000",
+}
 
 
 # ── Text helpers ──
@@ -74,25 +87,93 @@ def _text_width(text: str, font_name: str, font_size: float) -> float:
     return pdfmetrics.stringWidth(text, font_name, font_size)
 
 
+def _is_joinable_text_char(ch: str) -> bool:
+    category = unicodedata.category(ch)
+    return category.startswith(("L", "N"))
+
+
+def _sanitize_pdf_text(text: str, preserve_line_breaks: bool = False) -> str:
+    if not text:
+        return ""
+
+    normalized = (
+        text.replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\u2028", "\n")
+        .replace("\u2029", "\n")
+    )
+
+    cleaned: list[str] = []
+    for index, ch in enumerate(normalized):
+        if ch in _SPACE_EQUIVALENTS or ch in {"\t", "\v", "\f"}:
+            cleaned.append(" ")
+            continue
+
+        if ch == "\n":
+            prev_char = normalized[index - 1] if index > 0 else ""
+            next_char = normalized[index + 1] if index + 1 < len(normalized) else ""
+            if preserve_line_breaks:
+                cleaned.append("\n")
+            elif _is_joinable_text_char(prev_char) and _is_joinable_text_char(next_char):
+                continue
+            else:
+                cleaned.append(" ")
+            continue
+
+        if unicodedata.category(ch).startswith("C"):
+            continue
+
+        cleaned.append(ch)
+
+    sanitized = "".join(cleaned)
+    if preserve_line_breaks:
+        return "\n".join(line.rstrip() for line in sanitized.split("\n")).strip("\n")
+    return sanitized.strip()
+
+
+def _get_font_bundle(rows_per_side: int) -> dict[str, object]:
+    if rows_per_side <= 15:
+        return {
+            "name_line": FONT_NAME_LINE_LARGE,
+            "header": FONT_HEADER_LARGE,
+            "section_label": FONT_SECTION_LABEL_LARGE,
+            "col_header": FONT_COL_HEADER_LARGE,
+            "cell_fonts": [
+                FONT_CELL_LARGE,
+                FONT_CELL_LARGE_SMALL,
+                FONT_CELL_LARGE_TINY,
+            ],
+        }
+
+    return {
+        "name_line": FONT_NAME_LINE,
+        "header": FONT_HEADER,
+        "section_label": FONT_SECTION_LABEL,
+        "col_header": FONT_COL_HEADER,
+        "cell_fonts": [FONT_CELL, FONT_CELL_SMALL, FONT_CELL_TINY],
+    }
+
+
 def _wrap_lines(text: str, max_width: float, font_name: str, font_size: float) -> list[str]:
     """Split text into lines that each fit within max_width."""
-    if not text:
+    sanitized = _sanitize_pdf_text(text)
+    if not sanitized:
         return []
-    if _text_width(text, font_name, font_size) <= max_width:
-        return [text]
+    if _text_width(sanitized, font_name, font_size) <= max_width:
+        return [sanitized]
 
     lines: list[str] = []
     current = ""
-    for ch in text:
+    for ch in sanitized:
         test = current + ch
         if _text_width(test, font_name, font_size) > max_width and current:
-            lines.append(current)
+            lines.append(current.rstrip())
             current = ch
         else:
             current = test
     if current:
-        lines.append(current)
-    return lines or [text]
+        lines.append(current.rstrip())
+    return lines or [sanitized]
 
 
 def _choose_font_and_wrap(
@@ -270,6 +351,7 @@ def _draw_page(
     rows_per_side: int = 50,
 ) -> None:
     """Draw one page of the test sheet."""
+    fonts = _get_font_bundle(rows_per_side)
 
     # Header: student grade + name at the very top-right
     name_line = ""
@@ -278,27 +360,27 @@ def _draw_page(
     elif student_name:
         name_line = student_name
     if name_line:
-        c.setFont(*FONT_NAME_LINE)
-        c.drawRightString(PAGE_W - MARGIN_R, PAGE_H - 20, name_line)
+        c.setFont(*fonts["name_line"])
+        c.drawRightString(PAGE_W - MARGIN_R, PAGE_H - 20, _sanitize_pdf_text(name_line))
 
     # Title below the name
-    c.setFont(*FONT_HEADER)
+    c.setFont(*fonts["header"])
     prefix = "【解答】" if show_answers else ""
     header_text = f"{prefix}{title}"
-    c.drawRightString(PAGE_W - MARGIN_R, BODY_TOP + 4, header_text)
+    c.drawRightString(PAGE_W - MARGIN_R, BODY_TOP + 4, _sanitize_pdf_text(header_text))
 
     # Section labels above each group
     label_y = TABLE_TOP + 3
     if left_label:
-        c.setFont(*FONT_SECTION_LABEL)
+        c.setFont(*fonts["section_label"])
         c.setFillColorRGB(0.2, 0.2, 0.2)
-        c.drawString(MARGIN_L + 2, label_y, left_label)
+        c.drawString(MARGIN_L + 2, label_y, _sanitize_pdf_text(left_label))
         c.setFillColorRGB(0, 0, 0)
     if right_label:
-        c.setFont(*FONT_SECTION_LABEL)
+        c.setFont(*fonts["section_label"])
         c.setFillColorRGB(0.2, 0.2, 0.2)
         right_x = MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS
-        c.drawString(right_x + 2, label_y, right_label)
+        c.drawString(right_x + 2, label_y, _sanitize_pdf_text(right_label))
         c.setFillColorRGB(0, 0, 0)
 
     # Draw left group
@@ -319,12 +401,15 @@ def _compute_row_heights(
     words: list[tuple[int, str, str]], show_answers: bool, rows: int,
 ) -> list[tuple[float, list[str], tuple[str, float], list[str], tuple[str, float]]]:
     """Pre-compute row heights and wrapped text for all rows."""
-    word_fonts = [FONT_CELL, FONT_CELL_SMALL, FONT_CELL_TINY]
-    answer_fonts = [FONT_CELL, FONT_CELL_SMALL, FONT_CELL_TINY]
+    fonts = _get_font_bundle(rows)
+    word_fonts = fonts["cell_fonts"]
+    answer_fonts = fonts["cell_fonts"]
 
     result = []
     for i in range(rows):
         _, word, translation = words[i] if i < len(words) else (0, "", "")
+        word = _sanitize_pdf_text(word)
+        translation = _sanitize_pdf_text(translation)
 
         word_font, word_lines = _choose_font_and_wrap(word, _WORD_MAX_W, word_fonts)
 
@@ -347,6 +432,7 @@ def _draw_group(
     rows_per_side: int = 50,
 ) -> None:
     """Draw one group of rows with variable row heights for wrapping."""
+    fonts = _get_font_bundle(rows_per_side)
 
     row_info = _compute_row_heights(words, show_answers, rows_per_side)
 
@@ -355,7 +441,7 @@ def _draw_group(
     unit_h = max(unit_h, 6.0)
 
     # Column headers
-    c.setFont(*FONT_COL_HEADER)
+    c.setFont(*fonts["col_header"])
     c.setFillColorRGB(0.4, 0.4, 0.4)
     col_header_y = TABLE_TOP - 8
     c.drawString(x_start + 2, col_header_y, "No.")
@@ -385,8 +471,9 @@ def _draw_group(
 
         # Number
         if num > 0:
-            c.setFont(*FONT_CELL)
-            num_y = y_bottom + (row_h - 6.5) / 2 + 1
+            number_font = fonts["cell_fonts"][0]
+            c.setFont(*number_font)
+            num_y = y_bottom + (row_h - number_font[1]) / 2 + 1
             c.drawRightString(x_start + COL_NO - 4, num_y, str(num))
 
         # English word lines
