@@ -74,6 +74,9 @@ FONT_CELL_LARGE_SMALL = (_FONT_NAME, 8)
 FONT_CELL_LARGE_TINY = (_FONT_NAME, 7)
 _MIN_COMPACT_FONT_SIZE = 2.5
 _COMPACT_FONT_STEP = 0.25
+_COMPACT_QUESTION_RATIO_DEFAULT = 0.62
+_COMPACT_QUESTION_RATIO_MIN = 0.52
+_COMPACT_QUESTION_RATIO_MAX = 0.74
 
 _WORD_MAX_W = COL_WORD - 6
 _ANSWER_MAX_W = COL_ANSWER - 6
@@ -274,18 +277,18 @@ def _estimate_compact_split_ratio(
     show_answers: bool,
 ) -> float | None:
     if not show_answers:
-        return None
+        return _COMPACT_QUESTION_RATIO_DEFAULT
 
     sanitized_answer = _sanitize_pdf_text(answer, preserve_line_breaks=True)
     if not sanitized_answer:
-        return None
+        return _COMPACT_QUESTION_RATIO_DEFAULT
 
     sanitized_question = _sanitize_pdf_text(question, preserve_line_breaks=True)
     question_weight = len(sanitized_question.replace("\n", "")) + sanitized_question.count("\n") * 10
     answer_weight = len(sanitized_answer.replace("\n", "")) + sanitized_answer.count("\n") * 10
     total_weight = max(question_weight + answer_weight, 1)
     ratio = question_weight / total_weight
-    return min(max(ratio, 0.52), 0.74)
+    return min(max(ratio, _COMPACT_QUESTION_RATIO_MIN), _COMPACT_QUESTION_RATIO_MAX)
 
 
 # ── Public API ──
