@@ -51,6 +51,9 @@ GROUP_W = (BODY_W - GAP_BETWEEN_GROUPS) / 2
 COL_NO = 28
 COL_WORD = 115
 COL_ANSWER = GROUP_W - COL_NO - COL_WORD
+COL_NO_COMPACT = 22
+COMPACT_CONTENT_W = GROUP_W - COL_NO_COMPACT
+COMPACT_BOX_SPLIT_RATIO = 0.62
 
 BODY_TOP = PAGE_H - MARGIN_TOP
 HEADER_HEIGHT = 22
@@ -189,6 +192,49 @@ def _choose_font_and_wrap(
             return font, lines
 
     return fonts[-1], _wrap_lines(text, max_width, *fonts[-1])
+
+
+def _truncate_lines(
+    lines: list[str],
+    max_lines: int,
+    max_width: float,
+    font_name: str,
+    font_size: float,
+) -> list[str]:
+    if len(lines) <= max_lines:
+        return lines
+
+    truncated = lines[:max_lines]
+    ellipsis = "..."
+    last_line = truncated[-1]
+    while last_line and _text_width(last_line + ellipsis, font_name, font_size) > max_width:
+        last_line = last_line[:-1]
+    truncated[-1] = f"{last_line}{ellipsis}" if last_line else ellipsis
+    return truncated
+
+
+def _choose_font_and_wrap_by_height(
+    text: str,
+    max_width: float,
+    max_height: float,
+    fonts: list[tuple[str, float]],
+) -> tuple[tuple[str, float], list[str]]:
+    sanitized = _sanitize_pdf_text(text)
+    if not sanitized:
+        return fonts[0], []
+
+    fallback_font = fonts[-1]
+    fallback_lines: list[str] = []
+    for font_name, font_size in fonts:
+        line_height = font_size + 1.5
+        max_lines = max(1, int(max_height // line_height))
+        lines = _wrap_lines(sanitized, max_width, font_name, font_size)
+        if len(lines) <= max_lines:
+            return (font_name, font_size), lines
+        fallback_font = (font_name, font_size)
+        fallback_lines = _truncate_lines(lines, max_lines, max_width, font_name, font_size)
+
+    return fallback_font, fallback_lines
 
 
 # ── Public API ──
@@ -383,6 +429,24 @@ def _draw_page(
         c.drawString(right_x + 2, label_y, _sanitize_pdf_text(right_label))
         c.setFillColorRGB(0, 0, 0)
 
+    if rows_per_side <= 15:
+        _draw_compact_group(c, MARGIN_L, left_words, show_answers, rows_per_side)
+
+        sep_x = MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS / 2
+        c.setStrokeColorRGB(0.3, 0.3, 0.3)
+        c.setLineWidth(0.5)
+        c.line(sep_x - 1.5, TABLE_TOP, sep_x - 1.5, MARGIN_BOTTOM)
+        c.line(sep_x + 1.5, TABLE_TOP, sep_x + 1.5, MARGIN_BOTTOM)
+
+        _draw_compact_group(
+            c,
+            MARGIN_L + GROUP_W + GAP_BETWEEN_GROUPS,
+            right_words,
+            show_answers,
+            rows_per_side,
+        )
+        return
+
     # Draw left group
     _draw_group(c, MARGIN_L, left_words, show_answers, rows_per_side)
 
@@ -516,5 +580,108 @@ def _draw_group(
     # Outer borders
     c.setStrokeColorRGB(0, 0, 0)
     c.setLineWidth(0.8)
+    c.line(x_start, TABLE_TOP, x_start, final_y)
+    c.line(x_start + GROUP_W, TABLE_TOP, x_start + GROUP_W, final_y)
+
+
+def _draw_compact_group(
+    c: Canvas,
+    x_start: float,
+    words: list[tuple[int, str, str]],
+    show_answers: bool,
+    rows_per_side: int,
+) -> None:
+    fonts = _get_font_bundle(rows_per_side)
+    question_fonts = fonts["cell_fonts"]
+    answer_fonts = fonts["cell_fonts"]
+    row_h = TABLE_HEIGHT / max(rows_per_side, 1)
+    content_x = x_start + COL_NO_COMPACT
+    content_w = COMPACT_CONTENT_W
+
+    c.setFont(*fonts["col_header"])
+    c.setFillColorRGB(0.4, 0.4, 0.4)
+    col_header_y = TABLE_TOP - 8
+    c.drawString(x_start + 2, col_header_y, "No.")
+    c.drawString(content_x + 2, col_header_y, "問題 / 解答")
+    c.setFillColorRGB(0, 0, 0)
+
+    c.setStrokeColorRGB(0, 0, 0)
+    c.setLineWidth(0.8)
+    c.line(x_start, TABLE_TOP, x_start + GROUP_W, TABLE_TOP)
+
+    y_top = TABLE_TOP
+    for i in range(rows_per_side):
+        num, question, answer = words[i] if i < len(words) else (0, "", "")
+        y_bottom = y_top - row_h
+
+        if i % 2 == 0:
+            c.setFillColorRGB(0.96, 0.96, 0.96)
+            c.rect(x_start, y_bottom, GROUP_W, row_h, fill=True, stroke=False)
+
+        c.setFillColorRGB(0, 0, 0)
+
+        if num > 0:
+            number_font = fonts["cell_fonts"][0]
+            c.setFont(*number_font)
+            num_y = y_bottom + (row_h - number_font[1]) / 2 + 1
+            c.drawRightString(content_x - 4, num_y, str(num))
+
+        split_y = y_bottom + row_h * (1 - COMPACT_BOX_SPLIT_RATIO)
+        inner_left = content_x + 3
+        inner_right = x_start + GROUP_W - 3
+        inner_top = y_top - 4
+        inner_bottom = y_bottom + 3
+        question_max_w = max(inner_right - inner_left, 1)
+        answer_max_w = question_max_w
+        question_max_h = max(inner_top - split_y - 3, 8)
+        answer_max_h = max(split_y - inner_bottom - 3, 8)
+
+        question_font, question_lines = _choose_font_and_wrap_by_height(
+            question,
+            question_max_w,
+            question_max_h,
+            question_fonts,
+        )
+        answer_font, answer_lines = _choose_font_and_wrap_by_height(
+            answer if show_answers else "",
+            answer_max_w,
+            answer_max_h,
+            answer_fonts,
+        )
+
+        if question_lines:
+            c.setFont(*question_font)
+            q_line_h = question_font[1] + 1.5
+            q_y = inner_top - question_font[1]
+            for line in question_lines:
+                c.drawString(inner_left, q_y, line)
+                q_y -= q_line_h
+
+        c.setStrokeColorRGB(0.75, 0.75, 0.75)
+        c.setLineWidth(0.3)
+        c.line(content_x, split_y, x_start + GROUP_W, split_y)
+
+        if answer_lines:
+            c.setFont(*answer_font)
+            a_line_h = answer_font[1] + 1.5
+            a_y = split_y - 3 - answer_font[1]
+            for line in answer_lines:
+                c.drawString(inner_left, a_y, line)
+                a_y -= a_line_h
+
+        c.setStrokeColorRGB(0.75, 0.75, 0.75)
+        c.setLineWidth(0.3)
+        c.line(x_start, y_bottom, x_start + GROUP_W, y_bottom)
+
+        y_top = y_bottom
+
+    final_y = y_top
+    c.setStrokeColorRGB(0.6, 0.6, 0.6)
+    c.setLineWidth(0.4)
+    c.line(content_x, TABLE_TOP, content_x, final_y)
+
+    c.setStrokeColorRGB(0, 0, 0)
+    c.setLineWidth(0.8)
+    c.line(x_start, final_y, x_start + GROUP_W, final_y)
     c.line(x_start, TABLE_TOP, x_start, final_y)
     c.line(x_start + GROUP_W, TABLE_TOP, x_start + GROUP_W, final_y)
