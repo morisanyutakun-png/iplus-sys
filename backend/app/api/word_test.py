@@ -29,6 +29,9 @@ _DOUBLE_QUOTES = {'"', "“", "”", "„", "‟", "＂"}
 _SINGLE_QUOTES = {"'", "‘", "’", "＇"}
 _ZERO_WIDTH_CHARS = {"\u200b", "\u200c", "\u200d", "\u2060"}
 _TRIMMABLE_CHARS = " \t\u00a0\u3000"
+_IMPORT_UPSERT_BATCH_SIZE = 250
+_IMPORT_LOOKUP_BATCH_SIZE = 1000
+_MAX_IMPORT_ERRORS = 100
 _NUMBER_HEADER_ALIASES = {
     "no", "no.", "number", "問題番号", "設問番号", "問番号", "番号",
 }
@@ -302,6 +305,49 @@ def _parse_csv_rows(
     return grouped_rows
 
 
+def _append_import_error(errors: list[str], message: str) -> None:
+    if len(errors) < _MAX_IMPORT_ERRORS:
+        errors.append(message)
+    elif len(errors) == _MAX_IMPORT_ERRORS:
+        errors.append("エラーが多いため、以降は省略しました")
+
+
+def _chunked(items: list, size: int):
+    for start in range(0, len(items), size):
+        yield items[start:start + size]
+
+
+async def _fetch_existing_word_numbers(
+    db: AsyncSession,
+    book_id: int,
+    word_numbers: list[int],
+) -> set[int]:
+    existing_numbers: set[int] = set()
+    for chunk in _chunked(word_numbers, _IMPORT_LOOKUP_BATCH_SIZE):
+        result = await db.execute(
+            select(Word.word_number).where(
+                Word.word_book_id == book_id,
+                Word.word_number.in_(chunk),
+            )
+        )
+        existing_numbers.update(result.scalars().all())
+    return existing_numbers
+
+
+async def _upsert_words_in_batches(
+    db: AsyncSession,
+    rows: list[dict],
+) -> None:
+    for chunk in _chunked(rows, _IMPORT_UPSERT_BATCH_SIZE):
+        stmt = pg_insert(Word).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_word_book_number",
+            set_={"question": stmt.excluded.question, "answer": stmt.excluded.answer},
+        )
+        await db.execute(stmt)
+        await db.flush()
+
+
 # ── WordBook CRUD ──
 
 @router.get("", response_model=list[WordBookOut])
@@ -475,7 +521,7 @@ async def import_csv(
     updated = 0
     errors: list[str] = []
     auto_number = 1
-    parsed_words: list[dict] = []
+    parsed_word_map: dict[int, dict] = {}
     parsed_rows = _parse_csv_rows(
         body.csv_text,
         parse_mode=parse_mode,
@@ -503,14 +549,17 @@ async def import_csv(
                 if c is not None
             )
             if len(parts) <= max_col:
-                errors.append(f"行{row_index}: 列数が不足しています（{len(parts)}列）")
+                _append_import_error(errors, f"行{row_index}: 列数が不足しています（{len(parts)}列）")
                 continue
 
             if mapping.number_col is not None:
                 try:
                     word_number = int(parts[mapping.number_col])
                 except ValueError:
-                    errors.append(f"行{row_index}: 番号が不正です: {parts[mapping.number_col]}")
+                    _append_import_error(
+                        errors,
+                        f"行{row_index}: 番号が不正です: {parts[mapping.number_col]}",
+                    )
                     continue
             else:
                 word_number = auto_number
@@ -522,7 +571,7 @@ async def import_csv(
             try:
                 word_number = int(parts[0])
             except ValueError:
-                errors.append(f"行{row_index}: 番号が不正です: {parts[0]}")
+                _append_import_error(errors, f"行{row_index}: 番号が不正です: {parts[0]}")
                 continue
             question = parts[1]
             answer = parts[2]
@@ -532,32 +581,36 @@ async def import_csv(
             question = parts[0]
             answer = parts[1]
         else:
-            errors.append(f"行{row_index}: 列数が不足しています")
+            _append_import_error(errors, f"行{row_index}: 列数が不足しています")
             continue
 
         if not question or not answer:
-            errors.append(f"行{row_index}: 問題または答えが空です")
+            _append_import_error(errors, f"行{row_index}: 問題または答えが空です")
             continue
 
+        if word_number in parsed_word_map:
+            _append_import_error(
+                errors,
+                f"行{row_index}: 問題番号 {word_number} が重複しているため、後ろの行で上書きしました",
+            )
+
         auto_number = word_number + 1
-        parsed_words.append({
+        parsed_word_map[word_number] = {
             "word_book_id": book_id,
             "word_number": word_number,
             "question": question,
             "answer": answer,
-        })
+        }
+
+    parsed_words = [
+        parsed_word_map[word_number]
+        for word_number in sorted(parsed_word_map)
+    ]
 
     # ── Bulk upsert (INSERT ... ON CONFLICT DO UPDATE) ──
     if parsed_words:
-        # Single SELECT to find which word_numbers already exist
-        parsed_numbers = sorted({w["word_number"] for w in parsed_words})
-        existing_result = await db.execute(
-            select(Word.word_number).where(
-                Word.word_book_id == book_id,
-                Word.word_number.in_(parsed_numbers),
-            )
-        )
-        existing_numbers = set(existing_result.scalars().all())
+        parsed_numbers = [w["word_number"] for w in parsed_words]
+        existing_numbers = await _fetch_existing_word_numbers(db, book_id, parsed_numbers)
 
         for w in parsed_words:
             if w["word_number"] in existing_numbers:
@@ -565,12 +618,7 @@ async def import_csv(
             else:
                 imported += 1
 
-        stmt = pg_insert(Word).values(parsed_words)
-        stmt = stmt.on_conflict_do_update(
-            constraint="uq_word_book_number",
-            set_={"question": stmt.excluded.question, "answer": stmt.excluded.answer},
-        )
-        await db.execute(stmt)
+        await _upsert_words_in_batches(db, parsed_words)
 
     # Update total_words count
     await db.flush()
