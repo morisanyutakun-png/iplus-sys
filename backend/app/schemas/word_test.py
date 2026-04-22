@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -52,6 +53,7 @@ class ColumnMapping(BaseModel):
 class CsvImportRequest(BaseModel):
     csv_text: str
     column_mapping: ColumnMapping | None = None
+    parse_mode: Literal["line_break", "comma_only"] = "line_break"
 
 
 class CsvImportResponse(BaseModel):

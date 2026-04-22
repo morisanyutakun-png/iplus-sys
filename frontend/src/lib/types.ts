@@ -299,6 +299,8 @@ export interface WordBook {
   updated_at: string;
 }
 
+export type CsvParseMode = "line_break" | "comma_only";
+
 export interface ColumnMapping {
   number_col: number | null;
   word_col: number;

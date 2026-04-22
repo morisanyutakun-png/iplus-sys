@@ -5,6 +5,7 @@ import type {
   Word,
   CsvImportResponse,
   ColumnMapping,
+  CsvParseMode,
   DetectColumnsResponse,
 } from "@/lib/types";
 
@@ -87,10 +88,12 @@ export function useImportCsv() {
       bookId,
       csvText,
       columnMapping,
+      parseMode,
     }: {
       bookId: number;
       csvText: string;
       columnMapping?: ColumnMapping;
+      parseMode: CsvParseMode;
     }) =>
       apiFetch<CsvImportResponse>(
         `/api/word-test/${bookId}/words/import-csv`,
@@ -99,6 +102,7 @@ export function useImportCsv() {
           body: JSON.stringify({
             csv_text: csvText,
             column_mapping: columnMapping ?? null,
+            parse_mode: parseMode,
           }),
         }
       ),
@@ -112,10 +116,10 @@ export function useImportCsv() {
 
 export function useDetectColumns() {
   return useMutation({
-    mutationFn: (csvText: string) =>
+    mutationFn: ({ csvText, parseMode }: { csvText: string; parseMode: CsvParseMode }) =>
       apiFetch<DetectColumnsResponse>("/api/word-test/detect-columns", {
         method: "POST",
-        body: JSON.stringify({ csv_text: csvText }),
+        body: JSON.stringify({ csv_text: csvText, parse_mode: parseMode }),
       }),
   });
 }

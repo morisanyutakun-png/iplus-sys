@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,7 +19,7 @@ import {
 import { toast } from "sonner";
 import { Upload } from "lucide-react";
 import { useImportCsv, useDetectColumns } from "@/lib/queries/word-test";
-import type { ColumnMapping } from "@/lib/types";
+import type { ColumnMapping, CsvParseMode } from "@/lib/types";
 
 interface Props {
   bookId: number;
@@ -27,6 +27,7 @@ interface Props {
 }
 
 type ColRole = "number" | "word" | "translation" | "ignore";
+type QuoteFamily = "double" | "single";
 
 const ROLE_LABELS: Record<ColRole, string> = {
   number: "番号",
@@ -35,6 +36,14 @@ const ROLE_LABELS: Record<ColRole, string> = {
   ignore: "無視",
 };
 
+const PARSE_MODE_LABELS: Record<CsvParseMode, string> = {
+  line_break: "改行モード",
+  comma_only: '","のみモード',
+};
+
+const DOUBLE_QUOTES = new Set(['"', "“", "”", "„", "‟", "＂"]);
+const SINGLE_QUOTES = new Set(["'", "‘", "’", "＇"]);
+
 interface ParsedRow {
   number: number;
   question: string;
@@ -42,13 +51,256 @@ interface ParsedRow {
   error?: string;
 }
 
+function normalizeCsvSource(text: string): string {
+  return text
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u200B\u200C\u200D\u2060]/g, "");
+}
+
+function quoteFamily(ch?: string): QuoteFamily | null {
+  if (!ch) return null;
+  if (DOUBLE_QUOTES.has(ch)) return "double";
+  if (SINGLE_QUOTES.has(ch)) return "single";
+  return null;
+}
+
+function cleanParsedCell(value: string): string {
+  return value.replace(/^[\s\u00A0\u3000]+|[\s\u00A0\u3000]+$/g, "");
+}
+
+function nextMeaningfulChar(text: string, start: number): string | null {
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (!/[\u200B\u200C\u200D\u2060]/.test(ch)) {
+      return ch;
+    }
+  }
+  return null;
+}
+
+function countUnquotedDelimiters(text: string, delimiter: string): number {
+  let count = 0;
+  let activeQuote: QuoteFamily | null = null;
+
+  for (const ch of text) {
+    if (/[\u200B\u200C\u200D\u2060]/.test(ch)) continue;
+    const currentQuote = quoteFamily(ch);
+    if (activeQuote) {
+      if (currentQuote === activeQuote) {
+        activeQuote = null;
+      }
+      continue;
+    }
+    if (currentQuote) {
+      activeQuote = currentQuote;
+      continue;
+    }
+    if (ch === delimiter) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+function chooseLineDelimiter(text: string): "\t" | "," {
+  const sampleLines = normalizeCsvSource(text)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 10);
+
+  const tabCount = sampleLines.reduce(
+    (sum, line) => sum + countUnquotedDelimiters(line, "\t"),
+    0
+  );
+  const commaCount = sampleLines.reduce(
+    (sum, line) => sum + countUnquotedDelimiters(line, ","),
+    0
+  );
+
+  return tabCount > commaCount ? "\t" : ",";
+}
+
+function inferExpectedColumns(rows: string[][]): number {
+  const flatCells = rows.flat();
+  const numericPositions = flatCells
+    .slice(0, 50)
+    .map((value, index) => ({ value, index }))
+    .filter(({ value }) => /^\d+$/.test(value ?? ""))
+    .map(({ index }) => index);
+
+  if (numericPositions.length >= 2 && numericPositions[0] === 0) {
+    const gapCounts = new Map<number, number>();
+    for (let i = 1; i < numericPositions.length; i++) {
+      const gap = numericPositions[i] - numericPositions[i - 1];
+      if (gap > 0) {
+        gapCounts.set(gap, (gapCounts.get(gap) ?? 0) + 1);
+      }
+    }
+    const bestGap = [...gapCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (bestGap && bestGap > 0) {
+      return bestGap;
+    }
+  }
+
+  const scoreGrouping = (width: number): number => {
+    const rowCount = Math.floor(flatCells.length / width);
+    if (rowCount < 2) return 0;
+
+    let score = 0;
+    for (let column = 0; column < width; column++) {
+      const values = Array.from({ length: rowCount }, (_, rowIndex) => {
+        return flatCells[rowIndex * width + column];
+      }).filter(Boolean);
+
+      if (values.length === 0) continue;
+
+      const numericRatio =
+        values.filter((value) => /^\d+$/.test(value)).length / values.length;
+      const japaneseRatio =
+        values.filter((value) => /[\u3040-\u30ff\u3400-\u9fff]/.test(value)).length /
+        values.length;
+      const latinRatio =
+        values.filter((value) => /[A-Za-z]/.test(value)).length / values.length;
+
+      score += Math.max(numericRatio, japaneseRatio, latinRatio);
+    }
+
+    if (flatCells.length % width === 0) {
+      score += 0.2;
+    }
+
+    return score;
+  };
+
+  let bestWidth = 0;
+  let bestScore = -1;
+  for (let width = 2; width <= Math.min(6, flatCells.length); width++) {
+    const score = scoreGrouping(width);
+    if (score > bestScore) {
+      bestWidth = width;
+      bestScore = score;
+    }
+  }
+  if (bestWidth > 0) {
+    return bestWidth;
+  }
+
+  if (flatCells.length >= 3 && /^\d+$/.test(flatCells[0] ?? "")) {
+    return 3;
+  }
+  if (flatCells.length >= 2) {
+    return 2;
+  }
+  return Math.max(1, flatCells.length);
+}
+
+function tokenizeCsvLikeRows(text: string, parseMode: CsvParseMode): string[][] {
+  const normalized = normalizeCsvSource(text);
+  if (!normalized.trim()) return [];
+
+  const delimiter = parseMode === "comma_only" ? "," : chooseLineDelimiter(normalized);
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = "";
+  let activeQuote: QuoteFamily | null = null;
+
+  const flushCell = () => {
+    currentRow.push(cleanParsedCell(currentCell));
+    currentCell = "";
+  };
+
+  const flushRow = () => {
+    if (currentRow.length > 0 && currentRow.some((cell) => cell !== "")) {
+      rows.push([...currentRow]);
+    }
+    currentRow = [];
+  };
+
+  for (let i = 0; i < normalized.length; i++) {
+    const ch = normalized[i];
+    if (/[\u200B\u200C\u200D\u2060]/.test(ch)) continue;
+
+    const currentQuote = quoteFamily(ch);
+    if (activeQuote) {
+      if (currentQuote === activeQuote) {
+        const nextChar = normalized[i + 1];
+        if (quoteFamily(nextChar) === activeQuote) {
+          currentCell += activeQuote === "double" ? '"' : "'";
+          i++;
+          continue;
+        }
+        activeQuote = null;
+        continue;
+      }
+      currentCell += ch;
+      continue;
+    }
+
+    if (currentQuote && cleanParsedCell(currentCell) === "") {
+      activeQuote = currentQuote;
+      continue;
+    }
+
+    if (ch === delimiter) {
+      flushCell();
+      continue;
+    }
+
+    if (ch === "\n") {
+      if (parseMode === "line_break") {
+        flushCell();
+        flushRow();
+      } else {
+        const upcoming = nextMeaningfulChar(normalized, i + 1);
+        if (currentCell && upcoming !== null && upcoming !== "," && !/\s$/.test(currentCell)) {
+          currentCell += " ";
+        }
+      }
+      continue;
+    }
+
+    currentCell += ch;
+  }
+
+  flushCell();
+  flushRow();
+  return rows;
+}
+
+function parseCsvRows(
+  text: string,
+  parseMode: CsvParseMode,
+  expectedColumns?: number
+): string[][] {
+  const rows = tokenizeCsvLikeRows(text, parseMode);
+  if (parseMode !== "comma_only") return rows;
+
+  const flatCells = rows.flat();
+  if (flatCells.length === 0) return [];
+
+  const groupSize = Math.max(1, expectedColumns ?? inferExpectedColumns(rows));
+  const groupedRows: string[][] = [];
+  for (let start = 0; start < flatCells.length; start += groupSize) {
+    const chunk = flatCells.slice(start, start + groupSize);
+    if (chunk.some((cell) => cell !== "")) {
+      groupedRows.push(chunk);
+    }
+  }
+
+  return groupedRows;
+}
+
 function parseWithMapping(
   text: string,
   roles: ColRole[],
-  skipHeader: boolean
+  skipHeader: boolean,
+  parseMode: CsvParseMode
 ): ParsedRow[] {
-  const lines = text.trim().split("\n");
-  const rows: ParsedRow[] = [];
+  const rows = parseCsvRows(text, parseMode, roles.length || undefined);
+  const parsedRows: ParsedRow[] = [];
   let autoNumber = 1;
 
   const numIdx = roles.indexOf("number");
@@ -59,20 +311,18 @@ function parseWithMapping(
 
   const startIdx = skipHeader ? 1 : 0;
 
-  for (let i = startIdx; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-
-    const parts = line.includes("\t")
-      ? line.split("\t").map((s) => s.trim())
-      : line.split(",").map((s) => s.trim());
+  for (let i = startIdx; i < rows.length; i++) {
+    const parts = rows[i];
+    if (!parts || parts.every((part) => part === "")) continue;
 
     let num = autoNumber;
     if (numIdx >= 0 && numIdx < parts.length) {
       const parsed = parseInt(parts[numIdx], 10);
-      if (!isNaN(parsed)) {
+      if (!Number.isNaN(parsed)) {
         num = parsed;
         autoNumber = parsed + 1;
+      } else {
+        autoNumber++;
       }
     } else {
       autoNumber++;
@@ -82,75 +332,114 @@ function parseWithMapping(
     const answer = transIdx < parts.length ? parts[transIdx] : "";
 
     if (!question || !answer) {
-      rows.push({ number: num, question, answer, error: "空の列あり" });
+      parsedRows.push({ number: num, question, answer, error: "空の列あり" });
     } else {
-      rows.push({ number: num, question, answer });
+      parsedRows.push({ number: num, question, answer });
     }
   }
 
-  return rows;
+  return parsedRows;
+}
+
+function buildFallbackRoles(columns: string[]): ColRole[] {
+  if (columns.length === 0) return [];
+
+  const roles: ColRole[] = Array(columns.length).fill("ignore");
+  if (columns.length >= 3 && /^\d+$/.test(columns[0] ?? "")) {
+    roles[0] = "number";
+    roles[1] = "word";
+    roles[2] = "translation";
+    return roles;
+  }
+
+  if (columns.length >= 2) {
+    roles[columns.length - 2] = "word";
+    roles[columns.length - 1] = "translation";
+  }
+
+  return roles;
 }
 
 export function CsvImportDialog({ bookId, bookName }: Props) {
   const [open, setOpen] = useState(false);
   const [csvText, setCsvText] = useState("");
+  const [parseMode, setParseMode] = useState<CsvParseMode>("line_break");
   const [colRoles, setColRoles] = useState<ColRole[]>([]);
   const [skipHeader, setSkipHeader] = useState(false);
   const [detected, setDetected] = useState(false);
   const importCsv = useImportCsv();
   const detectColumns = useDetectColumns();
+  const detectionRunId = useRef(0);
 
   const sampleColumns = useMemo(() => {
-    if (!csvText.trim()) return [];
-    const firstLine = csvText.trim().split("\n")[0];
-    const parts = firstLine.includes("\t")
-      ? firstLine.split("\t").map((s) => s.trim())
-      : firstLine.split(",").map((s) => s.trim());
-    return parts;
-  }, [csvText]);
+    return parseCsvRows(csvText, parseMode, colRoles.length || undefined)[0] ?? [];
+  }, [csvText, parseMode, colRoles.length]);
 
   const preview = useMemo(() => {
     if (colRoles.length === 0 || sampleColumns.length === 0) return [];
-    return parseWithMapping(csvText, colRoles, skipHeader);
-  }, [csvText, colRoles, skipHeader, sampleColumns]);
+    return parseWithMapping(csvText, colRoles, skipHeader, parseMode);
+  }, [csvText, colRoles, skipHeader, sampleColumns, parseMode]);
 
   const validCount = preview.filter(
-    (r) => !r.error && r.question && r.answer
+    (row) => !row.error && row.question && row.answer
   ).length;
 
-  const handlePaste = useCallback(
-    async (text: string) => {
-      setCsvText(text);
+  const resetDetection = useCallback(() => {
+    setColRoles([]);
+    setDetected(false);
+  }, []);
+
+  const detectRoles = useCallback(
+    async (text: string, mode: CsvParseMode) => {
       if (!text.trim()) {
-        setColRoles([]);
-        setDetected(false);
+        resetDetection();
         return;
       }
 
+      const runId = detectionRunId.current + 1;
+      detectionRunId.current = runId;
+
       try {
-        const result = await detectColumns.mutateAsync(text);
+        const result = await detectColumns.mutateAsync({
+          csvText: text,
+          parseMode: mode,
+        });
+        if (detectionRunId.current !== runId) return;
+
         if (result.columns.length > 0) {
-          const roles: ColRole[] = result.columns.map(
-            (c) => c.suggested_role as ColRole
+          setColRoles(
+            result.columns.map((column) => column.suggested_role as ColRole)
           );
-          setColRoles(roles);
           setDetected(true);
+          return;
         }
       } catch {
-        // Fallback: simple 3-column detection
-        const firstLine = text.trim().split("\n")[0];
-        const parts = firstLine.includes("\t")
-          ? firstLine.split("\t")
-          : firstLine.split(",");
-        if (parts.length >= 3) {
-          setColRoles(["number", "word", "translation", ...Array(Math.max(0, parts.length - 3)).fill("ignore")]);
-        } else if (parts.length === 2) {
-          setColRoles(["word", "translation"]);
-        }
-        setDetected(true);
+        // Fallback handled below.
       }
+
+      if (detectionRunId.current !== runId) return;
+      const fallbackSampleColumns = parseCsvRows(text, mode)[0] ?? [];
+      const fallbackRoles = buildFallbackRoles(fallbackSampleColumns);
+      setColRoles(fallbackRoles);
+      setDetected(fallbackRoles.length > 0);
     },
-    [detectColumns]
+    [detectColumns, resetDetection]
+  );
+
+  const handleTextChange = useCallback(
+    (text: string) => {
+      setCsvText(text);
+      void detectRoles(text, parseMode);
+    },
+    [detectRoles, parseMode]
+  );
+
+  const handleModeChange = useCallback(
+    (mode: CsvParseMode) => {
+      setParseMode(mode);
+      void detectRoles(csvText, mode);
+    },
+    [csvText, detectRoles]
   );
 
   const setRole = (index: number, role: ColRole) => {
@@ -183,6 +472,7 @@ export function CsvImportDialog({ bookId, bookName }: Props) {
         bookId,
         csvText,
         columnMapping: mapping,
+        parseMode,
       });
       toast.success(
         `インポート完了: ${result.imported}件追加, ${result.updated}件更新` +
@@ -194,7 +484,9 @@ export function CsvImportDialog({ bookId, bookName }: Props) {
         console.warn("Import errors:", result.errors);
       }
       setCsvText("");
+      setParseMode("line_break");
       setColRoles([]);
+      setSkipHeader(false);
       setDetected(false);
       setOpen(false);
     } catch {
@@ -224,18 +516,41 @@ export function CsvImportDialog({ bookId, bookName }: Props) {
             <p>
               Excelからコピーしたデータを貼り付けてください。列の役割は自動検出されます。
             </p>
+            <p>
+              {"改行モードは1行ごとに判定し、\",\"のみモードは改行をまたいでもカンマだけで区切ります。"}
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-xs font-medium">取り込みモード</p>
+            <Select
+              value={parseMode}
+              onValueChange={(value) => handleModeChange(value as CsvParseMode)}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(PARSE_MODE_LABELS).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <textarea
             className="w-full h-32 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-ring"
             placeholder={
-              "1\tSection1\tabandon\t捨てる、見捨てる\n2\tSection1\tability\t能力\n..."
+              parseMode === "line_break"
+                ? "1\tSection1\tabandon\t捨てる、見捨てる\n2\tSection1\tability\t能力\n..."
+                : "1,abandon,捨てる,2,ability,能力,..."
             }
             value={csvText}
-            onChange={(e) => handlePaste(e.target.value)}
+            onChange={(e) => handleTextChange(e.target.value)}
           />
 
-          {/* Column Mapping UI */}
           {detected && sampleColumns.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-medium">
@@ -252,7 +567,7 @@ export function CsvImportDialog({ bookId, bookName }: Props) {
                     </div>
                     <Select
                       value={colRoles[i] || "ignore"}
-                      onValueChange={(v) => setRole(i, v as ColRole)}
+                      onValueChange={(value) => setRole(i, value as ColRole)}
                     >
                       <SelectTrigger className="h-7 text-xs">
                         <SelectValue />
@@ -280,7 +595,6 @@ export function CsvImportDialog({ bookId, bookName }: Props) {
             </div>
           )}
 
-          {/* Preview */}
           {preview.length > 0 && (
             <div className="flex-1 overflow-auto min-h-0">
               <p className="text-xs text-muted-foreground mb-1">

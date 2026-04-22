@@ -1,5 +1,8 @@
+from collections import Counter
+from collections.abc import Iterable
 import re
 import unicodedata
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, delete, update, func as sa_func
@@ -20,6 +23,242 @@ from app.schemas.word_test import (
 )
 
 router = APIRouter()
+
+CsvParseMode = Literal["line_break", "comma_only"]
+_DOUBLE_QUOTES = {'"', "“", "”", "„", "‟", "＂"}
+_SINGLE_QUOTES = {"'", "‘", "’", "＇"}
+_ZERO_WIDTH_CHARS = {"\u200b", "\u200c", "\u200d", "\u2060"}
+_TRIMMABLE_CHARS = " \t\u00a0\u3000"
+
+
+def _normalize_csv_source(text: str) -> str:
+    return (
+        text.replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .lstrip("\ufeff")
+    )
+
+
+def _quote_family(ch: str | None) -> str | None:
+    if ch in _DOUBLE_QUOTES:
+        return "double"
+    if ch in _SINGLE_QUOTES:
+        return "single"
+    return None
+
+
+def _clean_parsed_cell(value: str) -> str:
+    return value.strip(_TRIMMABLE_CHARS)
+
+
+def _next_meaningful_char(text: str, start: int) -> str | None:
+    for ch in text[start:]:
+        if ch in _ZERO_WIDTH_CHARS:
+            continue
+        return ch
+    return None
+
+
+def _count_unquoted_delimiters(text: str, delimiter: str) -> int:
+    count = 0
+    quote_family: str | None = None
+    for ch in text:
+        if ch in _ZERO_WIDTH_CHARS:
+            continue
+        current_quote = _quote_family(ch)
+        if quote_family:
+            if current_quote == quote_family:
+                quote_family = None
+            continue
+        if current_quote:
+            quote_family = current_quote
+            continue
+        if ch == delimiter:
+            count += 1
+    return count
+
+
+def _choose_line_delimiter(rows: Iterable[str]) -> str:
+    tab_count = 0
+    comma_count = 0
+
+    for raw_row in rows:
+        row = raw_row.strip()
+        if not row:
+            continue
+        tab_count += _count_unquoted_delimiters(row, "\t")
+        comma_count += _count_unquoted_delimiters(row, ",")
+
+    return "\t" if tab_count > comma_count else ","
+
+
+def _expected_columns_from_mapping(mapping) -> int | None:
+    if mapping is None:
+        return None
+    columns = [
+        col
+        for col in [mapping.number_col, mapping.word_col, mapping.translation_col]
+        if col is not None
+    ]
+    return (max(columns) + 1) if columns else None
+
+
+def _infer_expected_columns(rows: list[list[str]]) -> int:
+    flat_cells = [cell for row in rows for cell in row]
+    numeric_positions = [
+        index
+        for index, value in enumerate(flat_cells[:50])
+        if re.fullmatch(r"\d+", value or "")
+    ]
+    if len(numeric_positions) >= 2 and numeric_positions[0] == 0:
+        gaps = [
+            current - previous
+            for previous, current in zip(numeric_positions, numeric_positions[1:])
+            if current > previous
+        ]
+        if gaps:
+            gap, _ = Counter(gaps).most_common(1)[0]
+            if gap > 0:
+                return gap
+
+    def score_grouping(width: int) -> float:
+        row_count = len(flat_cells) // width
+        if row_count < 2:
+            return 0.0
+        score = 0.0
+        for column in range(width):
+            values = [
+                flat_cells[row_index * width + column]
+                for row_index in range(row_count)
+                if flat_cells[row_index * width + column]
+            ]
+            if not values:
+                continue
+            ratios = (
+                sum(bool(re.fullmatch(r"\d+", value)) for value in values) / len(values),
+                sum(_is_japanese(value) for value in values) / len(values),
+                sum(_looks_like_word_value(value) for value in values) / len(values),
+            )
+            score += max(ratios)
+        if len(flat_cells) % width == 0:
+            score += 0.2
+        return score
+
+    best_width = 0
+    best_score = -1.0
+    for width in range(2, min(6, len(flat_cells)) + 1):
+        score = score_grouping(width)
+        if score > best_score:
+            best_width = width
+            best_score = score
+    if best_width:
+        return best_width
+
+    if len(flat_cells) >= 3 and re.fullmatch(r"\d+", flat_cells[0] or ""):
+        return 3
+    if len(flat_cells) >= 2:
+        return 2
+    return max(1, len(flat_cells))
+
+
+def _tokenize_csv_like_rows(text: str, parse_mode: CsvParseMode) -> list[list[str]]:
+    normalized = _normalize_csv_source(text)
+    if not normalized.strip():
+        return []
+
+    raw_rows = normalized.split("\n")
+    delimiter = "," if parse_mode == "comma_only" else _choose_line_delimiter(raw_rows[:10])
+
+    rows: list[list[str]] = []
+    current_row: list[str] = []
+    current_cell: list[str] = []
+    quote_family: str | None = None
+    i = 0
+
+    def flush_cell() -> None:
+        value = _clean_parsed_cell("".join(current_cell))
+        current_row.append(value)
+        current_cell.clear()
+
+    def flush_row() -> None:
+        if current_row and any(cell != "" for cell in current_row):
+            rows.append(current_row.copy())
+        current_row.clear()
+
+    while i < len(normalized):
+        ch = normalized[i]
+        if ch in _ZERO_WIDTH_CHARS:
+            i += 1
+            continue
+
+        current_quote = _quote_family(ch)
+        if quote_family:
+            if current_quote == quote_family:
+                next_char = normalized[i + 1] if i + 1 < len(normalized) else None
+                if _quote_family(next_char) == quote_family:
+                    current_cell.append('"' if quote_family == "double" else "'")
+                    i += 2
+                    continue
+                quote_family = None
+                i += 1
+                continue
+            current_cell.append(ch)
+            i += 1
+            continue
+
+        if current_quote and not "".join(current_cell).strip(_TRIMMABLE_CHARS):
+            quote_family = current_quote
+            i += 1
+            continue
+
+        if ch == delimiter:
+            flush_cell()
+            i += 1
+            continue
+
+        if ch == "\n":
+            if parse_mode == "line_break":
+                flush_cell()
+                flush_row()
+            else:
+                next_char = _next_meaningful_char(normalized, i + 1)
+                if (
+                    current_cell
+                    and next_char not in {None, ","}
+                    and not current_cell[-1].isspace()
+                ):
+                    current_cell.append(" ")
+            i += 1
+            continue
+
+        current_cell.append(ch)
+        i += 1
+
+    flush_cell()
+    flush_row()
+    return rows
+
+
+def _parse_csv_rows(
+    text: str,
+    parse_mode: CsvParseMode,
+    expected_columns: int | None = None,
+) -> list[list[str]]:
+    rows = _tokenize_csv_like_rows(text, parse_mode)
+    if parse_mode != "comma_only":
+        return rows
+
+    flat_cells = [cell for row in rows for cell in row]
+    if not flat_cells:
+        return []
+
+    group_size = expected_columns or _infer_expected_columns(rows)
+    grouped_rows: list[list[str]] = []
+    for start in range(0, len(flat_cells), group_size):
+        chunk = flat_cells[start:start + group_size]
+        if any(cell != "" for cell in chunk):
+            grouped_rows.append(chunk)
+    return grouped_rows
 
 
 # ── WordBook CRUD ──
@@ -189,26 +428,28 @@ async def import_csv(
     if not book:
         raise HTTPException(status_code=404, detail="単語帳が見つかりません")
 
-    lines = body.csv_text.strip().split("\n")
     mapping = body.column_mapping
+    parse_mode = body.parse_mode
     imported = 0
     updated = 0
     errors: list[str] = []
     auto_number = 1
     parsed_words: list[dict] = []
+    parsed_rows = _parse_csv_rows(
+        body.csv_text,
+        parse_mode=parse_mode,
+        expected_columns=_expected_columns_from_mapping(mapping),
+    )
 
     start_idx = 1 if mapping and mapping.skip_header else 0
 
-    for i, raw_line in enumerate(lines, start=1):
-        if i - 1 < start_idx:
+    for row_index, raw_parts in enumerate(parsed_rows, start=1):
+        if row_index - 1 < start_idx:
             continue
-        line = raw_line.strip()
-        if not line:
+        if not raw_parts or all(part == "" for part in raw_parts):
             continue
 
-        # Split by tab first, then comma
-        parts = line.split("\t") if "\t" in line else line.split(",")
-        parts = [p.strip() for p in parts]
+        parts = [_clean_parsed_cell(part) for part in raw_parts]
 
         word_number: int | None = None
         question: str = ""
@@ -221,14 +462,14 @@ async def import_csv(
                 if c is not None
             )
             if len(parts) <= max_col:
-                errors.append(f"行{i}: 列数が不足しています（{len(parts)}列）")
+                errors.append(f"行{row_index}: 列数が不足しています（{len(parts)}列）")
                 continue
 
             if mapping.number_col is not None:
                 try:
                     word_number = int(parts[mapping.number_col])
                 except ValueError:
-                    errors.append(f"行{i}: 番号が不正です: {parts[mapping.number_col]}")
+                    errors.append(f"行{row_index}: 番号が不正です: {parts[mapping.number_col]}")
                     continue
             else:
                 word_number = auto_number
@@ -240,7 +481,7 @@ async def import_csv(
             try:
                 word_number = int(parts[0])
             except ValueError:
-                errors.append(f"行{i}: 番号が不正です: {parts[0]}")
+                errors.append(f"行{row_index}: 番号が不正です: {parts[0]}")
                 continue
             question = parts[1]
             answer = parts[2]
@@ -250,11 +491,11 @@ async def import_csv(
             question = parts[0]
             answer = parts[1]
         else:
-            errors.append(f"行{i}: 列数が不足しています")
+            errors.append(f"行{row_index}: 列数が不足しています")
             continue
 
         if not question or not answer:
-            errors.append(f"行{i}: 問題または答えが空です")
+            errors.append(f"行{row_index}: 問題または答えが空です")
             continue
 
         auto_number = word_number + 1
@@ -439,29 +680,40 @@ def _is_japanese(text: str) -> bool:
     return False
 
 
+def _looks_like_word_value(text: str) -> bool:
+    has_latin = False
+    for ch in text:
+        if ch.isspace():
+            continue
+        name = unicodedata.name(ch, "")
+        category = unicodedata.category(ch)
+        if "LATIN" in name:
+            has_latin = True
+            continue
+        if category.startswith(("M", "N", "P", "S")):
+            continue
+        return False
+    return has_latin
+
+
 @router.post("/detect-columns")
 async def detect_columns(body: CsvImportRequest):
     """Auto-detect column roles from sample CSV data."""
-    lines = body.csv_text.strip().split("\n")
-    if not lines:
+    rows = _parse_csv_rows(body.csv_text, parse_mode=body.parse_mode)
+    if not rows:
         return {"columns": [], "suggested_mapping": None}
 
-    # Parse first line to count columns
-    sample = lines[0]
-    parts = sample.split("\t") if "\t" in sample else sample.split(",")
-    parts = [p.strip() for p in parts]
+    parts = rows[0]
     num_cols = len(parts)
 
     # Analyze multiple lines
-    sample_lines = lines[:min(10, len(lines))]
+    sample_rows = rows[:min(10, len(rows))]
     col_scores: list[dict[str, float]] = [
         {"number": 0, "word": 0, "translation": 0} for _ in range(num_cols)
     ]
 
-    for raw_line in sample_lines:
-        line_parts = raw_line.split("\t") if "\t" in raw_line else raw_line.split(",")
-        line_parts = [p.strip() for p in line_parts]
-        for j, val in enumerate(line_parts):
+    for row in sample_rows:
+        for j, val in enumerate(row):
             if j >= num_cols:
                 break
             if not val:
@@ -472,11 +724,11 @@ async def detect_columns(body: CsvImportRequest):
             # Japanese detection
             if _is_japanese(val):
                 col_scores[j]["translation"] += 1
-            # ASCII/Latin word detection
-            elif re.match(r"^[a-zA-Z\s\-\']+$", val):
+            # Latin word detection, including accents and common symbols
+            elif _looks_like_word_value(val):
                 col_scores[j]["word"] += 1
 
-    n_lines = len(sample_lines)
+    n_lines = len(sample_rows)
     columns = []
     for j in range(num_cols):
         scores = col_scores[j]
