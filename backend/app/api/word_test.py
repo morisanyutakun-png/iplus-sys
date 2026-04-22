@@ -95,14 +95,6 @@ def _detect_header_roles(row: list[str]) -> list[str] | None:
     return [role or "ignore" for role in roles]
 
 
-def _next_meaningful_char(text: str, start: int) -> str | None:
-    for ch in text[start:]:
-        if ch in _ZERO_WIDTH_CHARS:
-            continue
-        return ch
-    return None
-
-
 def _count_unquoted_delimiters(text: str, delimiter: str) -> int:
     count = 0
     quote_family: str | None = None
@@ -261,17 +253,12 @@ def _tokenize_csv_like_rows(text: str, parse_mode: CsvParseMode) -> list[list[st
             continue
 
         if ch == "\n":
-            if parse_mode == "line_break":
+            if parse_mode == "comma_only":
                 flush_cell()
                 flush_row()
             else:
-                next_char = _next_meaningful_char(normalized, i + 1)
-                if (
-                    current_cell
-                    and next_char not in {None, ","}
-                    and not current_cell[-1].isspace()
-                ):
-                    current_cell.append(" ")
+                flush_cell()
+                flush_row()
             i += 1
             continue
 
@@ -295,6 +282,9 @@ def _parse_csv_rows(
     flat_cells = [cell for row in rows for cell in row]
     if not flat_cells:
         return []
+
+    if expected_columns is None and len(rows) >= 2 and len(rows[0]) > 1:
+        expected_columns = len(rows[0])
 
     group_size = expected_columns or _infer_expected_columns(rows)
     grouped_rows: list[list[str]] = []

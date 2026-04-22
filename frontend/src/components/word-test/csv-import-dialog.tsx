@@ -101,16 +101,6 @@ function detectHeaderRoles(columns: string[]): ColRole[] | null {
   return roles.map((role) => role ?? "ignore");
 }
 
-function nextMeaningfulChar(text: string, start: number): string | null {
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i];
-    if (!/[\u200B\u200C\u200D\u2060]/.test(ch)) {
-      return ch;
-    }
-  }
-  return null;
-}
-
 function countUnquotedDelimiters(text: string, delimiter: string): number {
   let count = 0;
   let activeQuote: QuoteFamily | null = null;
@@ -282,15 +272,8 @@ function tokenizeCsvLikeRows(text: string, parseMode: CsvParseMode): string[][] 
     }
 
     if (ch === "\n") {
-      if (parseMode === "line_break") {
-        flushCell();
-        flushRow();
-      } else {
-        const upcoming = nextMeaningfulChar(normalized, i + 1);
-        if (currentCell && upcoming !== null && upcoming !== "," && !/\s$/.test(currentCell)) {
-          currentCell += " ";
-        }
-      }
+      flushCell();
+      flushRow();
       continue;
     }
 
@@ -313,7 +296,9 @@ function parseCsvRows(
   const flatCells = rows.flat();
   if (flatCells.length === 0) return [];
 
-  const groupSize = Math.max(1, expectedColumns ?? inferExpectedColumns(rows));
+  const resolvedExpectedColumns =
+    expectedColumns ?? (rows.length >= 2 && rows[0].length > 1 ? rows[0].length : undefined);
+  const groupSize = Math.max(1, resolvedExpectedColumns ?? inferExpectedColumns(rows));
   const groupedRows: string[][] = [];
   for (let start = 0; start < flatCells.length; start += groupSize) {
     const chunk = flatCells.slice(start, start + groupSize);
