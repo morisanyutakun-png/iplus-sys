@@ -191,7 +191,7 @@ export function MaterialManager({ studentId }: Props) {
   const [wtEndNum, setWtEndNum] = useState(100);
   const [wtWordsPerTest, setWtWordsPerTest] = useState(100);
   const [wtQuestionsPerTest, setWtQuestionsPerTest] = useState(50);
-  const [wtRowsPerSide, setWtRowsPerSide] = useState<30 | 50>(50);
+  const [wtRowsPerSide, setWtRowsPerSide] = useState<15 | 30 | 50>(50);
 
   const handleToggle = (materialKey: string, action: "assign" | "remove") => {
     toggleMutation.mutate(
@@ -899,7 +899,7 @@ export function MaterialManager({ studentId }: Props) {
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">行数（各側）</label>
                 <div className="flex gap-2">
-                  {([30, 50] as const).map((n) => (
+                  {([15, 30, 50] as const).map((n) => (
                     <button
                       key={n}
                       type="button"
