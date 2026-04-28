@@ -17,6 +17,8 @@ import {
   BarChart3,
   AlertTriangle,
   Calculator,
+  Plus,
+  Save,
 } from "lucide-react";
 import { DemoPlayer } from "@/components/landing/demo-player";
 
@@ -128,14 +130,14 @@ export default async function LandingPage() {
               ライブデモ
             </div>
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
-              <span className="text-zinc-900">5つの場面で見る、</span>
+              <span className="text-zinc-900">教材作成から個別印刷まで、</span>
               <br className="sm:hidden" />
-              <span className="bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">いつもの操作。</span>
+              <span className="bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">6ステップで完結。</span>
             </h2>
             <p className="mt-3 text-sm sm:text-base text-zinc-600 max-w-xl mx-auto">
-              実際の画面と同じレイアウト・配色・操作で、田中 太郎さんを追いかけます。
+              <strong className="text-zinc-900">教材を作る → 生徒を選ぶ → 割り当てる → 結果を入れる → 反映 → 印刷</strong>。
               <br className="hidden sm:block" />
-              下のチップで停止・巻き戻し・任意の場面へジャンプできます。
+              実際のアプリ画面そのままの流れを、田中 太郎さんを例に追いかけます。
             </p>
           </div>
 
@@ -210,18 +212,20 @@ export default async function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-10">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-zinc-900">
-              使い方は、たったの4ステップ。
+              授業の流れにそのまま沿った、6ステップ。
             </h2>
             <p className="mt-3 text-sm sm:text-base text-zinc-600 max-w-xl mx-auto">
-              授業の流れにそのまま沿った、自然な操作だけで完結します。
+              教材を作るところから、その日の宿題プリントを生徒に渡すところまで、ぜんぶこのアプリの中で。
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 relative">
-            <FlowStep n={1} title="ダッシュボードを見る" desc="完了間近・正答率低下の生徒に自動で印が立ちます。" icon={<AlertTriangle className="w-5 h-5" />} />
-            <FlowStep n={2} title="採点結果を入れる" desc="エクセル感覚で点数と合格をぽちぽち。Ctrl+S で一括反映。" icon={<ClipboardCheck className="w-5 h-5" />} highlight />
-            <FlowStep n={3} title="模試で合格力を確認" desc="レーダー・推移・圧縮スコアで志望大学までの距離が見えます。" icon={<Calculator className="w-5 h-5" />} />
-            <FlowStep n={4} title="その子だけ印刷" desc="生徒の行ごとの「印刷」で問題＋解答が1つのPDFに。" icon={<Printer className="w-5 h-5" />} />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 relative">
+            <FlowStep n={1} title="教材を作る" desc="教材名と教科を入れて登録。章ごとにPDFを4種類まで紐付け可。" icon={<BookOpen className="w-5 h-5" />} />
+            <FlowStep n={2} title="生徒を選ぶ" desc="上の生徒切替セレクタで対象を選ぶだけ。" icon={<Users className="w-5 h-5" />} />
+            <FlowStep n={3} title="割り当てる" desc="「割り当て管理」タブの追加可能教材から1クリック。" icon={<Plus className="w-5 h-5" />} />
+            <FlowStep n={4} title="結果を入れる" desc="「定着度入力」タブで点数・満点・合格を入れる。" icon={<ClipboardCheck className="w-5 h-5" />} highlight />
+            <FlowStep n={5} title="反映する" desc="Ctrl+Sで一括保存。次の章へ自動で進む。" icon={<Save className="w-5 h-5" />} />
+            <FlowStep n={6} title="個別印刷" desc="印刷ページの生徒行から「印刷」で1つのPDFに結合。" icon={<Printer className="w-5 h-5" />} />
           </div>
         </div>
       </section>
