@@ -161,9 +161,9 @@
 \sffamily
 {\fontsize{14}{18}\selectfont\textbf{\textcolor{ipBlue}{\faBolt}\ \ ひとことで言うと}}\\[6pt]
 {\fontsize{12}{18}\selectfont\textcolor{ipNavy}{
-\textbf{教材を作る → 生徒を選ぶ → 割り当てる → 結果を入れる → 反映 → 個別印刷}。\\
-この6ステップが、すべて1つのアプリの中で完結します。
-採点結果を入れた瞬間に進捗が更新され、要注意の生徒には自動で印が立ちます。}}
+\textbf{教材を作る → 生徒を選ぶ → 割り当てる → 結果を入れる → 反映 → 個別印刷 → 分析}。\\
+この7ステップが、すべて1つのアプリの中で完結します。
+採点結果を入れた瞬間に進捗が更新され、要注意の生徒には自動で印が立ち、成果はグラフで一目瞭然。}}
 \end{tcolorbox}
 
 \vspace{0.2em}
@@ -246,30 +246,32 @@
 % =========================================
 % 章3 典型ワークフロー
 % =========================================
-\chap{3}{典型ワークフロー（6ステップ）}
+\chap{3}{典型ワークフロー（7ステップ）}
 
 実際の操作の流れを、田中 太郎さんを例に並べます。すべてアプリの中で完結します。
 
 \vspace{0.4em}
 \begin{center}\sffamily\small
 \begin{tikzpicture}[
-  node distance=0.55cm,
-  step/.style={rounded corners=4pt,draw=ipBlue!30,fill=white,minimum width=2.4cm,minimum height=1.2cm,align=center,inner sep=4pt,font=\sffamily\scriptsize,line width=0.6pt,drop fuzzy shadow=ipNavy!10},
-  hi/.style={rounded corners=4pt,fill=ipOrange!10,draw=ipOrange,minimum width=2.4cm,minimum height=1.2cm,align=center,inner sep=4pt,font=\sffamily\scriptsize\bfseries,line width=0.8pt,drop fuzzy shadow=ipOrange!20},
+  node distance=0.35cm,
+  step/.style={rounded corners=4pt,draw=ipBlue!30,fill=white,minimum width=2.0cm,minimum height=1.2cm,align=center,inner sep=3pt,font=\sffamily\scriptsize,line width=0.6pt,drop fuzzy shadow=ipNavy!10},
+  hi/.style={rounded corners=4pt,fill=ipOrange!10,draw=ipOrange,minimum width=2.0cm,minimum height=1.2cm,align=center,inner sep=3pt,font=\sffamily\scriptsize\bfseries,line width=0.8pt,drop fuzzy shadow=ipOrange!20},
   arr/.style={-{Stealth[length=2.2mm]},line width=0.9pt,ipBlue!60},
 ]
-\node[step] (s1) {\textbf{1. 教材を作る}\\\scriptsize/materials\\\textcolor{ipGray}{\faBook}};
-\node[step,right=of s1] (s2) {\textbf{2. 生徒を選ぶ}\\\scriptsize/students\\\textcolor{ipGray}{\faUser}};
-\node[step,right=of s2] (s3) {\textbf{3. 割り当てる}\\\scriptsize tab=materials\\\textcolor{ipGray}{\faPlus}};
-\node[hi,below=of s3] (s4) {\textbf{4. 結果を入れる}\\\scriptsize tab=mastery\\\textcolor{ipOrange}{\faClipboardCheck}};
-\node[step,left=of s4] (s5) {\textbf{5. 反映}\\\scriptsize Ctrl+S\\\textcolor{ipGray}{\faSave}};
+\node[step] (s1) {\textbf{1. 教材作成}\\\scriptsize/materials\\\textcolor{ipGray}{\faBook}};
+\node[step,right=of s1] (s2) {\textbf{2. 生徒選択}\\\scriptsize/students\\\textcolor{ipGray}{\faUser}};
+\node[step,right=of s2] (s3) {\textbf{3. 割り当て}\\\scriptsize tab=materials\\\textcolor{ipGray}{\faPlus}};
+\node[hi,right=of s3] (s4) {\textbf{4. 結果入力}\\\scriptsize tab=mastery\\\textcolor{ipOrange}{\faClipboardCheck}};
+\node[step,below=of s4] (s5) {\textbf{5. 反映}\\\scriptsize Ctrl+S\\\textcolor{ipGray}{\faSave}};
 \node[step,left=of s5] (s6) {\textbf{6. 個別印刷}\\\scriptsize/print\\\textcolor{ipGray}{\faPrint}};
+\node[step,left=of s6] (s7) {\textbf{7. 分析}\\\scriptsize tab=analytics\\\textcolor{ipGray}{\faChartBar}};
 
 \draw[arr] (s1) -- (s2);
 \draw[arr] (s2) -- (s3);
-\draw[arr] (s3.south) -- ++(0,-0.3) -| (s4.north);
-\draw[arr] (s4) -- (s5);
+\draw[arr] (s3) -- (s4);
+\draw[arr] (s4.south) -- (s5.north);
 \draw[arr] (s5) -- (s6);
+\draw[arr] (s6) -- (s7);
 \end{tikzpicture}
 \end{center}
 
@@ -317,6 +319,18 @@
 \textbf{\faPrint\ \ 6. 個別印刷}\,\arrowto\,\texttt{/print}\\
 キュー一覧は\textbf{生徒ごとにグループ化}されています。対象の生徒のカードを開く\,\arrowto\,\textbf{問題セクション}（青）と\textbf{解答セクション}（黄）に分かれた行を確認\,\arrowto\,カード右上の \btnO{印刷}\,ボタン。\\
 \arrowto\,その生徒の項目だけをまとめて\textbf{1つのPDFに結合}\,\arrowto\,新しいタブで開いて自動印刷ダイアログ。
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{\faChartBar\ \ 7. 分析で成果を見える化}\,\arrowto\,\texttt{?tab=analytics}\\
+「\textbf{分析}」タブを開く\,\arrowto\,その生徒の\textbf{4枚のグラフ}が並びます：
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt]
+  \item \textbf{教材適合度}（％の大きな数字）：正答率80\%〜100\%未満の割合。「ちょうど良い難易度の比率」
+  \item \textbf{教材別完了率}（横棒）：教材ごとにどこまで進んだか
+  \item \textbf{学習ペース推移}（折れ線）：週ごとのアクション数の変化
+  \item \textbf{正答率推移}（折れ線、60\%注意ライン入り）：教材ごとの定着の動き
+\end{itemize}
+塾長へのフィードバックや、保護者面談の資料にもそのまま使えます。
 \end{actionbox}
 
 % =========================================

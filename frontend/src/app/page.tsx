@@ -130,12 +130,12 @@ export default async function LandingPage() {
               ライブデモ
             </div>
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
-              <span className="text-zinc-900">教材作成から個別印刷まで、</span>
+              <span className="text-zinc-900">教材作成から分析まで、</span>
               <br className="sm:hidden" />
-              <span className="bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">6ステップで完結。</span>
+              <span className="bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">7ステップで完結。</span>
             </h2>
             <p className="mt-3 text-sm sm:text-base text-zinc-600 max-w-xl mx-auto">
-              <strong className="text-zinc-900">教材を作る → 生徒を選ぶ → 割り当てる → 結果を入れる → 反映 → 印刷</strong>。
+              <strong className="text-zinc-900">教材を作る → 生徒を選ぶ → 割り当て → 結果入力 → 反映 → 印刷 → 分析</strong>。
               <br className="hidden sm:block" />
               実際のアプリ画面そのままの流れを、田中 太郎さんを例に追いかけます。
             </p>
@@ -212,20 +212,21 @@ export default async function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-10">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-zinc-900">
-              授業の流れにそのまま沿った、6ステップ。
+              授業の流れにそのまま沿った、7ステップ。
             </h2>
             <p className="mt-3 text-sm sm:text-base text-zinc-600 max-w-xl mx-auto">
-              教材を作るところから、その日の宿題プリントを生徒に渡すところまで、ぜんぶこのアプリの中で。
+              教材作成から、宿題プリント、そして成果の分析まで。ぜんぶこのアプリの中で完結します。
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 relative">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 relative">
             <FlowStep n={1} title="教材を作る" desc="教材名と教科を入れて登録。章ごとにPDFを4種類まで紐付け可。" icon={<BookOpen className="w-5 h-5" />} />
             <FlowStep n={2} title="生徒を選ぶ" desc="上の生徒切替セレクタで対象を選ぶだけ。" icon={<Users className="w-5 h-5" />} />
             <FlowStep n={3} title="割り当てる" desc="「割り当て管理」タブの追加可能教材から1クリック。" icon={<Plus className="w-5 h-5" />} />
             <FlowStep n={4} title="結果を入れる" desc="「定着度入力」タブで点数・満点・合格を入れる。" icon={<ClipboardCheck className="w-5 h-5" />} highlight />
             <FlowStep n={5} title="反映する" desc="Ctrl+Sで一括保存。次の章へ自動で進む。" icon={<Save className="w-5 h-5" />} />
             <FlowStep n={6} title="個別印刷" desc="印刷ページの生徒行から「印刷」で1つのPDFに結合。" icon={<Printer className="w-5 h-5" />} />
+            <FlowStep n={7} title="分析" desc="教材適合度・完了率・正答率推移をグラフで一望。" icon={<BarChart3 className="w-5 h-5" />} />
           </div>
         </div>
       </section>

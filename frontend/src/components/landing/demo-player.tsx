@@ -32,10 +32,18 @@ import {
   User,
   Search,
   Settings2,
+  TrendingUp,
 } from "lucide-react";
 
 type Scene = {
-  id: "materials" | "students_select" | "assign" | "mastery" | "reflected" | "print";
+  id:
+    | "materials"
+    | "students_select"
+    | "assign"
+    | "mastery"
+    | "reflected"
+    | "print"
+    | "analytics";
   page: string;
   title: string;
   subtitle: string;
@@ -84,6 +92,13 @@ const SCENES: Scene[] = [
     title: "6. 印刷ページで個別印刷",
     subtitle: "田中さんの行の「印刷」ボタン → 問題＋解答が1つのPDFに",
     durationMs: 6000,
+  },
+  {
+    id: "analytics",
+    page: "/students?tab=analytics",
+    title: "7. 分析タブで成果を見える化",
+    subtitle: "教材適合度・完了率・学習ペース・正答率推移をグラフで確認",
+    durationMs: 7500,
   },
 ];
 
@@ -178,7 +193,8 @@ export function DemoPlayer() {
                 scene.id === "students_select" ||
                 scene.id === "assign" ||
                 scene.id === "mastery" ||
-                scene.id === "reflected"
+                scene.id === "reflected" ||
+                scene.id === "analytics"
               }
             />
             <NavItem icon={<BookOpen className="w-3.5 h-3.5" />} label="教材管理" active={scene.id === "materials"} />
@@ -196,6 +212,7 @@ export function DemoPlayer() {
             <SceneMastery visible={scene.id === "mastery"} progress={sceneProgress} />
             <SceneReflected visible={scene.id === "reflected"} progress={sceneProgress} />
             <ScenePrint visible={scene.id === "print"} progress={sceneProgress} />
+            <SceneAnalytics visible={scene.id === "analytics"} progress={sceneProgress} />
           </main>
         </div>
 
@@ -1355,6 +1372,237 @@ function PrintRow({
         <Trash2 className="w-3 h-3 text-zinc-400 inline" />
       </td>
     </tr>
+  );
+}
+
+/* ============================================================
+   SCENE 7 — /students?tab=analytics 分析タブ
+   実画面: 教材適合度カード + 教材別完了率(横棒) + 学習ペース推移 + 正答率推移
+   ============================================================ */
+function SceneAnalytics({ visible, progress }: { visible: boolean; progress: number }) {
+  const reveal = Math.min(1, progress * 1.6);
+  const fitness = Math.floor(reveal * 76); // 0 → 76%
+  const completionPct = [
+    { name: "システム英単語", pct: 72 },
+    { name: NEW_MATERIAL, pct: 30 },
+    { name: "基礎問題精講 IA", pct: 45 },
+  ];
+  const fitnessHover = progress > 0.7 && progress < 0.85;
+
+  return (
+    <SceneWrapper visible={visible}>
+      <div className="p-4 sm:p-5 h-full overflow-y-auto bg-zinc-50">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="text-sm font-bold rounded-lg border border-zinc-300 px-3 py-1.5 bg-white inline-flex items-center gap-2">
+            <User className="w-3.5 h-3.5 text-zinc-500" />
+            <span>{STUDENT.name} ({STUDENT.grade})</span>
+            <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+          </div>
+          <span className="text-xs text-zinc-500">3教材 · 進捗 41%</span>
+        </div>
+
+        <div className="flex gap-1 mb-3 text-[11px] border-b border-zinc-200">
+          <Tab icon={<ClipboardCheck className="w-3 h-3" />} label="定着度入力" />
+          <Tab icon={<BookOpen className="w-3 h-3" />} label="割り当て管理" />
+          <Tab icon={<BarChart3 className="w-3 h-3" />} label="分析" active />
+          <Tab icon={<Users className="w-3 h-3" />} label="生徒一覧" />
+        </div>
+
+        <div className="space-y-3">
+          {/* Fitness Rate (教材適合度) */}
+          <div
+            className={`rounded-xl border bg-white p-3 transition-all ${
+              fitnessHover ? "border-orange-300 shadow-md" : "border-zinc-200 shadow-sm"
+            }`}
+            style={{
+              boxShadow: fitnessHover ? "0 0 0 3px rgba(244,115,22,0.10)" : "",
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-semibold text-zinc-800">教材適合度</div>
+                <div className="text-[10px] text-zinc-500">正答率80%〜100%未満の割合（未実施除外）</div>
+              </div>
+              <div className="text-right">
+                <span className="text-2xl sm:text-3xl font-bold tabular-nums text-zinc-900">
+                  {fitness}
+                </span>
+                <span className="text-sm text-zinc-500 ml-0.5">%</span>
+              </div>
+            </div>
+            {/* mini gauge */}
+            <div className="mt-2 h-1.5 rounded-full bg-zinc-100 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-orange-500 to-red-500"
+                style={{ width: `${fitness}%`, transition: "width 0.6s cubic-bezier(0.16,1,0.3,1)" }}
+              />
+            </div>
+          </div>
+
+          {/* Completion bar chart (教材別完了率) */}
+          <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+            <div className="text-[11px] font-semibold text-zinc-800 mb-2">教材別完了率</div>
+            <div className="space-y-1.5">
+              {completionPct.map((m, i) => {
+                const w = Math.min(m.pct, m.pct * reveal);
+                return (
+                  <div key={m.name} className="flex items-center gap-2 text-[10px]">
+                    <span className="w-28 truncate text-zinc-700">{m.name}</span>
+                    <div className="flex-1 h-3 rounded bg-zinc-100 overflow-hidden">
+                      <div
+                        className="h-full rounded bg-gradient-to-r from-rose-500 to-rose-400"
+                        style={{
+                          width: `${w}%`,
+                          transition: `width 0.6s cubic-bezier(0.16,1,0.3,1) ${i * 80}ms`,
+                        }}
+                      />
+                    </div>
+                    <span className="w-8 text-right tabular-nums text-zinc-700 font-semibold">
+                      {Math.round(w)}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Learning pace (週ごとアクション) */}
+          <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <div className="text-[11px] font-semibold text-zinc-800">学習ペース推移</div>
+                <div className="text-[10px] text-zinc-500">週ごとのアクション数</div>
+              </div>
+              <div className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-medium">
+                <TrendingUp className="w-3 h-3" /> 上昇傾向
+              </div>
+            </div>
+            <PaceChart progress={progress} />
+          </div>
+
+          {/* Accuracy trend (正答率推移、60%注意ライン) */}
+          <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+            <div className="text-[11px] font-semibold text-zinc-800 mb-1">正答率推移</div>
+            <div className="text-[10px] text-zinc-500 mb-2">教材別の正答率（60%以下は注意ライン）</div>
+            <AccuracyChart progress={progress} />
+            <div className="flex items-center gap-3 mt-1 text-[9px]">
+              <span className="inline-flex items-center gap-1 text-rose-600">
+                <span className="inline-block w-2.5 h-0.5 bg-rose-500" /> システム英単語
+              </span>
+              <span className="inline-flex items-center gap-1 text-blue-600">
+                <span className="inline-block w-2.5 h-0.5 bg-blue-500" /> 基礎問題精講 IA
+              </span>
+              <span className="ml-auto text-zinc-400">注意ライン: 60%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </SceneWrapper>
+  );
+}
+
+function PaceChart({ progress }: { progress: number }) {
+  const reveal = Math.min(1, progress * 1.4);
+  const data = [4, 6, 5, 8, 7, 10, 12, 14];
+  const w = 320;
+  const h = 64;
+  const padX = 6;
+  const padY = 6;
+  const innerW = w - padX * 2;
+  const innerH = h - padY * 2;
+  const max = Math.max(...data);
+  const stepX = innerW / (data.length - 1);
+  const visibleN = Math.max(2, Math.min(data.length, Math.floor(reveal * data.length) + 1));
+  const points = data
+    .slice(0, visibleN)
+    .map((v, i) => `${padX + i * stepX},${padY + innerH - (v / max) * innerH}`)
+    .join(" ");
+  const areaPoints = `${padX},${padY + innerH} ${points} ${padX + (visibleN - 1) * stepX},${padY + innerH}`;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full h-12">
+      <defs>
+        <linearGradient id="pace-grad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="rgb(244 63 94)" stopOpacity="0.35" />
+          <stop offset="100%" stopColor="rgb(244 63 94)" stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <polygon points={areaPoints} fill="url(#pace-grad)" />
+      <polyline points={points} fill="none" stroke="rgb(244 63 94)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      {data.slice(0, visibleN).map((v, i) => (
+        <circle
+          key={i}
+          cx={padX + i * stepX}
+          cy={padY + innerH - (v / max) * innerH}
+          r="1.6"
+          fill="white"
+          stroke="rgb(244 63 94)"
+          strokeWidth="1.2"
+        />
+      ))}
+    </svg>
+  );
+}
+
+function AccuracyChart({ progress }: { progress: number }) {
+  const reveal = Math.min(1, progress * 1.4);
+  const w = 320;
+  const h = 80;
+  const padX = 6;
+  const padY = 8;
+  const innerW = w - padX * 2;
+  const innerH = h - padY * 2;
+  const series = [
+    { color: "rgb(244 63 94)", data: [55, 62, 58, 65, 70, 72, 78, 85] }, // システム英単語
+    { color: "rgb(59 130 246)", data: [40, 48, 52, 55, 58, 50, 60, 65] }, // 基礎問題精講
+  ];
+  const stepX = innerW / (series[0].data.length - 1);
+  const visibleN = Math.max(2, Math.min(series[0].data.length, Math.floor(reveal * series[0].data.length) + 1));
+  const yLine = padY + innerH - (60 / 100) * innerH;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full h-16">
+      {/* 60% reference line + danger zone */}
+      <rect
+        x={padX}
+        y={padY + innerH - (60 / 100) * innerH}
+        width={innerW}
+        height={(60 / 100) * innerH}
+        fill="rgb(254 226 226)"
+        opacity="0.5"
+      />
+      <line
+        x1={padX}
+        x2={w - padX}
+        y1={yLine}
+        y2={yLine}
+        stroke="rgb(220 38 38)"
+        strokeWidth="0.6"
+        strokeDasharray="3 2"
+      />
+      <text x={padX + 2} y={yLine - 1} fontSize="6" fill="rgb(220 38 38)">60</text>
+
+      {series.map((s, si) => {
+        const points = s.data
+          .slice(0, visibleN)
+          .map((v, i) => `${padX + i * stepX},${padY + innerH - (v / 100) * innerH}`)
+          .join(" ");
+        return (
+          <g key={si}>
+            <polyline points={points} fill="none" stroke={s.color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            {s.data.slice(0, visibleN).map((v, i) => (
+              <circle
+                key={i}
+                cx={padX + i * stepX}
+                cy={padY + innerH - (v / 100) * innerH}
+                r="1.6"
+                fill="white"
+                stroke={s.color}
+                strokeWidth="1.2"
+              />
+            ))}
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 
