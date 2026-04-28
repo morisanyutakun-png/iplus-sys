@@ -9,7 +9,9 @@ const NO_SHELL_PATHS = ["/login", "/403"];
 
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const noShell = NO_SHELL_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  const noShell =
+    pathname === "/" ||
+    NO_SHELL_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 
   if (noShell) {
     return <>{children}</>;

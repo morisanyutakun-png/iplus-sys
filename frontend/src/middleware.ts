@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/403"];
+const PUBLIC_PATHS = ["/", "/login", "/403"];
 
 // Routes only admin can access (trainer is blocked)
 const ADMIN_ONLY_PREFIXES = [

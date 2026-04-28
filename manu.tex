@@ -1,0 +1,677 @@
+% !TEX program = lualatex
+\documentclass[a4paper,11pt]{jlreq}
+
+\usepackage{luatexja-fontspec}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,shapes.symbols,fit,backgrounds,calc,decorations.pathreplacing,patterns,shadows.blur}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{titlesec}
+\usepackage{fontawesome5}
+\usepackage[hidelinks]{hyperref}
+\usepackage{needspace}
+\usepackage{geometry}
+\geometry{a4paper,top=22mm,bottom=22mm,left=20mm,right=20mm}
+
+% --- カラーパレット ---
+\definecolor{ipBlue}{HTML}{4F86F7}
+\definecolor{ipBlueD}{HTML}{2A5BD7}
+\definecolor{ipNavy}{HTML}{1E3A5F}
+\definecolor{ipGreen}{HTML}{2DB67C}
+\definecolor{ipGreenD}{HTML}{1E8A5C}
+\definecolor{ipOrange}{HTML}{F2994A}
+\definecolor{ipPink}{HTML}{EC6F9C}
+\definecolor{ipPurple}{HTML}{9B7BE0}
+\definecolor{ipPurpleD}{HTML}{6F4FCF}
+\definecolor{ipRed}{HTML}{E26565}
+\definecolor{ipGray}{HTML}{6B7280}
+\definecolor{ipGrayL}{HTML}{E5E9F2}
+\definecolor{ipBg}{HTML}{F6F8FD}
+\definecolor{ipSoft}{HTML}{FFF8EE}
+\definecolor{ipMint}{HTML}{EAF8F2}
+\definecolor{ipPanel}{HTML}{FFFFFF}
+
+% --- 見出し ---
+\titleformat{\section}{\sffamily\bfseries\LARGE\color{ipNavy}}{}{0pt}{}
+\titleformat{\subsection}{\sffamily\bfseries\large\color{ipNavy}}{}{0pt}{}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+
+% --- 章ヘッダ（バッジ付き、グラデ風帯） ---
+\newcommand{\chap}[2]{%
+  \par\vspace{0.4em}\noindent
+  \begin{tikzpicture}
+    \node[fill=ipBlue,text=white,rounded corners=4pt,minimum height=2.0em,inner xsep=10pt,inner ysep=4pt,font=\sffamily\bfseries\large] (n1) {0#1};
+    \node[anchor=west,font=\sffamily\bfseries\LARGE,text=ipNavy] at ([xshift=10pt]n1.east) {#2};
+  \end{tikzpicture}\par
+  \vspace{-0.05em}\textcolor{ipBlue!50}{\rule{\linewidth}{1.4pt}}\vspace{-0.1em}\textcolor{ipBlue!20}{\rule{\linewidth}{0.4pt}}\par\vspace{0.4em}
+}
+
+% --- 画面紹介ボックス（影つき） ---
+\newtcolorbox{screenbox}[2][]{%
+  enhanced, breakable,
+  colback=ipPanel, colframe=ipBlue,
+  boxrule=0.8pt, arc=4pt,
+  left=12pt, right=12pt, top=14pt, bottom=10pt,
+  fonttitle=\sffamily\bfseries\large,
+  coltitle=white,
+  colbacktitle=ipBlue,
+  attach boxed title to top left={xshift=14pt,yshift=-12pt},
+  boxed title style={arc=4pt,colback=ipBlue,boxrule=0pt,top=3pt,bottom=3pt,left=10pt,right=10pt},
+  drop fuzzy shadow=ipNavy!20,
+  title={#2}, #1
+}
+
+% --- アクションボックス（中身用） ---
+\newtcolorbox{actionbox}[1][]{%
+  enhanced, breakable,
+  colback=ipBg, colframe=ipBlue!12,
+  boxrule=0pt,
+  left=12pt, right=12pt, top=7pt, bottom=7pt,
+  arc=3pt,
+  borderline west={2.4pt}{0pt}{ipBlue!60},
+  #1
+}
+
+% --- ヒント（オレンジ） ---
+\newtcolorbox{tipbox}[1][]{%
+  enhanced, breakable,
+  colback=ipSoft, colframe=ipOrange!50,
+  boxrule=0.6pt,
+  left=12pt, right=12pt, top=8pt, bottom=8pt,
+  arc=3pt,
+  borderline west={2.4pt}{0pt}{ipOrange},
+  #1
+}
+
+% --- ボタンっぽい見た目（シャドウつき） ---
+\newcommand{\btn}[1]{\tikz[baseline=(b.base)]{\node[fill=ipBlue,text=white,rounded corners=4pt,inner xsep=6pt,inner ysep=2.5pt,font=\sffamily\small\bfseries,drop shadow={ipBlue!40,shadow xshift=0.3pt,shadow yshift=-0.6pt}](b){#1};}}
+\newcommand{\btnG}[1]{\tikz[baseline=(b.base)]{\node[fill=ipGreen,text=white,rounded corners=4pt,inner xsep=6pt,inner ysep=2.5pt,font=\sffamily\small\bfseries,drop shadow={ipGreen!40,shadow xshift=0.3pt,shadow yshift=-0.6pt}](b){#1};}}
+\newcommand{\btnO}[1]{\tikz[baseline=(b.base)]{\node[fill=ipOrange,text=white,rounded corners=4pt,inner xsep=6pt,inner ysep=2.5pt,font=\sffamily\small\bfseries](b){#1};}}
+\newcommand{\btnR}[1]{\tikz[baseline=(b.base)]{\node[fill=ipRed,text=white,rounded corners=4pt,inner xsep=6pt,inner ysep=2.5pt,font=\sffamily\small\bfseries](b){#1};}}
+\newcommand{\tab}[1]{\tikz[baseline=(b.base)]{\node[fill=ipNavy!8,text=ipNavy,rounded corners=2.5pt,inner xsep=5pt,inner ysep=2pt,font=\sffamily\small,draw=ipNavy!25](b){#1};}}
+\newcommand{\arrowto}{\,\textcolor{ipBlue}{$\Rightarrow$}\,}
+
+% --- ハイライト ---
+\newcommand{\hl}[1]{\textbf{\textcolor{ipNavy}{#1}}}
+
+% --- 数字キャップ ---
+\newcommand{\numcap}[1]{\tikz[baseline=(b.base)]{\node[fill=ipBlue,text=white,circle,minimum size=1.3em,font=\sffamily\bfseries\small,inner sep=0pt](b){#1};}}
+
+% --- 進捗バー ---
+\newcommand{\progbar}[2]{%
+  \begin{tikzpicture}[baseline=-1.6pt]
+    \fill[ipGrayL,rounded corners=2pt] (0,0) rectangle (2.6,0.26);
+    \fill[#2,rounded corners=2pt] (0,0) rectangle (#1*0.026,0.26);
+  \end{tikzpicture}%
+}
+
+% ---------------------------
+\begin{document}
+
+% =========================================
+% 表紙
+% =========================================
+\thispagestyle{empty}
+\newgeometry{margin=0pt}
+\begin{tikzpicture}[remember picture,overlay]
+  % 上部の青いバナー（ページ上端から12cm）
+  \fill[ipBlue] (current page.north west) rectangle ($(current page.north east)+(0,-12)$);
+  \fill[ipBlueD,opacity=0.55] (current page.north west) rectangle ($(current page.north east)+(0,-12)$);
+  % 装飾円
+  \fill[white,opacity=0.07] ($(current page.north east)+(-3.5,-0.8)$) circle (3.4);
+  \fill[white,opacity=0.05] ($(current page.north west)+(1.2,-10.5)$) circle (2.4);
+  \fill[white,opacity=0.05] ($(current page.north east)+(-1.5,-10)$) circle (1.6);
+  \fill[white,opacity=0.04] ($(current page.north west)+(8,-2.5)$) circle (1.2);
+
+  % ロゴ＆タグライン
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\fontsize{15}{18}\selectfont] at ($(current page.north west)+(2.0,-1.7)$) {iPlus Sys};
+  \node[anchor=north west,text=white!85,font=\sffamily\fontsize{10}{12}\selectfont] at ($(current page.north west)+(2.0,-2.3)$) {塾の運用支援ツール};
+
+  % 大見出し
+  \node[anchor=north west,text=white,font=\sffamily\bfseries\fontsize{32}{40}\selectfont] at ($(current page.north west)+(2.0,-5.4)$) {塾の今が、ひと目で分かる。};
+  \node[anchor=north west,text=white!92,font=\sffamily\bfseries\fontsize{22}{28}\selectfont] at ($(current page.north west)+(2.0,-7.6)$) {ボタン1つで、};
+  \node[anchor=north west,text=white!92,font=\sffamily\bfseries\fontsize{22}{28}\selectfont] at ($(current page.north west)+(2.0,-8.7)$) {明日の宿題が刷り上がる。};
+
+  % 白いカード（資料情報）
+  \node[anchor=north west,fill=white,rounded corners=4pt,text width=10cm,inner sep=14pt,drop fuzzy shadow=ipNavy!25,
+        font=\sffamily] at ($(current page.north west)+(2.0,-13.5)$)
+    {\textbf{\textcolor{ipNavy}{\large ご報告資料}}\\[4pt]
+     \textcolor{ipGray}{現状の機能・使い方・これから ── 塾長へ}\\[6pt]
+     \textcolor{ipGray}{2026年4月28日　／　森 祐太}};
+
+  % 3つの強み（プレビューカード）
+  \node[anchor=north west,fill=white,draw=ipBlue!25,line width=0.6pt,rounded corners=5pt,
+        minimum width=5.0cm,minimum height=2.6cm,align=center,inner sep=8pt,drop fuzzy shadow=ipNavy!12,
+        font=\sffamily] (c1) at ($(current page.north west)+(2.0,-19.5)$)
+    {\tikz\node[fill=ipBlue!12,text=ipBlue,circle,minimum size=1.9em,font=\bfseries](){\faChartLine};\\[3pt]
+     \bfseries\small\textcolor{ipNavy}{進捗を見える化}\\[1pt]
+     \scriptsize\textcolor{ipGray}{誰がどこまで／要注意の生徒}};
+  \node[anchor=north west,fill=white,draw=ipGreen!30,line width=0.6pt,rounded corners=5pt,
+        minimum width=5.0cm,minimum height=2.6cm,align=center,inner sep=8pt,drop fuzzy shadow=ipNavy!12,
+        font=\sffamily] (c2) at ($(c1.north east)+(0.3,0)$)
+    {\tikz\node[fill=ipGreen!12,text=ipGreen,circle,minimum size=1.9em,font=\bfseries](){\faPrint};\\[3pt]
+     \bfseries\small\textcolor{ipNavy}{印刷を自動化}\\[1pt]
+     \scriptsize\textcolor{ipGray}{ボタン1つで全員ぶん}};
+  \node[anchor=north west,fill=white,draw=ipPurple!30,line width=0.6pt,rounded corners=5pt,
+        minimum width=5.0cm,minimum height=2.6cm,align=center,inner sep=8pt,drop fuzzy shadow=ipNavy!12,
+        font=\sffamily] (c3) at ($(c2.north east)+(0.3,0)$)
+    {\tikz\node[fill=ipPurple!12,text=ipPurple,circle,minimum size=1.9em,font=\bfseries](){\faTable};\\[3pt]
+     \bfseries\small\textcolor{ipNavy}{シートと連携}\\[1pt]
+     \scriptsize\textcolor{ipGray}{今のスプレッドシートのまま}};
+
+  % フッター
+  \node[anchor=south,text=ipGray,font=\sffamily\scriptsize] at ($(current page.south)+(0,1.3)$)
+    {\faBookOpen\ \  全 10 ページ\quad/\quad 読み物として10分くらい};
+\end{tikzpicture}
+\clearpage
+\restoregeometry
+
+% =========================================
+% TL;DR
+% =========================================
+\begin{tcolorbox}[colback=ipBg,colframe=ipBlue,boxrule=0pt,arc=5pt,left=16pt,right=16pt,top=12pt,bottom=12pt]
+\sffamily
+{\fontsize{14}{18}\selectfont\textbf{\textcolor{ipBlue}{\faBolt}\ \ ひとことで言うと}}\\[6pt]
+{\fontsize{12}{18}\selectfont\textcolor{ipNavy}{
+\textbf{生徒の進み具合を一覧でチェックしながら、次に渡す教材プリントが自動で出てくる}\,---\,
+そんな塾の運用をまるごと助けるツールです。今お使いの宿題管理スプレッドシートともつながります。}}
+\end{tcolorbox}
+
+\vspace{0.2em}
+
+\begin{tipbox}
+\sffamily
+\textbf{\textcolor{ipOrange}{\faLightbulb}\ \ この資料の読み方}\\[2pt]
+パソコンが苦手な方でも分かるように、専門用語はなるべく使わずに書きました。
+画面ごとに「\textbf{ここを押すと、こうなる}」をボックスで並べてあります。
+\textbf{気になるところだけ拾い読み}でも大丈夫です。
+\end{tipbox}
+
+\vspace{0.4em}
+
+% =========================================
+% 章1 全体イメージ
+% =========================================
+\chap{1}{まずは全体イメージ}
+
+インターネットにつながる端末（パソコン・iPad・スマホ）のブラウザから使う、
+\hl{塾の管理画面}です。アプリのインストールは要りません。
+
+\vspace{0.4em}
+\begin{center}
+\begin{tikzpicture}[
+  font=\sffamily\small,
+  box/.style={rounded corners=6pt,draw=ipNavy!25,fill=white,minimum width=3.6cm,minimum height=1.4cm,align=center,inner sep=4pt,line width=0.7pt,drop fuzzy shadow=ipNavy!12},
+  prn/.style={rounded corners=4pt,draw=ipNavy!25,fill=white,minimum width=2.5cm,minimum height=1.0cm,align=center,inner sep=3pt,font=\sffamily\small,line width=0.7pt,drop fuzzy shadow=ipNavy!12},
+  arr/.style={-{Stealth[length=3mm]},line width=1pt,ipBlue!70},
+  lab/.style={font=\sffamily\scriptsize\bfseries,fill=ipBg,inner sep=2.4pt,rounded corners=2pt,text=ipNavy},
+  ic/.style={font=\sffamily\bfseries\large},
+]
+\node[box,top color=ipBlue!8,bottom color=ipBlue!18] (fe) {\tikz{\node[ic,text=ipBlue]{\faDesktop};}\\[1pt]\textbf{管理画面}\\ \scriptsize（塾長・先生が見る）};
+\node[box,top color=ipGreen!8,bottom color=ipGreen!18,right=1.8cm of fe] (be) {\tikz{\node[ic,text=ipGreen]{\faDatabase};}\\[1pt]\textbf{保管庫}\\ \scriptsize（インターネット上）};
+\node[box,top color=ipOrange!10,bottom color=ipOrange!22,right=1.8cm of be] (ag) {\tikz{\node[ic,text=ipOrange]{\faCogs};}\\[1pt]\textbf{印刷役プログラム}\\ \scriptsize（教室のパソコン）};
+\node[box,top color=ipPurple!8,bottom color=ipPurple!18,below=1.0cm of be] (gas) {\tikz{\node[ic,text=ipPurple]{\faTable};}\\[1pt]\textbf{Google スプレッドシート}\\ \scriptsize（今お使いのもの）};
+\node[prn,top color=ipNavy!4,bottom color=ipNavy!12,below=1.0cm of ag] (printer) {\tikz{\node[ic,text=ipNavy!70]{\faPrint};}\\[1pt]プリンタ};
+
+\draw[arr] (fe) -- node[lab]{操作する} (be);
+\draw[arr] (be) -- node[lab]{印刷依頼} (ag);
+\draw[arr] (ag) -- node[lab]{紙が出る} (printer);
+\draw[arr] (gas) -- node[lab]{宿題と結果}(be);
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.3em}
+\begin{itemize}[leftmargin=1.4em,itemsep=3pt]
+  \item \hl{管理画面}：先生・塾長が見る部分。すべてここで完結します。
+  \item \hl{保管庫}：データの置き場所。インターネット上にあるので教室が停電でも消えません。
+  \item \hl{印刷役プログラム}：教室のプリンタにつながったパソコンで動く小さなソフト。
+        管理画面からの「これ印刷して」を受け取って\textbf{勝手に紙を出して}くれます。
+  \item \hl{スプレッドシート連携}：今お使いの宿題管理シートと\textbf{自動でつなぐ}ことができます。
+\end{itemize}
+
+% =========================================
+% 章2 画面マップ
+% =========================================
+\chap{2}{どんな画面があるか}
+
+画面は全部で9種類。普段よく使うのは上の3〜4個です。
+
+\vspace{0.4em}
+\begin{center}\sffamily\small
+\renewcommand{\arraystretch}{1.45}
+\begin{tabularx}{\linewidth}{@{}c >{\bfseries\color{ipNavy}}l X@{}}
+\toprule
+& 画面 & どんな画面か \\
+\midrule
+\faHome\,\textcolor{ipBlue}{} & ホーム & 塾全体の様子をひと目で。\textbf{要注意の生徒に印がつく} \\
+\faUserGraduate\,\textcolor{ipBlue}{} & 生徒 & 生徒の追加／教材の割り当て／\textbf{テスト結果の入力} \\
+\faBook\,\textcolor{ipBlue}{} & 教材 & 教材を1冊ずつ登録（章ごとに分けて、PDFも紐付け） \\
+\faChartBar\,\textcolor{ipBlue}{} & 模試・試験 & 共通テストや過去問の管理／成績入力／グラフで見える化 \\
+\faSpellCheck\,\textcolor{ipBlue}{} & 単語テスト & 単語帳をエクセル感覚で\textbf{まとめて取り込み} \\
+\faPrint\,\textcolor{ipBlue}{} & 印刷 & 「\textbf{ボタン1つでまとめて印刷}」の操作画面 \\
+\faFilePdf\,\textcolor{ipBlue}{} & PDF置き場 & 教材PDFのアップロードと一覧 \\
+\faChalkboardTeacher\,\textcolor{ipBlue}{} & 講師 & 講師の名前を登録（テスト結果に紐付ける用） \\
+\faUserShield\,\textcolor{ipBlue}{} & ログイン管理 & 誰が画面に入れるか、その権限の設定 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\vspace{0.3em}
+\textcolor{ipGray}{\small※ 普段使うのは「ホーム」「生徒」「印刷」が中心。教材登録などは初期設定のときだけ触ります。}
+
+% =========================================
+% 章3 画面ごとの使い方
+% =========================================
+\chap{3}{画面ごとの使い方}
+
+ここから「\textbf{この画面のここを押すと、こうなる}」を、画面ごとに並べていきます。
+
+\vspace{0.5em}
+
+% --- ホーム ---
+\begin{screenbox}{\faHome\ \  ホーム画面（ログインした最初に開く）}
+\textbf{塾全体の進み具合を、ひと目で。}
+
+\begin{actionbox}
+\textbf{画面の上の方：}3つの数字カードが並びます。\\[2pt]
+\begin{tikzpicture}[font=\sffamily\small]
+  \node[fill=ipBlue!8,draw=ipBlue!25,rounded corners=4pt,minimum width=4.4cm,minimum height=1.1cm,align=center] (a) {\textbf{\textcolor{ipBlue}{\faUsers}\ \ 生徒の人数}\\\scriptsize 例：48名};
+  \node[fill=ipGreen!8,draw=ipGreen!25,rounded corners=4pt,minimum width=4.4cm,minimum height=1.1cm,align=center,right=4pt of a] (b) {\textbf{\textcolor{ipGreen}{\faBook}\ \ 教材の数}\\\scriptsize 例：22冊};
+  \node[fill=ipOrange!10,draw=ipOrange!25,rounded corners=4pt,minimum width=4.4cm,minimum height=1.1cm,align=center,right=4pt of b] (c) {\textbf{\textcolor{ipOrange}{\faChartLine}\ \ 今週の学習回数}\\\scriptsize 例：312回（先週比 +18\%）};
+\end{tikzpicture}
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{要注意の生徒が自動で出ます（2種類）：}
+\begin{itemize}[leftmargin=1.4em,itemsep=2pt]
+  \item \textcolor{ipOrange}{\faExclamationCircle\ \textbf{もうすぐ終わる}}：あと1〜2回で終わる教材を持っている生徒。
+  \item \textcolor{ipRed}{\faExclamationTriangle\ \textbf{正答率が下がっている}}：直近2回続けて60点未満になった単元。
+\end{itemize}
+\textbf{右のチェックボックス}を押す\arrowto「対応ずみ」になって一覧から消えます。\\
+\textbf{生徒の名前をクリック}\arrowto その子の詳細画面にジャンプ。
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{グラフが3枚並びます：}
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt]
+  \item 生徒ごとの平均進み具合（横棒）\,\,\progbar{75}{ipBlue}\,\,\progbar{50}{ipGreen}\,\,\progbar{30}{ipOrange}
+  \item 過去8週間の学習量の推移（折れ線）
+  \item 進み具合の分布（誰がどのくらい進んでいるか）
+\end{itemize}
+さらに下に\textbf{生徒×教材の進み具合の表}（誰がどの教材をどこまで進んでいるか一覧）。
+\end{actionbox}
+
+\begin{tipbox}
+\textbf{\textcolor{ipOrange}{\faStar}\ 画面右上の目玉ボタン}\\[3pt]
+\btnG{全員ぶん 次のプリント自動準備}\\[4pt]
+これ1回押すだけで、\textbf{全員ぶんの「次に渡すプリント」が自動で並びます}。
+あとは印刷画面で「送信」を押せば、教室のプリンタから紙が出てきます。
+\end{tipbox}
+\end{screenbox}
+
+\vspace{0.6em}
+
+% --- 生徒 ---
+\begin{screenbox}{\faUserGraduate\ \  生徒画面}
+\textbf{左に生徒リスト、右にその子の詳細。タブで内容を切り替えます。}
+
+\begin{actionbox}
+\textbf{左の \btn{+} ボタン}\arrowto 新しい生徒を追加するダイアログ（名前・学年など）。
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{右側のタブは4枚：}\\[2pt]
+\tab{\faClipboardCheck\ 定着度}\,\,\tab{\faBook\ 教材}\,\,\tab{\faChartBar\ 成績}\,\,\tab{\faHistory\ ふり返り}
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{\tab{\faClipboardCheck\ 定着度}：}
+エクセル風の表に\textbf{「点数 / 満点」を直接入力}\arrowto 自動で正答率を計算。
+保存すると\textbf{結果の記録}と\textbf{次にやる範囲の自動更新}が同時に行われます。
+2回続けて60点未満だと、ホーム画面に\textcolor{ipRed}{\textbf{赤い警告マーク}}が立ちます。
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{\tab{\faBook\ 教材}：}
+その子に渡している教材の一覧。各行で\btn{次へ進める}\,\,\btn{前に戻す}\,ができ、
+\textbf{今どこをやっている子なのか}が一目で見えます。
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{\tab{\faChartBar\ 成績}：}
+模試や過去問の点数を入力する場所。
+目標との差や、\textbf{志望大学の配点に合わせて計算した合計点}もここで確認。
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{\tab{\faHistory\ ふり返り}：}
+過去8週間の学習タイムライン／教材ごとの達成率／週あたりにこなした単元の数。
+\end{actionbox}
+\end{screenbox}
+
+\vspace{0.6em}
+
+% --- 教材 ---
+\begin{screenbox}{\faBook\ \  教材画面（最初の登録のときに使います）}
+\textbf{教材を「章・回」単位で登録する画面です。}
+
+\begin{actionbox}
+\textbf{科目ごとに分けて表示：}
+\tab{数学}\,\tab{英語}\,\tab{国語}\,\tab{理科}\,\tab{社会}\,\tab{その他}\\[2pt]
+科目の名前をクリックで開閉。検索バーで教材名から絞り込み。
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{各教材カードの \btn{+}}\arrowto 章・回の追加（タイトル・範囲・PDF・両面印刷）。\\
+\textbf{各行の \tab{編集}}\arrowto タイトルや並び順、PDFの差し替え。\\
+\textbf{各行の \tab{削除}}\arrowto 確認のうえ削除。
+\end{actionbox}
+
+\begin{tipbox}
+\textbf{\textcolor{ipOrange}{\faLightbulb}\ ポイント}\\
+1つの章に対して \textbf{問題PDF・解答PDF・復習用PDF} をそれぞれ紐付けられます。
+これが後の「ボタン1つで印刷」のときに、まとめて使われます。
+\end{tipbox}
+\end{screenbox}
+
+\vspace{0.6em}
+
+% --- 模試 ---
+\begin{screenbox}{\faChartBar\ \  模試・試験画面}
+\textbf{共通テスト・大学別過去問の管理と、成績の見える化。}
+
+\begin{actionbox}
+\textbf{試験カード一覧}（年度・大学・学部つき）。\\
+\btn{+ 新規試験}\,\arrowto 試験タイプ／年度／大学／学部 を入れて登録。
+カードを開くと、\textbf{科目（満点）}の編集と\textbf{受ける生徒の割り当て}ができます。
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{成績の見える化（タブ切替）：}
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt]
+  \item 科目ごとのスコア（六角形のチャート／棒グラフ）
+  \item 同じ生徒の試験ごとの推移（折れ線）
+  \item 目標との差
+  \item \textbf{志望大学の配点に合わせた合計点を自動で計算}
+  \item 全体の点数分布／クラス比較／個人とクラス平均の比較
+\end{itemize}
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{裏で覚えていること：}
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt]
+  \item 生徒ごと・科目ごとの \hl{目標点数}
+  \item 大学・学部ごとの \hl{配点表}（共テ:数学=200点, 英語=200点 など）
+\end{itemize}
+\end{actionbox}
+\end{screenbox}
+
+\vspace{0.6em}
+
+% --- 単語テスト ---
+\begin{screenbox}{\faSpellCheck\ \  単語テスト画面}
+\textbf{単語帳の管理。エクセルからコピペで取り込めます。}
+
+\begin{actionbox}
+\btn{+ 新規単語帳}\,\arrowto 単語帳の名前・科目を入れて作成。\\
+\btn{まとめて取り込み}\,\arrowto エクセルの内容を貼り付け、またはCSVファイル選択。\\
+\arrowto \textbf{先頭の見出し（番号／単語／意味）を自動で読み取り}\arrowto 確認画面\arrowto 確定でまとめて登録。
+\end{actionbox}
+
+\begin{actionbox}
+クリックで単語帳の中身（番号・単語・意味の3列）を確認。\\
+教材と紐付けておけば、後で「\textbf{この範囲だけの単語テスト}」を作る土台にもなります。
+\end{actionbox}
+\end{screenbox}
+
+\vspace{0.6em}
+
+% --- 印刷 ---
+\begin{screenbox}{\faPrint\ \  印刷画面（一番の目玉）}
+\textbf{印刷の流れは3ステップ。}
+
+\begin{center}\vspace{2pt}
+\begin{tikzpicture}[font=\sffamily\small]
+  \node[fill=ipBlue!10,draw=ipBlue!40,rounded corners=4pt,minimum height=1.0cm,minimum width=3.4cm,align=center](s1){\textbf{\textcolor{ipBlue}{\faListUl}\,\,1.\,待ち列に並べる}};
+  \node[fill=ipBlue!10,draw=ipBlue!40,rounded corners=4pt,minimum height=1.0cm,minimum width=3.4cm,align=center,right=0.4cm of s1](s2){\textbf{\textcolor{ipBlue}{\faLayerGroup}\,\,2.\,1冊にまとめる}};
+  \node[fill=ipBlue!10,draw=ipBlue!40,rounded corners=4pt,minimum height=1.0cm,minimum width=3.4cm,align=center,right=0.4cm of s2](s3){\textbf{\textcolor{ipBlue}{\faPrint}\,\,3.\,プリンタへ}};
+  \draw[-{Stealth[length=2.6mm]},line width=1pt,ipBlue!70] (s1)--(s2);
+  \draw[-{Stealth[length=2.6mm]},line width=1pt,ipBlue!70] (s2)--(s3);
+\end{tikzpicture}
+\end{center}
+
+\begin{actionbox}
+\textbf{4つのタブ：}\,\,
+\tab{\faListUl\ 待ち列}\,\,\tab{\faLayerGroup\ まとめ}\,\,\tab{\faPrint\ プリンタ}\,\,\tab{\faHistory\ 履歴}
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{\tab{\faListUl\ 待ち列}：}これから印刷する予定の一覧。\\
+各行で\,\btn{プレビュー}\,（PDFをその場で確認）／\,\btnR{削除}\,（取り消し）。\\
+\btn{すべてクリア}\,でまとめて消去。生徒・種類（問題／解答／復習）でしぼり込みも可能。
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{\tab{\faLayerGroup\ まとめ}：}「待ち列」の内容を1つの印刷指示にまとめたもの。\\
+状態は \tab{受付中}\,$\to$\,\tab{送信中}\,$\to$\,\colorbox{ipGreen!20}{\textcolor{ipGreenD}{\,印刷完了\,}}\,（または\colorbox{ipRed!15}{\textcolor{ipRed}{\,失敗\,}}）と進みます。\\
+\btn{プレビュー}\,で1冊にまとまったPDFを確認。\,\btnO{取り消し}\,も可。
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{\tab{\faPrint\ プリンタ}：}使うプリンタの登録。両面印刷／ステープラなどのオプションを選べます。複数台の使い分けOK。
+\end{actionbox}
+
+\begin{tipbox}
+\textbf{\textcolor{ipOrange}{\faStar}\ この画面の目玉}\\
+ホーム画面の \btnG{全員ぶん 次のプリント自動準備}\,を押すだけで、
+\textbf{全員ぶんの次のプリント}が自動で待ち列に並びます。\\
+あとは \tab{\faLayerGroup\ まとめ}\,で送信ボタンを押せば、教室のプリンタからそのまま紙が出てきます。
+\end{tipbox}
+\end{screenbox}
+
+\vspace{0.6em}
+
+% --- PDF / 講師 / 設定 ---
+\begin{screenbox}{\faFilePdf\ PDF置き場 ／ \faChalkboardTeacher\ 講師 ／ \faUserShield\ ログイン管理}
+\textbf{細かい設定画面たち。普段は触らず、初期設定のときに使う場所です。}
+
+\begin{actionbox}
+\textbf{\faFilePdf\ \ PDF置き場：}
+教材PDFをフォルダごとに一覧／プレビュー／アップロード／削除。
+保存容量の確認もできます。
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{\faChalkboardTeacher\ \ 講師：}
+講師の名前を登録します。\textbf{誰が教えた回か}をテスト結果と紐付けるためのものです。
+\end{actionbox}
+
+\begin{actionbox}
+\textbf{\faUserShield\ \ ログイン管理：}
+画面に入れる人を管理。役割は2種類。
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt]
+  \item \tab{\faCrown\ 塾長（管理者）}：すべての画面OK
+  \item \tab{\faUser\ 先生}：生徒・進み具合の確認のみOK（教材編集・印刷・試験管理は不可）
+\end{itemize}
+追加するときは\textbf{Googleアカウントのメールアドレス}と表示名・役割を入れて \btn{追加}\,。
+\end{actionbox}
+\end{screenbox}
+
+% =========================================
+% 章4 自動化のキモ
+% =========================================
+\chap{4}{自動化のキモ\,2 つ}
+
+ここがいちばんの「楽になるポイント」です。
+
+\vspace{0.4em}
+\begin{tcolorbox}[enhanced,breakable,colback=ipMint,colframe=ipGreen,boxrule=0.8pt,arc=5pt,top=14pt,bottom=12pt,left=14pt,right=14pt,
+title={\sffamily\bfseries\large\faMagic\ \  1.\,\,ボタン1つで全員ぶんの印刷準備},coltitle=white,colbacktitle=ipGreen,
+attach boxed title to top left={xshift=14pt,yshift=-12pt},
+boxed title style={enhanced,arc=4pt,boxrule=0pt,top=3pt,bottom=3pt,left=10pt,right=10pt,colback=ipGreen,interior style={fill=ipGreen}}]
+\sffamily
+\vspace{0.4em}
+ホーム画面の \btnG{全員ぶん 次のプリント自動準備}\,を1回押すと、
+\begin{itemize}[leftmargin=1.4em,itemsep=2pt]
+  \item 全生徒それぞれの「\textbf{次に渡すプリント}」を自動で割り出し
+  \item 科目の優先順を考えて並べ替え
+  \item 印刷の待ち列に登録
+\end{itemize}
+
+\vspace{4pt}
+\begin{center}\small
+\begin{tikzpicture}[font=\sffamily\footnotesize]
+  \node[fill=white,draw=ipRed!40,rounded corners=4pt,minimum height=1.4cm,minimum width=6.0cm,align=center](b1){\textbf{今までの手作業}\\1人ずつ次の宿題を選ぶ\,$\to$\,PDFを開く\,$\to$\,印刷};
+  \node[fill=white,draw=ipGreen!50,rounded corners=4pt,minimum height=1.4cm,minimum width=6.0cm,align=center,right=0.5cm of b1](b2){\textbf{これからの操作}\\\textbf{ボタン1つ}\,$\to$\,送信を押すだけ};
+  \draw[-{Stealth[length=3mm]},line width=1.2pt,ipGreen] (b1)--(b2);
+\end{tikzpicture}
+\end{center}
+\end{tcolorbox}
+
+\vspace{0.5em}
+\begin{tcolorbox}[enhanced,breakable,colback=ipPurple!8,colframe=ipPurple,boxrule=0.8pt,arc=5pt,top=14pt,bottom=12pt,left=14pt,right=14pt,
+title={\sffamily\bfseries\large\faSyncAlt\ \  2.\,\,Google スプレッドシートからの自動取り込み},coltitle=white,colbacktitle=ipPurple,
+attach boxed title to top left={xshift=14pt,yshift=-12pt},
+boxed title style={enhanced,arc=4pt,boxrule=0pt,top=3pt,bottom=3pt,left=10pt,right=10pt,colback=ipPurple,interior style={fill=ipPurple}}]
+\sffamily
+\vspace{0.4em}
+今お使いのスプレッドシート側に\textbf{自動連絡のしくみ}を入れると、
+\begin{itemize}[leftmargin=1.4em,itemsep=2pt]
+  \item 出題された宿題（教材・章）
+  \item 生徒の合否結果（合格 / 不合格）
+  \item 印刷フラグ・期日・状況
+\end{itemize}
+が iPlus Sys 側に自動で流れ込みます。
+
+\vspace{4pt}
+\begin{center}
+\begin{tikzpicture}[font=\sffamily\footnotesize]
+  \node[fill=white,draw=ipPurple!40,rounded corners=4pt,minimum height=1.0cm,minimum width=3.6cm,align=center](g1){\faTable\ \ シートで「合格」};
+  \node[fill=white,draw=ipPurple!40,rounded corners=4pt,minimum height=1.0cm,minimum width=3.6cm,align=center,right=0.4cm of g1](g2){\faSyncAlt\ \ 進み具合が1進む};
+  \node[fill=white,draw=ipPurple!40,rounded corners=4pt,minimum height=1.0cm,minimum width=3.6cm,align=center,right=0.4cm of g2](g3){\faPrint\ \ 次のプリント発行};
+  \draw[-{Stealth[length=3mm]},line width=1.2pt,ipPurple] (g1)--(g2);
+  \draw[-{Stealth[length=3mm]},line width=1.2pt,ipPurple] (g2)--(g3);
+\end{tikzpicture}
+\end{center}
+\textbf{呼び方のずれ}（シート側の通称\,vs\,システム側の正式名）には、教材に「別名」を持たせて吸収しています。
+\end{tcolorbox}
+
+% =========================================
+% 章5 裏で覚えていること
+% =========================================
+\chap{5}{裏で何を覚えているか}
+
+塾長が中身を細かく追う必要はありません。「これだけは記録に残ってます」というポイントだけ。
+
+\vspace{0.4em}
+\begin{center}\sffamily\small
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\linewidth}{@{}>{\bfseries\color{ipNavy}}l X@{}}
+\toprule
+覚えている情報 & 何のために \\
+\midrule
+誰がどの教材のどこにいるか & 「次にやる範囲」を即決められる \\
+1回ごとの点数・正答率・日付・担当の先生 & 弱点と先生ごとの傾向が見える \\
+進み具合の履歴（前進・戻し・印刷など） & ホームのトレンドグラフの元データ \\
+模試の点数・目標・配点表 & 目標達成度／合計点の自動計算 \\
+印刷の待ち列・実行履歴・プリンタ設定 & 自動印刷とトラブル時の取り消し \\
+完了したものの倉庫／対応ずみ印 & 「終わったもの」をきれいに隠す \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\vspace{0.3em}
+\textcolor{ipGray}{\small※ ログイン権限は \textbf{塾長} と \textbf{先生} の2段階。間違えて教材を弄られないよう、先生アカウントは触れる範囲を絞っています。}
+
+% =========================================
+% 章6 進捗
+% =========================================
+\needspace{20\baselineskip}
+\chap{6}{今どこまでできているか}
+
+体感では \textbf{普段使う機能はだいたい完成}、いまは細かい見た目を整えているところです。
+
+\vspace{0.4em}
+\begin{center}\sffamily\small
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\linewidth}{@{}>{\bfseries\color{ipNavy}}l c c X@{}}
+\toprule
+こんな機能 & 完成度 & ゲージ & 状況 \\
+\midrule
+生徒・教材・進み具合の管理 & \textcolor{ipGreen}{\textbf{ほぼ完成}} & \progbar{95}{ipGreen} & 日常運用は十分まわせます \\
+印刷まわり全般 & \textcolor{ipGreen}{\textbf{ほぼ完成}} & \progbar{90}{ipGreen} & 自動キュー・取り消しまで動く \\
+模試・試験 & \textcolor{ipGreen}{\textbf{ほぼ完成}} & \progbar{90}{ipGreen} & 配点合わせの計算まで対応 \\
+スプレッドシート連携 & \textcolor{ipBlue}{\textbf{動いている}} & \progbar{80}{ipBlue} & 呼び方のずれを運用調整中 \\
+単語テスト & \textcolor{ipBlue}{\textbf{動いている}} & \progbar{75}{ipBlue} & 取り込みOK／出題機能は今後 \\
+画面の細かい整え & \textcolor{ipOrange}{\textbf{調整中}} & \progbar{70}{ipOrange} & 行間・崩れ・文字化けの直し \\
+本番運用へ向けた整備 & \textcolor{ipOrange}{\textbf{これから}} & \progbar{40}{ipOrange} & 自動チェック・運用説明書 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\vspace{0.5em}
+\subsection*{\faClock\ \ 最近やっていたこと（直近の作業から抜粋）}
+\begin{itemize}[leftmargin=1.4em,itemsep=2pt]
+  \item 答案用紙まわりの表示の整え／印刷時の崩れ修正
+  \item 表の行の高さ・列幅のちょうどいい値さがし
+  \item 単語テストの一括取り込み（見出しの自動判定・文字化けの対策）
+  \item 一気に保存しても止まらないよう改善
+  \item Google 連携・ログイン権限まわりの整備
+  \item 見える化・分析の強化／生徒追加画面／ログまわりの整理
+\end{itemize}
+
+% =========================================
+% 章7 次にやれること
+% =========================================
+\needspace{18\baselineskip}
+\chap{7}{次にやれること（塾長と相談したいリスト）}
+
+「重さの目安」つきで並べました。「中」くらいまでは手の届く範囲です。
+
+\vspace{0.4em}
+\begin{center}\sffamily\small
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\linewidth}{@{}>{\bfseries\color{ipNavy}}l c X@{}}
+\toprule
+やりたいこと & 重さ & 効果 \\
+\midrule
+単語テストの「出題→提出→自動採点」画面 & \tab{中} & 単語確認の時間がグッと減る \\
+夜のうちに翌日の印刷を自動で並べる機能 & \tab{中} & 朝イチでもう紙が積まれている \\
+保護者・生徒向けの進み具合ページ（読むだけ） & \tab{中} & 通塾のモチベが見える化 \\
+模試結果の取り込み（ファイル／写真から） & \tab{中〜大} & 成績入力の手間がなくなる \\
+LINE／Slack への通知連携 & \tab{小} & 要注意フラグを自動でお知らせ \\
+本番運用に向けた自動チェック・バックアップ & \tab{中} & 安心感（裏側の整備） \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+% =========================================
+% 章8 おわりに
+% =========================================
+\chap{8}{おわりに}
+
+\begin{tcolorbox}[enhanced,colback=ipNavy!4,colframe=ipNavy,boxrule=0.8pt,arc=5pt,top=14pt,bottom=14pt,left=18pt,right=18pt]
+\sffamily
+{\fontsize{13}{18}\selectfont\textbf{\textcolor{ipNavy}{\faQuoteLeft}\ \ まとめ}}\\[8pt]
+
+\begin{tcolorbox}[colback=ipSoft,colframe=ipOrange!50,boxrule=0.6pt,arc=3pt,
+left=12pt,right=12pt,top=8pt,bottom=8pt,
+borderline west={2.4pt}{0pt}{ipOrange}]
+\sffamily\bfseries\textcolor{ipNavy}{ホーム画面を開けば塾の今が見え、ボタン1つで次の印刷が積まれ、合否を入れた瞬間に進み具合が進む。}
+\end{tcolorbox}
+
+\vspace{8pt}
+\textcolor{ipNavy}{これが今の iPlus Sys の立ち位置です。模試・単語・PDFまで巻き取っているので、塾の運用が
+\textbf{今までの「表計算＋手作業」の組み合わせ}から、\textbf{ほぼここに集約できる状態}になっています。}\par
+\vspace{6pt}
+\textcolor{ipGray}{細かい挙動や追加してほしい画面があれば、いつでもこの資料に追記する形でお伝えください。}
+\end{tcolorbox}
+
+\end{document}
