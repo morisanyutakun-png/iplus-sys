@@ -3,8 +3,6 @@ import { cookies } from "next/headers";
 import {
   Sparkles,
   Printer,
-  BarChart3,
-  Table2,
   ArrowRight,
   CheckCircle2,
   Zap,
@@ -15,6 +13,7 @@ import {
   ShieldCheck,
   Smartphone,
   ChevronDown,
+  ClipboardCheck,
 } from "lucide-react";
 import { DemoPlayer } from "@/components/landing/demo-player";
 
@@ -135,12 +134,15 @@ export default async function LandingPage() {
               ライブデモ
             </div>
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
-              <span className="text-zinc-900">5ステップで分かる、</span>
+              <span className="text-zinc-900">教材を作って、</span>
+              <span className="text-zinc-900">入力して、</span>
               <br className="sm:hidden" />
-              <span className="bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">いつもの操作。</span>
+              <span className="bg-gradient-to-r from-orange-500 to-red-600 bg-clip-text text-transparent">この子だけ印刷。</span>
             </h2>
             <p className="mt-3 text-sm sm:text-base text-zinc-600 max-w-xl mx-auto">
-              実際の画面と同じ流れを再現しています。下のボタンで停止・巻き戻しもできます。
+              田中 太郎さんを例に、実際の画面そのままの流れを4ステップで再現しています。
+              <br className="hidden sm:block" />
+              下のボタンで停止・巻き戻しも可能です。
             </p>
           </div>
 
@@ -164,34 +166,34 @@ export default async function LandingPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
             <FeatureCard
-              icon={<BarChart3 className="w-5 h-5" />}
+              icon={<BookOpen className="w-5 h-5" />}
               accent="from-blue-500 to-blue-600"
-              title="進捗を見える化"
+              title="教材を1分で登録"
               points={[
-                "誰がどこまで進んでいるか一覧",
-                "要注意の生徒に自動で印",
-                "正答率の低下を見逃さない",
+                "教科ごとに色分けされた一覧",
+                "1教材に章をいくつでも追加",
+                "問題・解答・復習用のPDFを紐付け",
               ]}
             />
             <FeatureCard
-              icon={<Printer className="w-5 h-5" />}
+              icon={<ClipboardCheck className="w-5 h-5" />}
               accent="from-orange-500 to-red-600"
-              title="印刷を自動化"
+              title="点数を入れたら、進む"
               points={[
-                "全員ぶんの次のプリントを一発作成",
-                "教室のプリンタへそのまま送信",
-                "送信済みでも取り消し可能",
+                "エクセル感覚で「点数 / 満点」入力",
+                "合格にチェックで次の章に自動進行",
+                "60点未満が続くと赤フラグ",
               ]}
               highlight
             />
             <FeatureCard
-              icon={<Table2 className="w-5 h-5" />}
+              icon={<Printer className="w-5 h-5" />}
               accent="from-purple-500 to-purple-700"
-              title="シートと連携"
+              title="生徒ごとに印刷"
               points={[
-                "今のスプレッドシートのまま",
-                "合格判定で進み具合が自動更新",
-                "呼び方の違いも別名で吸収",
+                "生徒の行ごとに「印刷」ボタン",
+                "問題と解答が1つのPDFに結合",
+                "プリンタへそのまま送信",
               ]}
             />
           </div>
@@ -223,10 +225,10 @@ export default async function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 relative">
-            <FlowStep n={1} title="ホームを開く" desc="塾の今をひと目で確認。要注意フラグもここに。" icon={<Eye className="w-5 h-5" />} />
-            <FlowStep n={2} title="ボタンを押す" desc="「全員ぶん 次のプリント自動準備」を1回クリック。" icon={<Sparkles className="w-5 h-5" />} highlight />
-            <FlowStep n={3} title="送信する" desc="待ち列を1つにまとめて、プリンタへ送信。" icon={<Printer className="w-5 h-5" />} />
-            <FlowStep n={4} title="紙が出る" desc="教室のプリンタから、そのまま今日のぶんが出てきます。" icon={<CheckCircle2 className="w-5 h-5" />} />
+            <FlowStep n={1} title="教材を登録" desc="教材名と教科を入れて、章ごとにPDFを紐付け。" icon={<BookOpen className="w-5 h-5" />} />
+            <FlowStep n={2} title="生徒に割り当て" desc="生徒の詳細画面でクリック1つ、教材をアサイン。" icon={<Users className="w-5 h-5" />} />
+            <FlowStep n={3} title="点数を入力" desc="授業で採点した結果を点数で入れて「反映」。" icon={<ClipboardCheck className="w-5 h-5" />} highlight />
+            <FlowStep n={4} title="その子だけ印刷" desc="生徒の行の「印刷」ボタンを押すだけ。" icon={<Printer className="w-5 h-5" />} />
           </div>
         </div>
       </section>
